@@ -33,6 +33,7 @@
         <nav class="tab-navigation">
             <button class="tab-btn active" data-tab="accounts">Chart of Accounts</button>
             <button class="tab-btn" data-tab="transactions">Transactions</button>
+            <button class="tab-btn" data-tab="transaction-types">Transaction Types</button>
             <button class="tab-btn" data-tab="balance-sheet">Balance Sheet</button>
             <button class="tab-btn" data-tab="income-statement">Income Statement</button>
             <button class="tab-btn" data-tab="cash-flow">Cash Flow Statement</button>
@@ -179,6 +180,12 @@
                             <input type="text" id="transactionDescription" required>
                         </div>
                     </div>
+                    <div class="form-group">
+                        <label for="transactionType">Transaction Type (Optional):</label>
+                        <select id="transactionType">
+                            <option value="">Custom Transaction</option>
+                        </select>
+                    </div>
                     <div class="form-row">
                         <div class="form-group">
                             <label for="debitAccount">Debit Account:</label>
@@ -239,6 +246,52 @@
                     </tr>
                 </thead>
                 <tbody id="transactionsTableBody">
+                </tbody>
+            </table>
+        </section>
+
+        <!-- Transaction Types Section -->
+        <section id="transaction-types" class="tab-content">
+            <h2>Transaction Types</h2>
+            <button id="addTransactionTypeBtn" class="btn btn-primary">Add Transaction Type</button>
+
+            <div id="transactionTypeFormContainer" class="form-container hidden">
+                <h3 id="transactionTypeFormTitle">Add Transaction Type</h3>
+                <form id="transactionTypeForm">
+                    <input type="hidden" id="transactionTypeId">
+                    <div class="form-group">
+                        <label for="typeName">Transaction Type Name:</label>
+                        <input type="text" id="typeName" placeholder="e.g., Cash Sale, Pay Rent" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="typeDebitAccount">Debit Account:</label>
+                        <select id="typeDebitAccount" required>
+                            <option value="">Select account...</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="typeCreditAccount">Credit Account:</label>
+                        <select id="typeCreditAccount" required>
+                            <option value="">Select account...</option>
+                        </select>
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary">Save</button>
+                        <button type="button" id="cancelTransactionTypeBtn" class="btn">Cancel</button>
+                    </div>
+                </form>
+            </div>
+
+            <table id="transactionTypesTable">
+                <thead>
+                    <tr>
+                        <th>Type Name</th>
+                        <th>Debit Account</th>
+                        <th>Credit Account</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="transactionTypesTableBody">
                 </tbody>
             </table>
         </section>
