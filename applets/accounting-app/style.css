@@ -339,40 +339,90 @@ tbody tr:hover {
     margin-top: 0.5rem;
 }
 
-/* Account Type Section Headers */
-.account-type-header {
-    background: var(--primary-color);
-    color: white;
+/* Account Grid Layout */
+.accounts-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: auto auto;
+    gap: 1.5rem;
+    margin-top: 1.5rem;
+}
+
+.account-corner {
+    background: white;
+    border: 2px solid var(--border-color);
+    border-radius: 8px;
+    padding: 1rem;
+    overflow: hidden;
+}
+
+.corner-title {
+    font-size: 1.1rem;
     font-weight: 600;
-    font-size: 0.95rem;
+    color: white;
     padding: 0.75rem;
-    text-align: left;
-    border: 1px solid var(--primary-color);
+    margin: -1rem -1rem 1rem -1rem;
+    text-align: center;
 }
 
-.account-type-header.asset {
+.corner-title.asset {
     background: #059669;
-    border-color: #059669;
 }
 
-.account-type-header.liability {
+.corner-title.liability {
     background: #dc2626;
-    border-color: #dc2626;
 }
 
-.account-type-header.equity {
+.corner-title.equity {
     background: #7c3aed;
-    border-color: #7c3aed;
+    margin-top: 1.5rem;
 }
 
-.account-type-header.revenue {
+.corner-title.revenue {
     background: #0891b2;
-    border-color: #0891b2;
 }
 
-.account-type-header.expense {
+.corner-title.expense {
     background: #ea580c;
-    border-color: #ea580c;
+}
+
+.account-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: white;
+}
+
+.account-table thead {
+    background: var(--header-bg);
+}
+
+.account-table th {
+    padding: 0.5rem;
+    text-align: left;
+    font-weight: 600;
+    font-size: 0.85rem;
+    border-bottom: 2px solid var(--border-color);
+}
+
+.account-table td {
+    padding: 0.5rem;
+    font-size: 0.85rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.account-table tbody tr:hover {
+    background: #fafafa;
+}
+
+.account-table td.number {
+    font-family: 'Courier New', monospace;
+    text-align: right;
+}
+
+.account-table .btn {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.8rem;
+    margin-right: 0.25rem;
 }
 
 /* Footer */
@@ -420,6 +470,11 @@ footer a:hover {
         text-align: left;
     }
 
+    .accounts-grid {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+    }
+
     table {
         font-size: 0.8rem;
     }
@@ -430,5 +485,16 @@ footer a:hover {
 
     .statement-item {
         font-size: 0.8rem;
+    }
+
+    .account-table th,
+    .account-table td {
+        padding: 0.4rem;
+        font-size: 0.75rem;
+    }
+
+    .account-table .btn {
+        padding: 0.2rem 0.4rem;
+        font-size: 0.7rem;
     }
 }

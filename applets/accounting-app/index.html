@@ -76,19 +76,89 @@
                 </form>
             </div>
 
-            <table id="accountsTable">
-                <thead>
-                    <tr>
-                        <th>Account Number</th>
-                        <th>Account Name</th>
-                        <th>Type</th>
-                        <th>Balance</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody id="accountsTableBody">
-                </tbody>
-            </table>
+            <div class="accounts-grid">
+                <!-- Top Left: Assets -->
+                <div class="account-corner">
+                    <h3 class="corner-title asset">ASSETS</h3>
+                    <table class="account-table">
+                        <thead>
+                            <tr>
+                                <th>Number</th>
+                                <th>Name</th>
+                                <th>Balance</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="assetsTableBody">
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Top Right: Liabilities & Equity -->
+                <div class="account-corner">
+                    <h3 class="corner-title liability">LIABILITIES</h3>
+                    <table class="account-table">
+                        <thead>
+                            <tr>
+                                <th>Number</th>
+                                <th>Name</th>
+                                <th>Balance</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="liabilitiesTableBody">
+                        </tbody>
+                    </table>
+
+                    <h3 class="corner-title equity">EQUITY</h3>
+                    <table class="account-table">
+                        <thead>
+                            <tr>
+                                <th>Number</th>
+                                <th>Name</th>
+                                <th>Balance</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="equityTableBody">
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Bottom Left: Revenue -->
+                <div class="account-corner">
+                    <h3 class="corner-title revenue">REVENUE</h3>
+                    <table class="account-table">
+                        <thead>
+                            <tr>
+                                <th>Number</th>
+                                <th>Name</th>
+                                <th>Balance</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="revenueTableBody">
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Bottom Right: Expenses -->
+                <div class="account-corner">
+                    <h3 class="corner-title expense">EXPENSES</h3>
+                    <table class="account-table">
+                        <thead>
+                            <tr>
+                                <th>Number</th>
+                                <th>Name</th>
+                                <th>Balance</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="expensesTableBody">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </section>
 
         <!-- Transactions Section -->

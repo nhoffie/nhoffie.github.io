@@ -145,52 +145,58 @@ function setupTabNavigation() {
 // ====================================
 
 function renderAccounts() {
-    const tbody = document.getElementById('accountsTableBody');
-    tbody.innerHTML = '';
-
     // Calculate current balances
     const balances = calculateAccountBalances();
 
-    // Define the order of account types
-    const accountTypeOrder = ['Asset', 'Liability', 'Equity', 'Revenue', 'Expense'];
-    const accountTypeLabels = {
-        'Asset': 'ASSETS',
-        'Liability': 'LIABILITIES',
-        'Equity': 'EQUITY',
-        'Revenue': 'REVENUE',
-        'Expense': 'EXPENSES'
+    // Define table body mappings
+    const tableBodies = {
+        'Asset': document.getElementById('assetsTableBody'),
+        'Liability': document.getElementById('liabilitiesTableBody'),
+        'Equity': document.getElementById('equityTableBody'),
+        'Revenue': document.getElementById('revenueTableBody'),
+        'Expense': document.getElementById('expensesTableBody')
     };
 
-    // Group accounts by type
-    accountTypeOrder.forEach(type => {
+    // Clear all table bodies
+    Object.values(tableBodies).forEach(tbody => {
+        if (tbody) tbody.innerHTML = '';
+    });
+
+    // Helper function to create account row
+    const createAccountRow = (account, balance) => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td>${escapeHtml(account.number)}</td>
+            <td>${escapeHtml(account.name)}</td>
+            <td class="number">${formatCurrency(balance)}</td>
+            <td>
+                <button class="btn" onclick="editAccount(${account.id})">Edit</button>
+                <button class="btn btn-danger" onclick="deleteAccount(${account.id})">Delete</button>
+            </td>
+        `;
+        return row;
+    };
+
+    // Group and render accounts by type
+    ['Asset', 'Liability', 'Equity', 'Revenue', 'Expense'].forEach(type => {
         const accountsOfType = appState.accounts
             .filter(account => account.type === type)
             .sort((a, b) => a.number.localeCompare(b.number));
 
-        if (accountsOfType.length > 0) {
-            // Add type header row
-            const headerRow = document.createElement('tr');
-            headerRow.innerHTML = `
-                <td colspan="5" class="account-type-header ${type.toLowerCase()}">${accountTypeLabels[type]}</td>
-            `;
-            tbody.appendChild(headerRow);
-
-            // Add accounts of this type
+        const tbody = tableBodies[type];
+        if (tbody) {
             accountsOfType.forEach(account => {
                 const balance = balances[account.id] || 0;
-                const row = document.createElement('tr');
-                row.innerHTML = `
-                    <td>${escapeHtml(account.number)}</td>
-                    <td>${escapeHtml(account.name)}</td>
-                    <td>${escapeHtml(account.type)}</td>
-                    <td class="number">${formatCurrency(balance)}</td>
-                    <td>
-                        <button class="btn" onclick="editAccount(${account.id})">Edit</button>
-                        <button class="btn btn-danger" onclick="deleteAccount(${account.id})">Delete</button>
-                    </td>
-                `;
+                const row = createAccountRow(account, balance);
                 tbody.appendChild(row);
             });
+
+            // Add empty state if no accounts
+            if (accountsOfType.length === 0) {
+                const emptyRow = document.createElement('tr');
+                emptyRow.innerHTML = '<td colspan="4" style="text-align: center; color: #999;">No accounts</td>';
+                tbody.appendChild(emptyRow);
+            }
         }
     });
 
