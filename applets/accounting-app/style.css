@@ -339,6 +339,42 @@ tbody tr:hover {
     margin-top: 0.5rem;
 }
 
+/* Account Type Section Headers */
+.account-type-header {
+    background: var(--primary-color);
+    color: white;
+    font-weight: 600;
+    font-size: 0.95rem;
+    padding: 0.75rem;
+    text-align: left;
+    border: 1px solid var(--primary-color);
+}
+
+.account-type-header.asset {
+    background: #059669;
+    border-color: #059669;
+}
+
+.account-type-header.liability {
+    background: #dc2626;
+    border-color: #dc2626;
+}
+
+.account-type-header.equity {
+    background: #7c3aed;
+    border-color: #7c3aed;
+}
+
+.account-type-header.revenue {
+    background: #0891b2;
+    border-color: #0891b2;
+}
+
+.account-type-header.expense {
+    background: #ea580c;
+    border-color: #ea580c;
+}
+
 /* Footer */
 footer {
     margin-top: 3rem;

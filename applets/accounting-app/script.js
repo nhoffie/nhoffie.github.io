@@ -151,20 +151,47 @@ function renderAccounts() {
     // Calculate current balances
     const balances = calculateAccountBalances();
 
-    appState.accounts.forEach(account => {
-        const balance = balances[account.id] || 0;
-        const row = document.createElement('tr');
-        row.innerHTML = `
-            <td>${escapeHtml(account.number)}</td>
-            <td>${escapeHtml(account.name)}</td>
-            <td>${escapeHtml(account.type)}</td>
-            <td class="number">${formatCurrency(balance)}</td>
-            <td>
-                <button class="btn" onclick="editAccount(${account.id})">Edit</button>
-                <button class="btn btn-danger" onclick="deleteAccount(${account.id})">Delete</button>
-            </td>
-        `;
-        tbody.appendChild(row);
+    // Define the order of account types
+    const accountTypeOrder = ['Asset', 'Liability', 'Equity', 'Revenue', 'Expense'];
+    const accountTypeLabels = {
+        'Asset': 'ASSETS',
+        'Liability': 'LIABILITIES',
+        'Equity': 'EQUITY',
+        'Revenue': 'REVENUE',
+        'Expense': 'EXPENSES'
+    };
+
+    // Group accounts by type
+    accountTypeOrder.forEach(type => {
+        const accountsOfType = appState.accounts
+            .filter(account => account.type === type)
+            .sort((a, b) => a.number.localeCompare(b.number));
+
+        if (accountsOfType.length > 0) {
+            // Add type header row
+            const headerRow = document.createElement('tr');
+            headerRow.innerHTML = `
+                <td colspan="5" class="account-type-header ${type.toLowerCase()}">${accountTypeLabels[type]}</td>
+            `;
+            tbody.appendChild(headerRow);
+
+            // Add accounts of this type
+            accountsOfType.forEach(account => {
+                const balance = balances[account.id] || 0;
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${escapeHtml(account.number)}</td>
+                    <td>${escapeHtml(account.name)}</td>
+                    <td>${escapeHtml(account.type)}</td>
+                    <td class="number">${formatCurrency(balance)}</td>
+                    <td>
+                        <button class="btn" onclick="editAccount(${account.id})">Edit</button>
+                        <button class="btn btn-danger" onclick="deleteAccount(${account.id})">Delete</button>
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
     });
 
     // Update account dropdowns
