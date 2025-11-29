@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Lightweight real-time accounting application with session key-based data management">
+    <title>Accounting App | nhoffie.github.io</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <h1>Accounting App</h1>
+        <nav>
+            <a href="../../index.html">← Back to Home</a>
+        </nav>
+    </header>
+
+    <div class="session-key-controls">
+        <div class="session-key-section">
+            <h3>Session Key</h3>
+            <p class="help-text">Copy your session key to save your work. Paste it below to restore.</p>
+            <button id="copyKeyBtn" class="btn">Copy Session Key</button>
+            <span id="copyStatus" class="status-message"></span>
+        </div>
+        <div class="restore-section">
+            <textarea id="restoreKeyInput" placeholder="Paste your session key here to restore your data..." rows="3"></textarea>
+            <button id="restoreKeyBtn" class="btn">Load Session</button>
+            <span id="restoreStatus" class="status-message"></span>
+        </div>
+    </div>
+
+    <main>
+        <nav class="tab-navigation">
+            <button class="tab-btn active" data-tab="accounts">Chart of Accounts</button>
+            <button class="tab-btn" data-tab="transactions">Transactions</button>
+            <button class="tab-btn" data-tab="balance-sheet">Balance Sheet</button>
+            <button class="tab-btn" data-tab="income-statement">Income Statement</button>
+            <button class="tab-btn" data-tab="cash-flow">Cash Flow Statement</button>
+        </nav>
+
+        <!-- Chart of Accounts Section -->
+        <section id="accounts" class="tab-content active">
+            <h2>Chart of Accounts</h2>
+            <button id="addAccountBtn" class="btn btn-primary">Add Account</button>
+
+            <div id="accountFormContainer" class="form-container hidden">
+                <h3 id="accountFormTitle">Add Account</h3>
+                <form id="accountForm">
+                    <input type="hidden" id="accountId">
+                    <div class="form-group">
+                        <label for="accountNumber">Account Number:</label>
+                        <input type="text" id="accountNumber" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="accountName">Account Name:</label>
+                        <input type="text" id="accountName" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="accountType">Account Type:</label>
+                        <select id="accountType" required>
+                            <option value="Asset">Asset</option>
+                            <option value="Liability">Liability</option>
+                            <option value="Equity">Equity</option>
+                            <option value="Revenue">Revenue</option>
+                            <option value="Expense">Expense</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="openingBalance">Opening Balance:</label>
+                        <input type="number" id="openingBalance" step="0.01" value="0">
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary">Save</button>
+                        <button type="button" id="cancelAccountBtn" class="btn">Cancel</button>
+                    </div>
+                </form>
+            </div>
+
+            <table id="accountsTable">
+                <thead>
+                    <tr>
+                        <th>Account Number</th>
+                        <th>Account Name</th>
+                        <th>Type</th>
+                        <th>Balance</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="accountsTableBody">
+                </tbody>
+            </table>
+        </section>
+
+        <!-- Transactions Section -->
+        <section id="transactions" class="tab-content">
+            <h2>Transactions</h2>
+
+            <div class="form-container">
+                <h3>Add Transaction</h3>
+                <form id="transactionForm">
+                    <input type="hidden" id="transactionId">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="transactionDate">Date:</label>
+                            <input type="date" id="transactionDate" required>
+                        </div>
+                        <div class="form-group flex-grow">
+                            <label for="transactionDescription">Description:</label>
+                            <input type="text" id="transactionDescription" required>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="debitAccount">Debit Account:</label>
+                            <select id="debitAccount" required>
+                                <option value="">Select account...</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="creditAccount">Credit Account:</label>
+                            <select id="creditAccount" required>
+                                <option value="">Select account...</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="transactionAmount">Amount:</label>
+                            <input type="number" id="transactionAmount" step="0.01" min="0.01" required>
+                        </div>
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary">Add Transaction</button>
+                        <button type="button" id="cancelTransactionBtn" class="btn hidden">Cancel Edit</button>
+                    </div>
+                </form>
+            </div>
+
+            <div class="filter-container">
+                <h3>Filter Transactions</h3>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="filterStartDate">From:</label>
+                        <input type="date" id="filterStartDate">
+                    </div>
+                    <div class="form-group">
+                        <label for="filterEndDate">To:</label>
+                        <input type="date" id="filterEndDate">
+                    </div>
+                    <div class="form-group">
+                        <label for="filterAccount">Account:</label>
+                        <select id="filterAccount">
+                            <option value="">All accounts</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <button id="clearFiltersBtn" class="btn">Clear Filters</button>
+                    </div>
+                </div>
+            </div>
+
+            <table id="transactionsTable">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Description</th>
+                        <th>Debit Account</th>
+                        <th>Credit Account</th>
+                        <th>Amount</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="transactionsTableBody">
+                </tbody>
+            </table>
+        </section>
+
+        <!-- Balance Sheet Section -->
+        <section id="balance-sheet" class="tab-content">
+            <h2>Balance Sheet</h2>
+            <div class="form-group">
+                <label for="balanceSheetDate">As of Date:</label>
+                <input type="date" id="balanceSheetDate">
+            </div>
+            <div id="balanceSheetContent" class="financial-statement">
+            </div>
+        </section>
+
+        <!-- Income Statement Section -->
+        <section id="income-statement" class="tab-content">
+            <h2>Income Statement</h2>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="incomeStartDate">From:</label>
+                    <input type="date" id="incomeStartDate">
+                </div>
+                <div class="form-group">
+                    <label for="incomeEndDate">To:</label>
+                    <input type="date" id="incomeEndDate">
+                </div>
+            </div>
+            <div id="incomeStatementContent" class="financial-statement">
+            </div>
+        </section>
+
+        <!-- Cash Flow Statement Section -->
+        <section id="cash-flow" class="tab-content">
+            <h2>Cash Flow Statement</h2>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="cashFlowStartDate">From:</label>
+                    <input type="date" id="cashFlowStartDate">
+                </div>
+                <div class="form-group">
+                    <label for="cashFlowEndDate">To:</label>
+                    <input type="date" id="cashFlowEndDate">
+                </div>
+            </div>
+            <div id="cashFlowContent" class="financial-statement">
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <p>Part of <a href="../../index.html">nhoffie.github.io</a></p>
+    </footer>
+
+    <script src="script.js"></script>
+</body>
+</html>
