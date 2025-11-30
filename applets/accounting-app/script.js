@@ -291,19 +291,24 @@ function deleteAccount(accountId) {
 // TRANSACTION TYPES
 // ====================================
 
+let typeEntryCounter = 0;
+
 function renderTransactionTypes() {
     const tbody = document.getElementById('transactionTypesTableBody');
     tbody.innerHTML = '';
 
     appState.transactionTypes.forEach(type => {
-        const debitAccount = appState.accounts.find(a => a.id === type.debitAccount);
-        const creditAccount = appState.accounts.find(a => a.id === type.creditAccount);
+        const entriesDisplay = type.entries.map(entry => {
+            const account = appState.accounts.find(a => a.id === entry.account);
+            const accountName = account ? account.name : 'Unknown';
+            const entryType = entry.type === 'debit' ? 'DR' : 'CR';
+            return `${entryType}: ${accountName}`;
+        }).join(', ');
 
         const row = document.createElement('tr');
         row.innerHTML = `
             <td>${escapeHtml(type.name)}</td>
-            <td>${debitAccount ? escapeHtml(debitAccount.name) : 'Unknown'}</td>
-            <td>${creditAccount ? escapeHtml(creditAccount.name) : 'Unknown'}</td>
+            <td>${entriesDisplay}</td>
             <td>
                 <button class="btn" onclick="editTransactionType(${type.id})">Edit</button>
                 <button class="btn btn-danger" onclick="deleteTransactionType(${type.id})">Delete</button>
@@ -314,7 +319,7 @@ function renderTransactionTypes() {
 
     if (appState.transactionTypes.length === 0) {
         const row = document.createElement('tr');
-        row.innerHTML = '<td colspan="4" style="text-align: center;">No transaction types defined. Create one to simplify recurring transactions.</td>';
+        row.innerHTML = '<td colspan="3" style="text-align: center;">No transaction types defined. Create one to simplify recurring transactions.</td>';
         tbody.appendChild(row);
     }
 
@@ -322,10 +327,44 @@ function renderTransactionTypes() {
     updateTransactionTypeDropdown();
 }
 
+function addTypeEntryRow(account = '', entryType = 'debit') {
+    typeEntryCounter++;
+    const container = document.getElementById('typeAccountEntries');
+    const entryDiv = document.createElement('div');
+    entryDiv.className = 'entry-row';
+    entryDiv.dataset.entryId = typeEntryCounter;
+
+    entryDiv.innerHTML = `
+        <select class="entry-account" required>
+            <option value="">Select account...</option>
+            ${appState.accounts.map(acc =>
+                `<option value="${acc.id}" ${acc.id == account ? 'selected' : ''}>${acc.number} - ${acc.name}</option>`
+            ).join('')}
+        </select>
+        <select class="entry-type" required>
+            <option value="debit" ${entryType === 'debit' ? 'selected' : ''}>Debit</option>
+            <option value="credit" ${entryType === 'credit' ? 'selected' : ''}>Credit</option>
+        </select>
+        <button type="button" class="btn btn-danger" onclick="removeTypeEntryRow(${typeEntryCounter})">Remove</button>
+    `;
+
+    container.appendChild(entryDiv);
+}
+
+function removeTypeEntryRow(entryId) {
+    const entry = document.querySelector(`[data-entry-id="${entryId}"]`);
+    if (entry) entry.remove();
+}
+
 function showTransactionTypeForm(typeId = null) {
     const formContainer = document.getElementById('transactionTypeFormContainer');
     const form = document.getElementById('transactionTypeForm');
     const formTitle = document.getElementById('transactionTypeFormTitle');
+    const container = document.getElementById('typeAccountEntries');
+
+    // Clear existing entries
+    container.innerHTML = '';
+    typeEntryCounter = 0;
 
     if (typeId) {
         const type = appState.transactionTypes.find(t => t.id === typeId);
@@ -334,12 +373,19 @@ function showTransactionTypeForm(typeId = null) {
         formTitle.textContent = 'Edit Transaction Type';
         document.getElementById('transactionTypeId').value = type.id;
         document.getElementById('typeName').value = type.name;
-        document.getElementById('typeDebitAccount').value = type.debitAccount;
-        document.getElementById('typeCreditAccount').value = type.creditAccount;
+
+        // Add existing entries
+        type.entries.forEach(entry => {
+            addTypeEntryRow(entry.account, entry.type);
+        });
     } else {
         formTitle.textContent = 'Add Transaction Type';
-        form.reset();
         document.getElementById('transactionTypeId').value = '';
+        document.getElementById('typeName').value = '';
+
+        // Add two default entries (one debit, one credit)
+        addTypeEntryRow('', 'debit');
+        addTypeEntryRow('', 'credit');
     }
 
     formContainer.classList.remove('hidden');
@@ -354,19 +400,45 @@ function saveTransactionType(event) {
     event.preventDefault();
 
     const typeId = document.getElementById('transactionTypeId').value;
-    const debitAccount = parseInt(document.getElementById('typeDebitAccount').value);
-    const creditAccount = parseInt(document.getElementById('typeCreditAccount').value);
+    const name = document.getElementById('typeName').value;
 
-    // Validation
-    if (debitAccount === creditAccount) {
-        alert('Debit and credit accounts must be different!');
+    // Collect all entries
+    const entries = [];
+    const entryRows = document.querySelectorAll('#typeAccountEntries .entry-row');
+
+    if (entryRows.length < 2) {
+        alert('Transaction type must have at least 2 account entries!');
+        return;
+    }
+
+    entryRows.forEach(row => {
+        const account = parseInt(row.querySelector('.entry-account').value);
+        const type = row.querySelector('.entry-type').value;
+
+        if (!account) {
+            alert('All entries must have an account selected!');
+            return;
+        }
+
+        entries.push({ account, type });
+    });
+
+    if (entries.length < 2) {
+        return; // Validation failed
+    }
+
+    // Check that we have at least one debit and one credit
+    const hasDebit = entries.some(e => e.type === 'debit');
+    const hasCredit = entries.some(e => e.type === 'credit');
+
+    if (!hasDebit || !hasCredit) {
+        alert('Transaction type must have at least one debit and one credit entry!');
         return;
     }
 
     const typeData = {
-        name: document.getElementById('typeName').value,
-        debitAccount,
-        creditAccount
+        name,
+        entries
     };
 
     if (typeId) {
@@ -416,24 +488,103 @@ function updateTransactionTypeDropdown() {
 
 function onTransactionTypeChange() {
     const typeId = parseInt(document.getElementById('transactionType').value);
+    const simpleForm = document.getElementById('simpleTransactionForm');
+    const multiForm = document.getElementById('multiEntryTransactionForm');
+    const debitInput = document.getElementById('debitAccount');
+    const creditInput = document.getElementById('creditAccount');
+    const amountInput = document.getElementById('transactionAmount');
 
     if (!typeId) {
-        // Custom transaction - enable account dropdowns
-        document.getElementById('debitAccount').disabled = false;
-        document.getElementById('creditAccount').disabled = false;
-        document.getElementById('debitAccount').value = '';
-        document.getElementById('creditAccount').value = '';
+        // Custom transaction - show simple form
+        simpleForm.classList.remove('hidden');
+        multiForm.classList.add('hidden');
+        debitInput.disabled = false;
+        creditInput.disabled = false;
+        debitInput.required = true;
+        creditInput.required = true;
+        amountInput.required = true;
         return;
     }
 
     // Find the transaction type
     const type = appState.transactionTypes.find(t => t.id === typeId);
-    if (type) {
-        // Populate accounts from transaction type
-        document.getElementById('debitAccount').value = type.debitAccount;
-        document.getElementById('creditAccount').value = type.creditAccount;
-        document.getElementById('debitAccount').disabled = true;
-        document.getElementById('creditAccount').disabled = true;
+    if (!type) return;
+
+    // Check if it's a simple type (1 debit, 1 credit) or multi-entry
+    const debits = type.entries.filter(e => e.type === 'debit');
+    const credits = type.entries.filter(e => e.type === 'credit');
+
+    if (debits.length === 1 && credits.length === 1) {
+        // Simple type - use simple form
+        simpleForm.classList.remove('hidden');
+        multiForm.classList.add('hidden');
+        debitInput.value = debits[0].account;
+        creditInput.value = credits[0].account;
+        debitInput.disabled = true;
+        creditInput.disabled = true;
+        debitInput.required = true;
+        creditInput.required = true;
+        amountInput.required = true;
+    } else {
+        // Multi-entry type - use multi-entry form
+        simpleForm.classList.add('hidden');
+        multiForm.classList.remove('hidden');
+        debitInput.required = false;
+        creditInput.required = false;
+        amountInput.required = false;
+
+        // Populate multi-entry form
+        const container = document.getElementById('transactionEntries');
+        container.innerHTML = '';
+
+        type.entries.forEach((entry, index) => {
+            const account = appState.accounts.find(a => a.id === entry.account);
+            if (!account) return;
+
+            const entryDiv = document.createElement('div');
+            entryDiv.className = 'transaction-entry-row';
+            entryDiv.innerHTML = `
+                <span class="entry-type-badge ${entry.type}">${entry.type.toUpperCase()}</span>
+                <span class="entry-label">${account.number} - ${account.name}</span>
+                <input type="number" step="0.01" min="0" class="entry-amount" data-entry-type="${entry.type}" data-account-id="${entry.account}" placeholder="Amount" required>
+            `;
+            container.appendChild(entryDiv);
+        });
+
+        // Add event listeners to update balance
+        container.querySelectorAll('.entry-amount').forEach(input => {
+            input.addEventListener('input', updateTransactionBalance);
+        });
+
+        updateTransactionBalance();
+    }
+}
+
+function updateTransactionBalance() {
+    const inputs = document.querySelectorAll('#transactionEntries .entry-amount');
+    let debitsTotal = 0;
+    let creditsTotal = 0;
+
+    inputs.forEach(input => {
+        const amount = parseFloat(input.value) || 0;
+        if (input.dataset.entryType === 'debit') {
+            debitsTotal += amount;
+        } else {
+            creditsTotal += amount;
+        }
+    });
+
+    document.getElementById('debitsTotal').textContent = formatCurrency(debitsTotal);
+    document.getElementById('creditsTotal').textContent = formatCurrency(creditsTotal);
+
+    const difference = Math.abs(debitsTotal - creditsTotal);
+    const differenceEl = document.getElementById('balanceDifference');
+    differenceEl.textContent = formatCurrency(difference);
+
+    if (difference < 0.01) {
+        differenceEl.classList.add('balanced');
+    } else {
+        differenceEl.classList.remove('balanced');
     }
 }
 
@@ -469,16 +620,42 @@ function renderTransactions() {
     filteredTransactions.sort((a, b) => new Date(b.date) - new Date(a.date));
 
     filteredTransactions.forEach(transaction => {
-        const debitAccount = appState.accounts.find(a => a.id === transaction.debitAccount);
-        const creditAccount = appState.accounts.find(a => a.id === transaction.creditAccount);
+        let debitDisplay, creditDisplay, amountDisplay;
+
+        if (transaction.entries) {
+            // Multi-entry transaction
+            const debits = transaction.entries.filter(e => e.type === 'debit');
+            const credits = transaction.entries.filter(e => e.type === 'credit');
+
+            debitDisplay = debits.map(e => {
+                const acc = appState.accounts.find(a => a.id === e.account);
+                return acc ? `${acc.name} (${formatCurrency(e.amount)})` : 'Unknown';
+            }).join(', ');
+
+            creditDisplay = credits.map(e => {
+                const acc = appState.accounts.find(a => a.id === e.account);
+                return acc ? `${acc.name} (${formatCurrency(e.amount)})` : 'Unknown';
+            }).join(', ');
+
+            const total = debits.reduce((sum, e) => sum + e.amount, 0);
+            amountDisplay = formatCurrency(total);
+        } else {
+            // Simple transaction
+            const debitAccount = appState.accounts.find(a => a.id === transaction.debitAccount);
+            const creditAccount = appState.accounts.find(a => a.id === transaction.creditAccount);
+
+            debitDisplay = debitAccount ? escapeHtml(debitAccount.name) : 'Unknown';
+            creditDisplay = creditAccount ? escapeHtml(creditAccount.name) : 'Unknown';
+            amountDisplay = formatCurrency(transaction.amount);
+        }
 
         const row = document.createElement('tr');
         row.innerHTML = `
             <td>${escapeHtml(transaction.date)}</td>
             <td>${escapeHtml(transaction.description)}</td>
-            <td>${debitAccount ? escapeHtml(debitAccount.name) : 'Unknown'}</td>
-            <td>${creditAccount ? escapeHtml(creditAccount.name) : 'Unknown'}</td>
-            <td class="number">${formatCurrency(transaction.amount)}</td>
+            <td>${debitDisplay}</td>
+            <td>${creditDisplay}</td>
+            <td class="number">${amountDisplay}</td>
             <td>
                 <button class="btn" onclick="editTransaction(${transaction.id})">Edit</button>
                 <button class="btn btn-danger" onclick="deleteTransaction(${transaction.id})">Delete</button>
@@ -498,28 +675,73 @@ function saveTransaction(event) {
     event.preventDefault();
 
     const transactionId = document.getElementById('transactionId').value;
-    const debitAccount = parseInt(document.getElementById('debitAccount').value);
-    const creditAccount = parseInt(document.getElementById('creditAccount').value);
-    const amount = parseFloat(document.getElementById('transactionAmount').value);
+    const date = document.getElementById('transactionDate').value;
+    const description = document.getElementById('transactionDescription').value;
+    const multiForm = document.getElementById('multiEntryTransactionForm');
 
-    // Validation
-    if (debitAccount === creditAccount) {
-        alert('Debit and credit accounts must be different!');
-        return;
+    let transactionData;
+
+    // Check if using multi-entry form
+    if (!multiForm.classList.contains('hidden')) {
+        // Multi-entry transaction
+        const entries = [];
+        const entryInputs = document.querySelectorAll('#transactionEntries .entry-amount');
+
+        entryInputs.forEach(input => {
+            const amount = parseFloat(input.value);
+            if (amount && amount > 0) {
+                entries.push({
+                    account: parseInt(input.dataset.accountId),
+                    type: input.dataset.entryType,
+                    amount
+                });
+            }
+        });
+
+        if (entries.length < 2) {
+            alert('Multi-entry transaction must have at least 2 entries with amounts!');
+            return;
+        }
+
+        // Validate debits = credits
+        const debitsTotal = entries.filter(e => e.type === 'debit').reduce((sum, e) => sum + e.amount, 0);
+        const creditsTotal = entries.filter(e => e.type === 'credit').reduce((sum, e) => sum + e.amount, 0);
+
+        if (Math.abs(debitsTotal - creditsTotal) > 0.01) {
+            alert(`Debits (${formatCurrency(debitsTotal)}) must equal credits (${formatCurrency(creditsTotal)})!`);
+            return;
+        }
+
+        transactionData = {
+            date,
+            description,
+            entries
+        };
+    } else {
+        // Simple transaction
+        const debitAccount = parseInt(document.getElementById('debitAccount').value);
+        const creditAccount = parseInt(document.getElementById('creditAccount').value);
+        const amount = parseFloat(document.getElementById('transactionAmount').value);
+
+        // Validation
+        if (debitAccount === creditAccount) {
+            alert('Debit and credit accounts must be different!');
+            return;
+        }
+
+        if (amount <= 0) {
+            alert('Amount must be greater than zero!');
+            return;
+        }
+
+        transactionData = {
+            date,
+            description,
+            debitAccount,
+            creditAccount,
+            amount
+        };
     }
-
-    if (amount <= 0) {
-        alert('Amount must be greater than zero!');
-        return;
-    }
-
-    const transactionData = {
-        date: document.getElementById('transactionDate').value,
-        description: document.getElementById('transactionDescription').value,
-        debitAccount,
-        creditAccount,
-        amount
-    };
 
     if (transactionId) {
         // Edit existing transaction
@@ -536,10 +758,7 @@ function saveTransaction(event) {
     }
 
     hasUnsavedChanges = true;
-    document.getElementById('transactionForm').reset();
-    document.getElementById('transactionId').value = '';
-    document.getElementById('cancelTransactionBtn').classList.add('hidden');
-    setDefaultTransactionDate();
+    cancelTransactionEdit();
     render();
 }
 
@@ -638,28 +857,57 @@ function calculateAccountBalances(asOfDate = null) {
 
     // Apply transactions
     relevantTransactions.forEach(transaction => {
-        if (!balances[transaction.debitAccount]) balances[transaction.debitAccount] = 0;
-        if (!balances[transaction.creditAccount]) balances[transaction.creditAccount] = 0;
+        if (transaction.entries) {
+            // Multi-entry transaction
+            transaction.entries.forEach(entry => {
+                const account = appState.accounts.find(a => a.id === entry.account);
+                if (!account) return;
 
-        const debitAccount = appState.accounts.find(a => a.id === transaction.debitAccount);
-        const creditAccount = appState.accounts.find(a => a.id === transaction.creditAccount);
+                if (!balances[entry.account]) balances[entry.account] = 0;
 
-        if (!debitAccount || !creditAccount) return;
-
-        // Debit increases: Assets, Expenses
-        // Debit decreases: Liabilities, Equity, Revenue
-        if (debitAccount.type === 'Asset' || debitAccount.type === 'Expense') {
-            balances[transaction.debitAccount] += transaction.amount;
+                if (entry.type === 'debit') {
+                    // Debit increases: Assets, Expenses
+                    // Debit decreases: Liabilities, Equity, Revenue
+                    if (account.type === 'Asset' || account.type === 'Expense') {
+                        balances[entry.account] += entry.amount;
+                    } else {
+                        balances[entry.account] -= entry.amount;
+                    }
+                } else {
+                    // Credit increases: Liabilities, Equity, Revenue
+                    // Credit decreases: Assets, Expenses
+                    if (account.type === 'Liability' || account.type === 'Equity' || account.type === 'Revenue') {
+                        balances[entry.account] += entry.amount;
+                    } else {
+                        balances[entry.account] -= entry.amount;
+                    }
+                }
+            });
         } else {
-            balances[transaction.debitAccount] -= transaction.amount;
-        }
+            // Simple transaction
+            if (!balances[transaction.debitAccount]) balances[transaction.debitAccount] = 0;
+            if (!balances[transaction.creditAccount]) balances[transaction.creditAccount] = 0;
 
-        // Credit increases: Liabilities, Equity, Revenue
-        // Credit decreases: Assets, Expenses
-        if (creditAccount.type === 'Liability' || creditAccount.type === 'Equity' || creditAccount.type === 'Revenue') {
-            balances[transaction.creditAccount] += transaction.amount;
-        } else {
-            balances[transaction.creditAccount] -= transaction.amount;
+            const debitAccount = appState.accounts.find(a => a.id === transaction.debitAccount);
+            const creditAccount = appState.accounts.find(a => a.id === transaction.creditAccount);
+
+            if (!debitAccount || !creditAccount) return;
+
+            // Debit increases: Assets, Expenses
+            // Debit decreases: Liabilities, Equity, Revenue
+            if (debitAccount.type === 'Asset' || debitAccount.type === 'Expense') {
+                balances[transaction.debitAccount] += transaction.amount;
+            } else {
+                balances[transaction.debitAccount] -= transaction.amount;
+            }
+
+            // Credit increases: Liabilities, Equity, Revenue
+            // Credit decreases: Assets, Expenses
+            if (creditAccount.type === 'Liability' || creditAccount.type === 'Equity' || creditAccount.type === 'Revenue') {
+                balances[transaction.creditAccount] += transaction.amount;
+            } else {
+                balances[transaction.creditAccount] -= transaction.amount;
+            }
         }
     });
 
@@ -1035,6 +1283,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('addTransactionTypeBtn').addEventListener('click', () => showTransactionTypeForm());
     document.getElementById('transactionTypeForm').addEventListener('submit', saveTransactionType);
     document.getElementById('cancelTransactionTypeBtn').addEventListener('click', hideTransactionTypeForm);
+    document.getElementById('addEntryBtn').addEventListener('click', () => addTypeEntryRow());
 
     // Transaction form
     document.getElementById('transactionForm').addEventListener('submit', saveTransaction);

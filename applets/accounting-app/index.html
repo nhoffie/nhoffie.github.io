@@ -186,22 +186,39 @@
                             <option value="">Custom Transaction</option>
                         </select>
                     </div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="debitAccount">Debit Account:</label>
-                            <select id="debitAccount" required>
-                                <option value="">Select account...</option>
-                            </select>
+
+                    <!-- Simple transaction form (shown for custom transactions or simple types) -->
+                    <div id="simpleTransactionForm">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="debitAccount">Debit Account:</label>
+                                <select id="debitAccount" required>
+                                    <option value="">Select account...</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="creditAccount">Credit Account:</label>
+                                <select id="creditAccount" required>
+                                    <option value="">Select account...</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="transactionAmount">Amount:</label>
+                                <input type="number" id="transactionAmount" step="0.01" min="0.01" required>
+                            </div>
                         </div>
-                        <div class="form-group">
-                            <label for="creditAccount">Credit Account:</label>
-                            <select id="creditAccount" required>
-                                <option value="">Select account...</option>
-                            </select>
+                    </div>
+
+                    <!-- Multi-entry transaction form (shown for multi-pair types) -->
+                    <div id="multiEntryTransactionForm" class="hidden">
+                        <div id="transactionEntries">
+                            <!-- Dynamic entries will be added here -->
                         </div>
-                        <div class="form-group">
-                            <label for="transactionAmount">Amount:</label>
-                            <input type="number" id="transactionAmount" step="0.01" min="0.01" required>
+                        <div class="balance-check">
+                            <strong>Balance:</strong>
+                            <span id="debitsTotal">$0.00</span> (debits) -
+                            <span id="creditsTotal">$0.00</span> (credits) =
+                            <span id="balanceDifference">$0.00</span>
                         </div>
                     </div>
                     <div class="form-actions">
@@ -263,18 +280,15 @@
                         <label for="typeName">Transaction Type Name:</label>
                         <input type="text" id="typeName" placeholder="e.g., Cash Sale, Pay Rent" required>
                     </div>
-                    <div class="form-group">
-                        <label for="typeDebitAccount">Debit Account:</label>
-                        <select id="typeDebitAccount" required>
-                            <option value="">Select account...</option>
-                        </select>
+
+                    <div class="account-entries-section">
+                        <h4>Account Entries</h4>
+                        <div id="typeAccountEntries">
+                            <!-- Account entries will be added here dynamically -->
+                        </div>
+                        <button type="button" id="addEntryBtn" class="btn">+ Add Account Entry</button>
                     </div>
-                    <div class="form-group">
-                        <label for="typeCreditAccount">Credit Account:</label>
-                        <select id="typeCreditAccount" required>
-                            <option value="">Select account...</option>
-                        </select>
-                    </div>
+
                     <div class="form-actions">
                         <button type="submit" class="btn btn-primary">Save</button>
                         <button type="button" id="cancelTransactionTypeBtn" class="btn">Cancel</button>
@@ -286,8 +300,7 @@
                 <thead>
                     <tr>
                         <th>Type Name</th>
-                        <th>Debit Account</th>
-                        <th>Credit Account</th>
+                        <th>Account Entries</th>
                         <th>Actions</th>
                     </tr>
                 </thead>

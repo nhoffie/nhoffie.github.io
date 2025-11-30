@@ -425,6 +425,102 @@ tbody tr:hover {
     margin-right: 0.25rem;
 }
 
+/* Transaction Type Entry Management */
+.account-entries-section {
+    margin: 1.5rem 0;
+    padding: 1rem;
+    background: white;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+}
+
+.account-entries-section h4 {
+    font-size: 1rem;
+    margin-bottom: 1rem;
+}
+
+.entry-row {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    margin-bottom: 0.75rem;
+    padding: 0.75rem;
+    background: var(--header-bg);
+    border-radius: 4px;
+}
+
+.entry-row select {
+    flex: 2;
+    padding: 0.5rem;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+}
+
+.entry-row .entry-type {
+    flex: 1;
+}
+
+.entry-row .btn-danger {
+    padding: 0.5rem 0.75rem;
+}
+
+/* Multi-Entry Transaction Form */
+.transaction-entry-row {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    margin-bottom: 0.75rem;
+    padding: 0.75rem;
+    background: var(--header-bg);
+    border-radius: 4px;
+}
+
+.transaction-entry-row .entry-label {
+    flex: 2;
+    font-weight: 500;
+}
+
+.transaction-entry-row input {
+    flex: 1;
+    padding: 0.5rem;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+}
+
+.transaction-entry-row .entry-type-badge {
+    padding: 0.25rem 0.5rem;
+    border-radius: 3px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: white;
+}
+
+.transaction-entry-row .entry-type-badge.debit {
+    background: #059669;
+}
+
+.transaction-entry-row .entry-type-badge.credit {
+    background: #dc2626;
+}
+
+.balance-check {
+    margin-top: 1rem;
+    padding: 0.75rem;
+    background: #fffbeb;
+    border: 1px solid #fbbf24;
+    border-radius: 4px;
+    font-size: 0.9rem;
+}
+
+.balance-check #balanceDifference {
+    font-weight: 700;
+    color: var(--danger-color);
+}
+
+.balance-check #balanceDifference.balanced {
+    color: var(--success-color);
+}
+
 /* Footer */
 footer {
     margin-top: 3rem;
