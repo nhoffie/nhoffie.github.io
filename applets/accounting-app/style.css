@@ -339,6 +339,188 @@ tbody tr:hover {
     margin-top: 0.5rem;
 }
 
+/* Account Grid Layout */
+.accounts-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: auto auto;
+    gap: 1.5rem;
+    margin-top: 1.5rem;
+}
+
+.account-corner {
+    background: white;
+    border: 2px solid var(--border-color);
+    border-radius: 8px;
+    padding: 1rem;
+    overflow: hidden;
+}
+
+.corner-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: white;
+    padding: 0.75rem;
+    margin: -1rem -1rem 1rem -1rem;
+    text-align: center;
+}
+
+.corner-title.asset {
+    background: #059669;
+}
+
+.corner-title.liability {
+    background: #dc2626;
+}
+
+.corner-title.equity {
+    background: #7c3aed;
+    margin-top: 1.5rem;
+}
+
+.corner-title.revenue {
+    background: #0891b2;
+}
+
+.corner-title.expense {
+    background: #ea580c;
+}
+
+.account-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: white;
+}
+
+.account-table thead {
+    background: var(--header-bg);
+}
+
+.account-table th {
+    padding: 0.5rem;
+    text-align: left;
+    font-weight: 600;
+    font-size: 0.85rem;
+    border-bottom: 2px solid var(--border-color);
+}
+
+.account-table td {
+    padding: 0.5rem;
+    font-size: 0.85rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.account-table tbody tr:hover {
+    background: #fafafa;
+}
+
+.account-table td.number {
+    font-family: 'Courier New', monospace;
+    text-align: right;
+}
+
+.account-table .btn {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.8rem;
+    margin-right: 0.25rem;
+}
+
+/* Transaction Type Entry Management */
+.account-entries-section {
+    margin: 1.5rem 0;
+    padding: 1rem;
+    background: white;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+}
+
+.account-entries-section h4 {
+    font-size: 1rem;
+    margin-bottom: 1rem;
+}
+
+.entry-row {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    margin-bottom: 0.75rem;
+    padding: 0.75rem;
+    background: var(--header-bg);
+    border-radius: 4px;
+}
+
+.entry-row select {
+    flex: 2;
+    padding: 0.5rem;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+}
+
+.entry-row .entry-type {
+    flex: 1;
+}
+
+.entry-row .btn-danger {
+    padding: 0.5rem 0.75rem;
+}
+
+/* Multi-Entry Transaction Form */
+.transaction-entry-row {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    margin-bottom: 0.75rem;
+    padding: 0.75rem;
+    background: var(--header-bg);
+    border-radius: 4px;
+}
+
+.transaction-entry-row .entry-label {
+    flex: 2;
+    font-weight: 500;
+}
+
+.transaction-entry-row input {
+    flex: 1;
+    padding: 0.5rem;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+}
+
+.transaction-entry-row .entry-type-badge {
+    padding: 0.25rem 0.5rem;
+    border-radius: 3px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: white;
+}
+
+.transaction-entry-row .entry-type-badge.debit {
+    background: #059669;
+}
+
+.transaction-entry-row .entry-type-badge.credit {
+    background: #dc2626;
+}
+
+.balance-check {
+    margin-top: 1rem;
+    padding: 0.75rem;
+    background: #fffbeb;
+    border: 1px solid #fbbf24;
+    border-radius: 4px;
+    font-size: 0.9rem;
+}
+
+.balance-check #balanceDifference {
+    font-weight: 700;
+    color: var(--danger-color);
+}
+
+.balance-check #balanceDifference.balanced {
+    color: var(--success-color);
+}
+
 /* Footer */
 footer {
     margin-top: 3rem;
@@ -384,6 +566,11 @@ footer a:hover {
         text-align: left;
     }
 
+    .accounts-grid {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+    }
+
     table {
         font-size: 0.8rem;
     }
@@ -394,5 +581,16 @@ footer a:hover {
 
     .statement-item {
         font-size: 0.8rem;
+    }
+
+    .account-table th,
+    .account-table td {
+        padding: 0.4rem;
+        font-size: 0.75rem;
+    }
+
+    .account-table .btn {
+        padding: 0.2rem 0.4rem;
+        font-size: 0.7rem;
     }
 }
