@@ -21,14 +21,103 @@ let appState = {
         { id: 15, number: '5400', name: 'Supplies Expense', type: 'Expense', openingBalance: 0 }
     ],
     transactions: [],
-    transactionTypes: [],
+    transactionTypes: [
+        {
+            id: 1,
+            name: 'Cash Sale',
+            entries: [
+                { account: 1, type: 'debit' },   // Cash
+                { account: 9, type: 'credit' }   // Sales Revenue
+            ]
+        },
+        {
+            id: 2,
+            name: 'Credit Sale',
+            entries: [
+                { account: 2, type: 'debit' },   // Accounts Receivable
+                { account: 9, type: 'credit' }   // Sales Revenue
+            ]
+        },
+        {
+            id: 3,
+            name: 'Receive Payment',
+            entries: [
+                { account: 1, type: 'debit' },   // Cash
+                { account: 2, type: 'credit' }   // Accounts Receivable
+            ]
+        },
+        {
+            id: 4,
+            name: 'Pay Rent',
+            entries: [
+                { account: 12, type: 'debit' },  // Rent Expense
+                { account: 1, type: 'credit' }   // Cash
+            ]
+        },
+        {
+            id: 5,
+            name: 'Pay Utilities',
+            entries: [
+                { account: 13, type: 'debit' },  // Utilities Expense
+                { account: 1, type: 'credit' }   // Cash
+            ]
+        },
+        {
+            id: 6,
+            name: 'Pay Salaries',
+            entries: [
+                { account: 14, type: 'debit' },  // Salaries Expense
+                { account: 1, type: 'credit' }   // Cash
+            ]
+        },
+        {
+            id: 7,
+            name: 'Purchase Inventory (Cash)',
+            entries: [
+                { account: 3, type: 'debit' },   // Inventory
+                { account: 1, type: 'credit' }   // Cash
+            ]
+        },
+        {
+            id: 8,
+            name: 'Purchase Inventory (Credit)',
+            entries: [
+                { account: 3, type: 'debit' },   // Inventory
+                { account: 5, type: 'credit' }   // Accounts Payable
+            ]
+        },
+        {
+            id: 9,
+            name: 'Pay Supplier',
+            entries: [
+                { account: 5, type: 'debit' },   // Accounts Payable
+                { account: 1, type: 'credit' }   // Cash
+            ]
+        },
+        {
+            id: 10,
+            name: 'Cash Service Revenue',
+            entries: [
+                { account: 1, type: 'debit' },   // Cash
+                { account: 10, type: 'credit' }  // Service Revenue
+            ]
+        },
+        {
+            id: 11,
+            name: 'Record Cost of Goods Sold',
+            entries: [
+                { account: 11, type: 'debit' },  // Cost of Goods Sold
+                { account: 3, type: 'credit' }   // Inventory
+            ]
+        }
+    ],
     settings: {
         companyName: 'My Business',
         lastUpdated: new Date().toISOString()
     },
     nextAccountId: 16,
     nextTransactionId: 1,
-    nextTransactionTypeId: 1
+    nextTransactionTypeId: 12
 };
 
 let hasUnsavedChanges = false;
