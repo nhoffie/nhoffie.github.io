@@ -40,6 +40,7 @@
         <nav class="tab-navigation">
             <button class="tab-btn active" data-tab="accounts">Chart of Accounts</button>
             <button class="tab-btn" data-tab="commodities">Commodities Market</button>
+            <button class="tab-btn" data-tab="map">Real Estate Map</button>
             <button class="tab-btn" data-tab="transactions">Transaction Log</button>
             <button class="tab-btn hidden" data-tab="admin">Admin</button>
             <button class="tab-btn" data-tab="balance-sheet">Balance Sheet</button>
@@ -354,6 +355,34 @@
                     <div id="tradeHistory">
                         <!-- Trade history table will be rendered here -->
                     </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Real Estate Map Section -->
+        <section id="map" class="tab-content">
+            <h2>Real Estate Map</h2>
+            <span id="mapStatus" class="status-message"></span>
+            <p class="help-text">Click on available squares to purchase property. Your company starts with 4 squares in the top-left corner.</p>
+
+            <div id="mapStats">
+                <!-- Map statistics will be rendered here -->
+            </div>
+
+            <div class="map-container">
+                <div id="mapGrid" class="map-grid">
+                    <!-- Map grid will be rendered here -->
+                </div>
+            </div>
+
+            <div class="map-legend">
+                <div class="legend-item">
+                    <div class="legend-square owned"></div>
+                    <span>Owned Property</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-square available"></div>
+                    <span>Available for Purchase</span>
                 </div>
             </div>
         </section>

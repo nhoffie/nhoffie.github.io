@@ -7,20 +7,21 @@ let appState = {
         { id: 1, number: '1000', name: 'Cash', type: 'Asset', openingBalance: 0 },
         { id: 2, number: '1100', name: 'Accounts Receivable', type: 'Asset', openingBalance: 0 },
         { id: 3, number: '1200', name: 'Inventory', type: 'Asset', openingBalance: 0 },
-        { id: 4, number: '1500', name: 'Equipment', type: 'Asset', openingBalance: 0 },
-        { id: 5, number: '2000', name: 'Accounts Payable', type: 'Liability', openingBalance: 0 },
-        { id: 6, number: '2100', name: 'Notes Payable', type: 'Liability', openingBalance: 0 },
-        { id: 7, number: '3000', name: 'Common Stock', type: 'Equity', openingBalance: 0 },
-        { id: 8, number: '3100', name: 'Retained Earnings', type: 'Equity', openingBalance: 0 },
-        { id: 9, number: '4000', name: 'Sales Revenue', type: 'Revenue', openingBalance: 0 },
-        { id: 10, number: '4100', name: 'Service Revenue', type: 'Revenue', openingBalance: 0 },
-        { id: 11, number: '4200', name: 'Gains on Commodity Sales', type: 'Revenue', openingBalance: 0 },
-        { id: 12, number: '5000', name: 'Cost of Goods Sold', type: 'Expense', openingBalance: 0 },
-        { id: 13, number: '5100', name: 'Rent Expense', type: 'Expense', openingBalance: 0 },
-        { id: 14, number: '5200', name: 'Utilities Expense', type: 'Expense', openingBalance: 0 },
-        { id: 15, number: '5300', name: 'Salaries Expense', type: 'Expense', openingBalance: 0 },
-        { id: 16, number: '5400', name: 'Supplies Expense', type: 'Expense', openingBalance: 0 },
-        { id: 17, number: '5500', name: 'Losses on Commodity Sales', type: 'Expense', openingBalance: 0 }
+        { id: 4, number: '1300', name: 'Real Estate', type: 'Asset', openingBalance: 0 },
+        { id: 5, number: '1500', name: 'Equipment', type: 'Asset', openingBalance: 0 },
+        { id: 6, number: '2000', name: 'Accounts Payable', type: 'Liability', openingBalance: 0 },
+        { id: 7, number: '2100', name: 'Notes Payable', type: 'Liability', openingBalance: 0 },
+        { id: 8, number: '3000', name: 'Common Stock', type: 'Equity', openingBalance: 0 },
+        { id: 9, number: '3100', name: 'Retained Earnings', type: 'Equity', openingBalance: 0 },
+        { id: 10, number: '4000', name: 'Sales Revenue', type: 'Revenue', openingBalance: 0 },
+        { id: 11, number: '4100', name: 'Service Revenue', type: 'Revenue', openingBalance: 0 },
+        { id: 12, number: '4200', name: 'Gains on Commodity Sales', type: 'Revenue', openingBalance: 0 },
+        { id: 13, number: '5000', name: 'Cost of Goods Sold', type: 'Expense', openingBalance: 0 },
+        { id: 14, number: '5100', name: 'Rent Expense', type: 'Expense', openingBalance: 0 },
+        { id: 15, number: '5200', name: 'Utilities Expense', type: 'Expense', openingBalance: 0 },
+        { id: 16, number: '5300', name: 'Salaries Expense', type: 'Expense', openingBalance: 0 },
+        { id: 17, number: '5400', name: 'Supplies Expense', type: 'Expense', openingBalance: 0 },
+        { id: 18, number: '5500', name: 'Losses on Commodity Sales', type: 'Expense', openingBalance: 0 }
     ],
     transactions: [],
     transactionTypes: [
@@ -113,12 +114,22 @@ let appState = {
         // Structure: { commodityId: { lots: [{ quantity, costBasis, purchaseDate, purchaseId }] } }
     },
     trades: [],
+    map: {
+        gridSize: 20, // 20x20 grid
+        pricePerSquare: 500,
+        ownedSquares: [
+            { x: 0, y: 0, purchaseDate: null, purchasePrice: 0 }, // Starting properties
+            { x: 1, y: 0, purchaseDate: null, purchasePrice: 0 },
+            { x: 0, y: 1, purchaseDate: null, purchasePrice: 0 },
+            { x: 1, y: 1, purchaseDate: null, purchasePrice: 0 }
+        ]
+    },
     settings: {
         companyName: 'My Business',
         adminMode: false,
         lastUpdated: new Date().toISOString()
     },
-    nextAccountId: 18,
+    nextAccountId: 19,
     nextTransactionId: 1,
     nextTransactionTypeId: 11,
     nextCommodityId: 3,
@@ -266,6 +277,8 @@ function setupTabNavigation() {
                 renderCashFlowStatement();
             } else if (targetTab === 'commodities') {
                 renderCommoditiesMarket();
+            } else if (targetTab === 'map') {
+                renderMap();
             }
         });
     });
@@ -1485,6 +1498,149 @@ function showCommodityStatus(message, type) {
 }
 
 // ====================================
+// MAP / REAL ESTATE
+// ====================================
+
+function getRealEstateAccount() {
+    return appState.accounts.find(a => a.number === '1300');
+}
+
+function isSquareOwned(x, y) {
+    return appState.map.ownedSquares.some(square => square.x === x && square.y === y);
+}
+
+function purchaseProperty(x, y) {
+    // Check if already owned
+    if (isSquareOwned(x, y)) {
+        alert('You already own this property!');
+        return false;
+    }
+
+    // Check if within grid bounds
+    if (x < 0 || x >= appState.map.gridSize || y < 0 || y >= appState.map.gridSize) {
+        alert('Property is outside the map!');
+        return false;
+    }
+
+    const price = appState.map.pricePerSquare;
+    const cashBalance = getCashBalance();
+
+    if (price > cashBalance) {
+        alert(`Insufficient cash! You need ${formatCurrency(price)} but only have ${formatCurrency(cashBalance)}`);
+        return false;
+    }
+
+    // Get accounts
+    const cashAccount = getCashAccount();
+    const realEstateAccount = getRealEstateAccount();
+
+    if (!cashAccount || !realEstateAccount) {
+        alert('Required accounts not found!');
+        return false;
+    }
+
+    // Create transaction: Debit Real Estate, Credit Cash
+    const transaction = {
+        id: appState.nextTransactionId++,
+        date: getTodayDate(),
+        description: `Purchase property at (${x}, ${y}) for ${formatCurrency(price)}`,
+        debitAccount: realEstateAccount.id,
+        creditAccount: cashAccount.id,
+        amount: price
+    };
+
+    appState.transactions.push(transaction);
+
+    // Add to owned squares
+    appState.map.ownedSquares.push({
+        x: x,
+        y: y,
+        purchaseDate: getTodayDate(),
+        purchasePrice: price,
+        transactionId: transaction.id
+    });
+
+    hasUnsavedChanges = true;
+    return true;
+}
+
+function renderMap() {
+    const container = document.getElementById('mapGrid');
+    if (!container) return;
+
+    const cashBalance = getCashBalance();
+    const ownedCount = appState.map.ownedSquares.length;
+    const totalValue = ownedCount * appState.map.pricePerSquare;
+
+    // Update stats
+    const statsHtml = `
+        <div class="map-stats">
+            <div class="stat-item">
+                <span class="stat-label">Properties Owned:</span>
+                <span class="stat-value">${ownedCount} squares</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Total Real Estate Value:</span>
+                <span class="stat-value">${formatCurrency(totalValue)}</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Available Cash:</span>
+                <span class="stat-value">${formatCurrency(cashBalance)}</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Price per Square:</span>
+                <span class="stat-value">${formatCurrency(appState.map.pricePerSquare)}</span>
+            </div>
+        </div>
+    `;
+
+    document.getElementById('mapStats').innerHTML = statsHtml;
+
+    // Render grid
+    container.innerHTML = '';
+    container.style.gridTemplateColumns = `repeat(${appState.map.gridSize}, 1fr)`;
+    container.style.gridTemplateRows = `repeat(${appState.map.gridSize}, 1fr)`;
+
+    for (let y = 0; y < appState.map.gridSize; y++) {
+        for (let x = 0; x < appState.map.gridSize; x++) {
+            const square = document.createElement('div');
+            const owned = isSquareOwned(x, y);
+
+            square.className = `map-square ${owned ? 'owned' : 'available'}`;
+            square.dataset.x = x;
+            square.dataset.y = y;
+            square.title = owned ? `Owned property (${x}, ${y})` : `Available (${x}, ${y}) - ${formatCurrency(appState.map.pricePerSquare)}`;
+
+            if (!owned) {
+                square.addEventListener('click', () => {
+                    if (confirm(`Purchase property at (${x}, ${y}) for ${formatCurrency(appState.map.pricePerSquare)}?`)) {
+                        if (purchaseProperty(x, y)) {
+                            render();
+                            showMapStatus(`Successfully purchased property at (${x}, ${y})!`, 'success');
+                        }
+                    }
+                });
+            }
+
+            container.appendChild(square);
+        }
+    }
+}
+
+function showMapStatus(message, type) {
+    const statusEl = document.getElementById('mapStatus');
+    if (!statusEl) return;
+
+    statusEl.textContent = message;
+    statusEl.className = `status-message ${type}`;
+
+    setTimeout(() => {
+        statusEl.textContent = '';
+        statusEl.className = 'status-message';
+    }, 3000);
+}
+
+// ====================================
 // CALCULATIONS
 // ====================================
 
@@ -1907,6 +2063,8 @@ function render() {
         renderCashFlowStatement();
     } else if (activeTab === 'commodities') {
         renderCommoditiesMarket();
+    } else if (activeTab === 'map') {
+        renderMap();
     }
 }
 
