@@ -17,7 +17,7 @@
 
     <div class="simulation-clock-display">
         <div class="clock-label">Simulation Time:</div>
-        <div id="simulationClock" class="clock-time">Month 1, Day 1 - 00:00:00</div>
+        <div id="simulationClock" class="clock-time">Year 1, Month 1, Day 1 - 00:00:00</div>
     </div>
 
     <div class="session-key-controls">
@@ -184,12 +184,12 @@
                 <h3>Filter Transactions</h3>
                 <div class="form-row">
                     <div class="form-group">
-                        <label for="filterStartDate">From (M#-D#):</label>
-                        <input type="text" id="filterStartDate" placeholder="M1-D1">
+                        <label for="filterStartDate">From (Y#-M#-D#):</label>
+                        <input type="text" id="filterStartDate" placeholder="Y1-M1-D1">
                     </div>
                     <div class="form-group">
-                        <label for="filterEndDate">To (M#-D#):</label>
-                        <input type="text" id="filterEndDate" placeholder="M1-D28">
+                        <label for="filterEndDate">To (Y#-M#-D#):</label>
+                        <input type="text" id="filterEndDate" placeholder="Y1-M12-D28">
                     </div>
                     <div class="form-group">
                         <label for="filterAccount">Account:</label>
@@ -230,12 +230,16 @@
 
                 <div class="time-control-buttons">
                     <button id="pauseTimeBtn" class="btn" onclick="togglePauseTime()">⏸ Pause Time</button>
-                    <button class="btn btn-danger" onclick="resetTime()">↺ Reset to Day 1</button>
+                    <button class="btn btn-danger" onclick="resetTime()">↺ Reset to Year 1</button>
                 </div>
 
                 <div class="time-set-form">
                     <h4>Set Specific Time</h4>
                     <div class="time-inputs">
+                        <div class="form-group">
+                            <label for="setYear">Year (1+):</label>
+                            <input type="number" id="setYear" min="1" value="1">
+                        </div>
                         <div class="form-group">
                             <label for="setMonth">Month (1-12):</label>
                             <input type="number" id="setMonth" min="1" max="12" value="1">
@@ -277,8 +281,8 @@
                         <input type="hidden" id="transactionId">
                         <div class="form-row">
                             <div class="form-group">
-                                <label for="transactionDate">Date (M#-D#):</label>
-                                <input type="text" id="transactionDate" placeholder="M1-D1" pattern="M\d+-D\d+" required>
+                                <label for="transactionDate">Date (Y#-M#-D#):</label>
+                                <input type="text" id="transactionDate" placeholder="Y1-M1-D1" pattern="Y\d+-M\d+-D\d+" required>
                             </div>
                             <div class="form-group flex-grow">
                                 <label for="transactionDescription">Description:</label>
@@ -437,8 +441,8 @@
         <section id="balance-sheet" class="tab-content">
             <h2>Balance Sheet</h2>
             <div class="form-group">
-                <label for="balanceSheetDate">As of Date (M#-D#):</label>
-                <input type="text" id="balanceSheetDate" placeholder="M1-D28">
+                <label for="balanceSheetDate">As of Date (Y#-M#-D#):</label>
+                <input type="text" id="balanceSheetDate" placeholder="Y1-M12-D28">
             </div>
             <div id="balanceSheetContent" class="financial-statement">
             </div>
@@ -449,12 +453,12 @@
             <h2>Income Statement</h2>
             <div class="form-row">
                 <div class="form-group">
-                    <label for="incomeStartDate">From (M#-D#):</label>
-                    <input type="text" id="incomeStartDate" placeholder="M1-D1">
+                    <label for="incomeStartDate">From (Y#-M#-D#):</label>
+                    <input type="text" id="incomeStartDate" placeholder="Y1-M1-D1">
                 </div>
                 <div class="form-group">
-                    <label for="incomeEndDate">To (M#-D#):</label>
-                    <input type="text" id="incomeEndDate" placeholder="M1-D28">
+                    <label for="incomeEndDate">To (Y#-M#-D#):</label>
+                    <input type="text" id="incomeEndDate" placeholder="Y1-M12-D28">
                 </div>
             </div>
             <div id="incomeStatementContent" class="financial-statement">
@@ -466,12 +470,12 @@
             <h2>Cash Flow Statement</h2>
             <div class="form-row">
                 <div class="form-group">
-                    <label for="cashFlowStartDate">From (M#-D#):</label>
-                    <input type="text" id="cashFlowStartDate" placeholder="M1-D1">
+                    <label for="cashFlowStartDate">From (Y#-M#-D#):</label>
+                    <input type="text" id="cashFlowStartDate" placeholder="Y1-M1-D1">
                 </div>
                 <div class="form-group">
-                    <label for="cashFlowEndDate">To (M#-D#):</label>
-                    <input type="text" id="cashFlowEndDate" placeholder="M1-D28">
+                    <label for="cashFlowEndDate">To (Y#-M#-D#):</label>
+                    <input type="text" id="cashFlowEndDate" placeholder="Y1-M12-D28">
                 </div>
             </div>
             <div id="cashFlowContent" class="financial-statement">

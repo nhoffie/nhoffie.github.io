@@ -2021,7 +2021,7 @@ function formatCurrency(amount) {
 // ====================================
 // SIMULATION TIME SYSTEM
 // ====================================
-// Custom calendar: 12 months × 28 days × 24 hours
+// Custom calendar: Years × 12 months × 28 days × 24 hours
 // Time progresses in real-time (1 real second = 1 simulation second)
 
 const SIMULATION_CONFIG = {
@@ -2038,14 +2038,19 @@ SIMULATION_CONFIG.SECONDS_PER_MINUTE = 60;
 SIMULATION_CONFIG.SECONDS_PER_HOUR = SIMULATION_CONFIG.SECONDS_PER_MINUTE * SIMULATION_CONFIG.MINUTES_PER_HOUR;
 SIMULATION_CONFIG.SECONDS_PER_DAY = SIMULATION_CONFIG.SECONDS_PER_HOUR * SIMULATION_CONFIG.HOURS_PER_DAY;
 SIMULATION_CONFIG.SECONDS_PER_MONTH = SIMULATION_CONFIG.SECONDS_PER_DAY * SIMULATION_CONFIG.DAYS_PER_MONTH;
+SIMULATION_CONFIG.SECONDS_PER_YEAR = SIMULATION_CONFIG.SECONDS_PER_MONTH * SIMULATION_CONFIG.MONTHS_PER_YEAR;
 SIMULATION_CONFIG.MS_PER_DAY = SIMULATION_CONFIG.SECONDS_PER_DAY * SIMULATION_CONFIG.MS_PER_SECOND;
 SIMULATION_CONFIG.MS_PER_MONTH = SIMULATION_CONFIG.SECONDS_PER_MONTH * SIMULATION_CONFIG.MS_PER_SECOND;
+SIMULATION_CONFIG.MS_PER_YEAR = SIMULATION_CONFIG.SECONDS_PER_YEAR * SIMULATION_CONFIG.MS_PER_SECOND;
 
 let simulationClockInterval = null;
 
 // Convert milliseconds to custom calendar time
 function msToCalendarTime(ms) {
     let remainingSeconds = Math.floor(ms / SIMULATION_CONFIG.MS_PER_SECOND);
+
+    const years = Math.floor(remainingSeconds / SIMULATION_CONFIG.SECONDS_PER_YEAR);
+    remainingSeconds -= years * SIMULATION_CONFIG.SECONDS_PER_YEAR;
 
     const months = Math.floor(remainingSeconds / SIMULATION_CONFIG.SECONDS_PER_MONTH);
     remainingSeconds -= months * SIMULATION_CONFIG.SECONDS_PER_MONTH;
@@ -2062,6 +2067,7 @@ function msToCalendarTime(ms) {
     const seconds = remainingSeconds;
 
     return {
+        year: years + 1,   // Year 1+
         month: months + 1, // Month 1-12
         day: days + 1,     // Day 1-28
         hour: hours,       // Hour 0-23
@@ -2071,14 +2077,15 @@ function msToCalendarTime(ms) {
 }
 
 // Convert custom calendar time to milliseconds
-function calendarTimeToMs(month, day, hour, minute, second) {
+function calendarTimeToMs(year, month, day, hour, minute, second) {
+    const yearMs = (year - 1) * SIMULATION_CONFIG.MS_PER_YEAR;
     const monthMs = (month - 1) * SIMULATION_CONFIG.MS_PER_MONTH;
     const dayMs = (day - 1) * SIMULATION_CONFIG.MS_PER_DAY;
     const hourMs = hour * SIMULATION_CONFIG.SECONDS_PER_HOUR * SIMULATION_CONFIG.MS_PER_SECOND;
     const minuteMs = minute * SIMULATION_CONFIG.SECONDS_PER_MINUTE * SIMULATION_CONFIG.MS_PER_SECOND;
     const secondMs = second * SIMULATION_CONFIG.MS_PER_SECOND;
 
-    return monthMs + dayMs + hourMs + minuteMs + secondMs;
+    return yearMs + monthMs + dayMs + hourMs + minuteMs + secondMs;
 }
 
 // Get current simulation time
@@ -2097,7 +2104,7 @@ function formatSimulationTime(ms) {
     const hourStr = String(time.hour).padStart(2, '0');
     const minuteStr = String(time.minute).padStart(2, '0');
     const secondStr = String(time.second).padStart(2, '0');
-    return `Month ${time.month}, Day ${time.day} - ${hourStr}:${minuteStr}:${secondStr}`;
+    return `Year ${time.year}, Month ${time.month}, Day ${time.day} - ${hourStr}:${minuteStr}:${secondStr}`;
 }
 
 // Format simulation time for short display
@@ -2106,25 +2113,31 @@ function formatSimulationTimeShort(ms) {
     const hourStr = String(time.hour).padStart(2, '0');
     const minuteStr = String(time.minute).padStart(2, '0');
     const secondStr = String(time.second).padStart(2, '0');
-    return `M${time.month} D${time.day} ${hourStr}:${minuteStr}:${secondStr}`;
+    return `Y${time.year} M${time.month} D${time.day} ${hourStr}:${minuteStr}:${secondStr}`;
 }
 
 // Get current simulation time as formatted string
 function getTodayDate() {
     const ms = getCurrentSimulationTime();
     const time = msToCalendarTime(ms);
-    return `M${time.month}-D${time.day}`;
+    return `Y${time.year}-M${time.month}-D${time.day}`;
 }
 
 // Format date string for display
 function formatDate(dateString) {
     // Handle both old ISO dates and new simulation dates
     if (dateString.includes('-')) {
-        if (dateString.startsWith('M')) {
-            // New format: M1-D15
+        if (dateString.startsWith('Y')) {
+            // New format: Y1-M1-D15
+            const parts = dateString.match(/Y(\d+)-M(\d+)-D(\d+)/);
+            if (parts) {
+                return `Year ${parts[1]}, Month ${parts[2]}, Day ${parts[3]}`;
+            }
+        } else if (dateString.startsWith('M')) {
+            // Old format without year: M1-D15
             const parts = dateString.match(/M(\d+)-D(\d+)/);
             if (parts) {
-                return `Month ${parts[1]}, Day ${parts[2]}`;
+                return `Year 1, Month ${parts[1]}, Day ${parts[2]}`;
             }
         } else {
             // Old format: YYYY-MM-DD
@@ -2143,14 +2156,38 @@ function formatDate(dateString) {
 function getFirstDayOfMonth() {
     const ms = getCurrentSimulationTime();
     const time = msToCalendarTime(ms);
-    return `M${time.month}-D1`;
+    return `Y${time.year}-M${time.month}-D1`;
 }
 
 // Get previous day
 function getPreviousDay(dateString) {
-    if (dateString.startsWith('M')) {
+    if (dateString.startsWith('Y')) {
+        const parts = dateString.match(/Y(\d+)-M(\d+)-D(\d+)/);
+        if (parts) {
+            let year = parseInt(parts[1]);
+            let month = parseInt(parts[2]);
+            let day = parseInt(parts[3]);
+
+            day--;
+            if (day < 1) {
+                month--;
+                if (month < 1) {
+                    year--;
+                    if (year < 1) {
+                        year = 1;
+                    }
+                    month = SIMULATION_CONFIG.MONTHS_PER_YEAR;
+                }
+                day = SIMULATION_CONFIG.DAYS_PER_MONTH;
+            }
+
+            return `Y${year}-M${month}-D${day}`;
+        }
+    } else if (dateString.startsWith('M')) {
+        // Old format without year: M1-D15 (assume Year 1)
         const parts = dateString.match(/M(\d+)-D(\d+)/);
         if (parts) {
+            let year = 1;
             let month = parseInt(parts[1]);
             let day = parseInt(parts[2]);
 
@@ -2158,12 +2195,12 @@ function getPreviousDay(dateString) {
             if (day < 1) {
                 month--;
                 if (month < 1) {
-                    month = 12;
+                    month = SIMULATION_CONFIG.MONTHS_PER_YEAR;
                 }
                 day = SIMULATION_CONFIG.DAYS_PER_MONTH;
             }
 
-            return `M${month}-D${day}`;
+            return `Y${year}-M${month}-D${day}`;
         }
     }
     // Fallback for old format
@@ -2219,9 +2256,9 @@ function togglePauseTime() {
     updateSimulationClock();
 }
 
-// Reset time to Day 1
+// Reset time to Year 1, Month 1, Day 1
 function resetTime() {
-    if (confirm('Reset time to Month 1, Day 1, 00:00:00?')) {
+    if (confirm('Reset time to Year 1, Month 1, Day 1, 00:00:00?')) {
         appState.simulation.simulationTime = 0;
         appState.simulation.lastSaveRealTime = Date.now();
         appState.simulation.startRealTime = Date.now();
@@ -2232,6 +2269,7 @@ function resetTime() {
 
 // Set specific time (admin mode)
 function setSimulationTime() {
+    const year = parseInt(document.getElementById('setYear').value);
     const month = parseInt(document.getElementById('setMonth').value);
     const day = parseInt(document.getElementById('setDay').value);
     const hour = parseInt(document.getElementById('setHour').value);
@@ -2239,6 +2277,10 @@ function setSimulationTime() {
     const second = parseInt(document.getElementById('setSecond').value);
 
     // Validate inputs
+    if (isNaN(year) || year < 1) {
+        alert('Year must be 1 or greater');
+        return;
+    }
     if (isNaN(month) || month < 1 || month > 12) {
         alert('Month must be between 1 and 12');
         return;
@@ -2260,7 +2302,7 @@ function setSimulationTime() {
         return;
     }
 
-    const newTime = calendarTimeToMs(month, day, hour, minute, second);
+    const newTime = calendarTimeToMs(year, month, day, hour, minute, second);
     appState.simulation.simulationTime = newTime;
     appState.simulation.lastSaveRealTime = Date.now();
     hasUnsavedChanges = true;
@@ -2274,6 +2316,7 @@ function populateTimeControlInputs() {
     const currentTime = getCurrentSimulationTime();
     const time = msToCalendarTime(currentTime);
 
+    document.getElementById('setYear').value = time.year;
     document.getElementById('setMonth').value = time.month;
     document.getElementById('setDay').value = time.day;
     document.getElementById('setHour').value = time.hour;
