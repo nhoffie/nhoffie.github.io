@@ -117,12 +117,7 @@ let appState = {
     map: {
         gridSize: 20, // 20x20 grid
         pricePerSquare: 500,
-        ownedSquares: [
-            { x: 0, y: 0, purchaseDate: null, purchasePrice: 0 }, // Starting properties
-            { x: 1, y: 0, purchaseDate: null, purchasePrice: 0 },
-            { x: 0, y: 1, purchaseDate: null, purchasePrice: 0 },
-            { x: 1, y: 1, purchaseDate: null, purchasePrice: 0 }
-        ]
+        ownedSquares: []
     },
     settings: {
         companyName: 'My Business',
