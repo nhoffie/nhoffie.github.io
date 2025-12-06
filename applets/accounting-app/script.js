@@ -4,28 +4,107 @@
 
 let appState = {
     accounts: [
-        { id: 1, number: '1000', name: 'Cash', type: 'Asset', openingBalance: 10000 },
-        { id: 2, number: '1100', name: 'Accounts Receivable', type: 'Asset', openingBalance: 5000 },
-        { id: 3, number: '1200', name: 'Inventory', type: 'Asset', openingBalance: 8000 },
-        { id: 4, number: '1210', name: 'Inventory - Power', type: 'Asset', openingBalance: 0 },
-        { id: 5, number: '1220', name: 'Inventory - Water', type: 'Asset', openingBalance: 0 },
-        { id: 6, number: '1500', name: 'Equipment', type: 'Asset', openingBalance: 15000 },
-        { id: 7, number: '2000', name: 'Accounts Payable', type: 'Liability', openingBalance: 3000 },
-        { id: 8, number: '2100', name: 'Notes Payable', type: 'Liability', openingBalance: 10000 },
-        { id: 9, number: '3000', name: 'Common Stock', type: 'Equity', openingBalance: 20000 },
-        { id: 10, number: '3100', name: 'Retained Earnings', type: 'Equity', openingBalance: 5000 },
-        { id: 11, number: '4000', name: 'Sales Revenue', type: 'Revenue', openingBalance: 0 },
-        { id: 12, number: '4100', name: 'Service Revenue', type: 'Revenue', openingBalance: 0 },
-        { id: 13, number: '4200', name: 'Gains on Commodity Sales', type: 'Revenue', openingBalance: 0 },
-        { id: 14, number: '5000', name: 'Cost of Goods Sold', type: 'Expense', openingBalance: 0 },
-        { id: 15, number: '5100', name: 'Rent Expense', type: 'Expense', openingBalance: 0 },
-        { id: 16, number: '5200', name: 'Utilities Expense', type: 'Expense', openingBalance: 0 },
-        { id: 17, number: '5300', name: 'Salaries Expense', type: 'Expense', openingBalance: 0 },
-        { id: 18, number: '5400', name: 'Supplies Expense', type: 'Expense', openingBalance: 0 },
-        { id: 19, number: '5500', name: 'Losses on Commodity Sales', type: 'Expense', openingBalance: 0 }
+        { id: 1, number: '1000', name: 'Cash', type: 'Asset', openingBalance: 0 },
+        { id: 2, number: '1100', name: 'Accounts Receivable', type: 'Asset', openingBalance: 0 },
+        { id: 3, number: '1200', name: 'Inventory', type: 'Asset', openingBalance: 0 },
+        { id: 4, number: '1500', name: 'Equipment', type: 'Asset', openingBalance: 0 },
+        { id: 5, number: '2000', name: 'Accounts Payable', type: 'Liability', openingBalance: 0 },
+        { id: 6, number: '2100', name: 'Notes Payable', type: 'Liability', openingBalance: 0 },
+        { id: 7, number: '3000', name: 'Common Stock', type: 'Equity', openingBalance: 0 },
+        { id: 8, number: '3100', name: 'Retained Earnings', type: 'Equity', openingBalance: 0 },
+        { id: 9, number: '4000', name: 'Sales Revenue', type: 'Revenue', openingBalance: 0 },
+        { id: 10, number: '4100', name: 'Service Revenue', type: 'Revenue', openingBalance: 0 },
+        { id: 11, number: '4200', name: 'Gains on Commodity Sales', type: 'Revenue', openingBalance: 0 },
+        { id: 12, number: '5000', name: 'Cost of Goods Sold', type: 'Expense', openingBalance: 0 },
+        { id: 13, number: '5100', name: 'Rent Expense', type: 'Expense', openingBalance: 0 },
+        { id: 14, number: '5200', name: 'Utilities Expense', type: 'Expense', openingBalance: 0 },
+        { id: 15, number: '5300', name: 'Salaries Expense', type: 'Expense', openingBalance: 0 },
+        { id: 16, number: '5400', name: 'Supplies Expense', type: 'Expense', openingBalance: 0 },
+        { id: 17, number: '5500', name: 'Losses on Commodity Sales', type: 'Expense', openingBalance: 0 }
     ],
     transactions: [],
-    transactionTypes: [],
+    transactionTypes: [
+        {
+            id: 1,
+            name: 'Owner Investment',
+            entries: [
+                { account: 1, type: 'debit' },  // Cash
+                { account: 7, type: 'credit' }  // Common Stock
+            ]
+        },
+        {
+            id: 2,
+            name: 'Cash Sale',
+            entries: [
+                { account: 1, type: 'debit' },  // Cash
+                { account: 9, type: 'credit' }  // Sales Revenue
+            ]
+        },
+        {
+            id: 3,
+            name: 'Credit Sale',
+            entries: [
+                { account: 2, type: 'debit' },  // Accounts Receivable
+                { account: 9, type: 'credit' }  // Sales Revenue
+            ]
+        },
+        {
+            id: 4,
+            name: 'Collect Payment',
+            entries: [
+                { account: 1, type: 'debit' },  // Cash
+                { account: 2, type: 'credit' }  // Accounts Receivable
+            ]
+        },
+        {
+            id: 5,
+            name: 'Purchase Inventory (Cash)',
+            entries: [
+                { account: 3, type: 'debit' },  // Inventory
+                { account: 1, type: 'credit' }  // Cash
+            ]
+        },
+        {
+            id: 6,
+            name: 'Purchase Inventory (Credit)',
+            entries: [
+                { account: 3, type: 'debit' },  // Inventory
+                { account: 5, type: 'credit' }  // Accounts Payable
+            ]
+        },
+        {
+            id: 7,
+            name: 'Pay Supplier',
+            entries: [
+                { account: 5, type: 'debit' },  // Accounts Payable
+                { account: 1, type: 'credit' }  // Cash
+            ]
+        },
+        {
+            id: 8,
+            name: 'Pay Rent',
+            entries: [
+                { account: 13, type: 'debit' },  // Rent Expense
+                { account: 1, type: 'credit' }   // Cash
+            ]
+        },
+        {
+            id: 9,
+            name: 'Pay Utilities',
+            entries: [
+                { account: 14, type: 'debit' },  // Utilities Expense
+                { account: 1, type: 'credit' }   // Cash
+            ]
+        },
+        {
+            id: 10,
+            name: 'Pay Salaries',
+            entries: [
+                { account: 15, type: 'debit' },  // Salaries Expense
+                { account: 1, type: 'credit' }   // Cash
+            ]
+        }
+    ],
     commodities: [
         { id: 1, name: 'Power', description: 'Electrical energy units', price: 50.00 },
         { id: 2, name: 'Water', description: 'Fresh water units', price: 25.00 }
@@ -38,9 +117,9 @@ let appState = {
         companyName: 'My Business',
         lastUpdated: new Date().toISOString()
     },
-    nextAccountId: 20,
+    nextAccountId: 18,
     nextTransactionId: 1,
-    nextTransactionTypeId: 1,
+    nextTransactionTypeId: 11,
     nextCommodityId: 3,
     nextTradeId: 1
 };
@@ -862,10 +941,8 @@ function getCashAccount() {
     return appState.accounts.find(a => a.number === '1000');
 }
 
-function getCommodityInventoryAccount(commodityId) {
-    const commodity = appState.commodities.find(c => c.id === commodityId);
-    if (!commodity) return null;
-    return appState.accounts.find(a => a.name === `Inventory - ${commodity.name}`);
+function getInventoryAccount() {
+    return appState.accounts.find(a => a.number === '1200');
 }
 
 function getGainsAccount() {
@@ -920,7 +997,7 @@ function buyCommodity(commodityId, quantity) {
 
     // Get accounts
     const cashAccount = getCashAccount();
-    const inventoryAccount = getCommodityInventoryAccount(commodityId);
+    const inventoryAccount = getInventoryAccount();
 
     if (!cashAccount || !inventoryAccount) {
         alert('Required accounts not found!');
@@ -982,7 +1059,7 @@ function sellCommodity(commodityId, quantity) {
 
     // Get accounts
     const cashAccount = getCashAccount();
-    const inventoryAccount = getCommodityInventoryAccount(commodityId);
+    const inventoryAccount = getInventoryAccount();
     const gainsAccount = getGainsAccount();
     const lossesAccount = getLossesAccount();
 
@@ -1851,7 +1928,7 @@ document.addEventListener('DOMContentLoaded', () => {
 /*
  * ADDING NEW COMMODITIES
  *
- * To add a new commodity to the trading system, follow these steps:
+ * To add a new commodity to the trading system:
  *
  * 1. Add the commodity to appState.commodities array:
  *    - Each commodity needs: id, name, description, price
@@ -1865,43 +1942,33 @@ document.addEventListener('DOMContentLoaded', () => {
  *        price: 100.00
  *    });
  *
- * 2. Add a corresponding inventory account to appState.accounts:
- *    - Account type must be 'Asset'
- *    - Name format: 'Inventory - [Commodity Name]'
- *    - Account number should follow your numbering scheme (e.g., 1230, 1240, etc.)
- *
- *    Example:
- *    appState.accounts.push({
- *        id: appState.nextAccountId++,
- *        number: '1230',
- *        name: 'Inventory - Gold',
- *        type: 'Asset',
- *        openingBalance: 0
- *    });
- *
- * 3. The system will automatically:
+ * 2. The system will automatically:
  *    - Display the new commodity in the trading interface
- *    - Track purchases using FIFO cost basis
- *    - Record all transactions in the double-entry bookkeeping system
+ *    - Track purchases using FIFO cost basis in the portfolio
+ *    - Record all transactions using the general Inventory account (1200)
  *    - Calculate gains/losses on sales
  *    - Show the commodity in portfolio view
  *    - Include it in trade history
  *
+ * Note: All commodities use the same general Inventory account for bookkeeping.
+ * The portfolio tracking system maintains separate FIFO lots for each commodity
+ * to properly track cost basis and calculate gains/losses.
+ *
  * ACCOUNTING ENTRIES
  *
  * Purchase Transaction:
- *   DR: Inventory - [Commodity] (Asset increases)
- *   CR: Cash (Asset decreases)
+ *   DR: Inventory (1200) - Asset increases
+ *   CR: Cash (1000) - Asset decreases
  *
  * Sale Transaction (with gain):
- *   DR: Cash (Asset increases - proceeds)
- *   CR: Inventory - [Commodity] (Asset decreases - cost basis)
- *   CR: Gains on Commodity Sales (Revenue increases - gain amount)
+ *   DR: Cash (1000) - Asset increases (proceeds)
+ *   CR: Inventory (1200) - Asset decreases (cost basis)
+ *   CR: Gains on Commodity Sales (4200) - Revenue increases (gain amount)
  *
  * Sale Transaction (with loss):
- *   DR: Cash (Asset increases - proceeds)
- *   DR: Losses on Commodity Sales (Expense increases - loss amount)
- *   CR: Inventory - [Commodity] (Asset decreases - cost basis)
+ *   DR: Cash (1000) - Asset increases (proceeds)
+ *   DR: Losses on Commodity Sales (5500) - Expense increases (loss amount)
+ *   CR: Inventory (1200) - Asset decreases (cost basis)
  *
  * COST BASIS TRACKING
  *
@@ -1909,6 +1976,7 @@ document.addEventListener('DOMContentLoaded', () => {
  * - Each purchase creates a new "lot" with quantity, cost basis, and purchase date
  * - When selling, the oldest lots are sold first
  * - Gains/losses are calculated as: Sale Proceeds - Cost Basis of sold units
+ * - Portfolio tracking is separate from the general ledger Inventory account
  *
  * MODIFYING COMMODITY PRICES
  *
