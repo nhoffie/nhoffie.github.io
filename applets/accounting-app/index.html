@@ -15,6 +15,11 @@
         </nav>
     </header>
 
+    <div class="simulation-clock-display">
+        <div class="clock-label">Simulation Time:</div>
+        <div id="simulationClock" class="clock-time">Month 1, Day 1 - 00:00:00</div>
+    </div>
+
     <div class="session-key-controls">
         <div class="admin-mode-section">
             <label class="admin-toggle">
@@ -179,12 +184,12 @@
                 <h3>Filter Transactions</h3>
                 <div class="form-row">
                     <div class="form-group">
-                        <label for="filterStartDate">From:</label>
-                        <input type="date" id="filterStartDate">
+                        <label for="filterStartDate">From (M#-D#):</label>
+                        <input type="text" id="filterStartDate" placeholder="M1-D1">
                     </div>
                     <div class="form-group">
-                        <label for="filterEndDate">To:</label>
-                        <input type="date" id="filterEndDate">
+                        <label for="filterEndDate">To (M#-D#):</label>
+                        <input type="text" id="filterEndDate" placeholder="M1-D28">
                     </div>
                     <div class="form-group">
                         <label for="filterAccount">Account:</label>
@@ -217,7 +222,48 @@
         <!-- Admin Section (Manual Entry) -->
         <section id="admin" class="tab-content">
             <h2>Admin Mode</h2>
-            <p class="help-text">Manage accounts, transaction types, and manually enter transactions. These features are restricted to admin mode to prevent accidental modifications during simulation.</p>
+            <p class="help-text">Manage accounts, transaction types, manually enter transactions, and control simulation time. These features are restricted to admin mode to prevent accidental modifications during simulation.</p>
+
+            <div class="admin-subsection">
+                <h3>Time Control</h3>
+                <p class="help-text">Control the simulation time. Pause time progression or set a specific time.</p>
+
+                <div class="time-control-buttons">
+                    <button id="pauseTimeBtn" class="btn" onclick="togglePauseTime()">⏸ Pause Time</button>
+                    <button class="btn btn-danger" onclick="resetTime()">↺ Reset to Day 1</button>
+                </div>
+
+                <div class="time-set-form">
+                    <h4>Set Specific Time</h4>
+                    <div class="time-inputs">
+                        <div class="form-group">
+                            <label for="setMonth">Month (1-12):</label>
+                            <input type="number" id="setMonth" min="1" max="12" value="1">
+                        </div>
+                        <div class="form-group">
+                            <label for="setDay">Day (1-28):</label>
+                            <input type="number" id="setDay" min="1" max="28" value="1">
+                        </div>
+                        <div class="form-group">
+                            <label for="setHour">Hour (0-23):</label>
+                            <input type="number" id="setHour" min="0" max="23" value="0">
+                        </div>
+                        <div class="form-group">
+                            <label for="setMinute">Minute (0-59):</label>
+                            <input type="number" id="setMinute" min="0" max="59" value="0">
+                        </div>
+                        <div class="form-group">
+                            <label for="setSecond">Second (0-59):</label>
+                            <input type="number" id="setSecond" min="0" max="59" value="0">
+                        </div>
+                    </div>
+                    <div class="form-actions">
+                        <button class="btn" onclick="populateTimeControlInputs()">Load Current Time</button>
+                        <button class="btn btn-primary" onclick="setSimulationTime()">Set Time</button>
+                    </div>
+                    <span id="timeControlStatus" class="status-message"></span>
+                </div>
+            </div>
 
             <div class="admin-subsection">
                 <h3>Account Management</h3>
@@ -231,8 +277,8 @@
                         <input type="hidden" id="transactionId">
                         <div class="form-row">
                             <div class="form-group">
-                                <label for="transactionDate">Date:</label>
-                                <input type="date" id="transactionDate" required>
+                                <label for="transactionDate">Date (M#-D#):</label>
+                                <input type="text" id="transactionDate" placeholder="M1-D1" pattern="M\d+-D\d+" required>
                             </div>
                             <div class="form-group flex-grow">
                                 <label for="transactionDescription">Description:</label>
@@ -391,8 +437,8 @@
         <section id="balance-sheet" class="tab-content">
             <h2>Balance Sheet</h2>
             <div class="form-group">
-                <label for="balanceSheetDate">As of Date:</label>
-                <input type="date" id="balanceSheetDate">
+                <label for="balanceSheetDate">As of Date (M#-D#):</label>
+                <input type="text" id="balanceSheetDate" placeholder="M1-D28">
             </div>
             <div id="balanceSheetContent" class="financial-statement">
             </div>
@@ -403,12 +449,12 @@
             <h2>Income Statement</h2>
             <div class="form-row">
                 <div class="form-group">
-                    <label for="incomeStartDate">From:</label>
-                    <input type="date" id="incomeStartDate">
+                    <label for="incomeStartDate">From (M#-D#):</label>
+                    <input type="text" id="incomeStartDate" placeholder="M1-D1">
                 </div>
                 <div class="form-group">
-                    <label for="incomeEndDate">To:</label>
-                    <input type="date" id="incomeEndDate">
+                    <label for="incomeEndDate">To (M#-D#):</label>
+                    <input type="text" id="incomeEndDate" placeholder="M1-D28">
                 </div>
             </div>
             <div id="incomeStatementContent" class="financial-statement">
@@ -420,12 +466,12 @@
             <h2>Cash Flow Statement</h2>
             <div class="form-row">
                 <div class="form-group">
-                    <label for="cashFlowStartDate">From:</label>
-                    <input type="date" id="cashFlowStartDate">
+                    <label for="cashFlowStartDate">From (M#-D#):</label>
+                    <input type="text" id="cashFlowStartDate" placeholder="M1-D1">
                 </div>
                 <div class="form-group">
-                    <label for="cashFlowEndDate">To:</label>
-                    <input type="date" id="cashFlowEndDate">
+                    <label for="cashFlowEndDate">To (M#-D#):</label>
+                    <input type="text" id="cashFlowEndDate" placeholder="M1-D28">
                 </div>
             </div>
             <div id="cashFlowContent" class="financial-statement">

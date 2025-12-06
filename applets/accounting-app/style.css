@@ -50,6 +50,41 @@ header nav a:hover {
     text-decoration: underline;
 }
 
+/* Simulation Clock Display */
+.simulation-clock-display {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 1.5rem;
+    border-radius: 8px;
+    margin-bottom: 1.5rem;
+    text-align: center;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.clock-label {
+    font-size: 0.875rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 0.5rem;
+    opacity: 0.9;
+}
+
+.clock-time {
+    font-size: 2rem;
+    font-weight: 700;
+    font-family: 'Courier New', monospace;
+    letter-spacing: 2px;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+@media (max-width: 768px) {
+    .clock-time {
+        font-size: 1.5rem;
+        letter-spacing: 1px;
+    }
+}
+
 /* Session Key Controls */
 .session-key-controls {
     background: #fffbeb;
@@ -588,6 +623,63 @@ footer a:hover {
 
 .admin-only {
     display: none;
+}
+
+/* Time Control Section */
+.time-control-buttons {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+}
+
+.time-control-buttons .btn {
+    flex: 1;
+    min-width: 150px;
+}
+
+.time-set-form {
+    background: #f9fafb;
+    padding: 1.5rem;
+    border-radius: 4px;
+    margin-top: 1rem;
+}
+
+.time-set-form h4 {
+    font-size: 1rem;
+    margin-bottom: 1rem;
+    color: var(--text-color);
+}
+
+.time-inputs {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.time-inputs .form-group {
+    display: flex;
+    flex-direction: column;
+}
+
+.time-inputs .form-group label {
+    font-size: 0.875rem;
+    margin-bottom: 0.25rem;
+    font-weight: 500;
+}
+
+.time-inputs .form-group input {
+    padding: 0.5rem;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 1rem;
+}
+
+@media (max-width: 768px) {
+    .time-inputs {
+        grid-template-columns: repeat(2, 1fr);
+    }
 }
 
 /* Real Estate Map */

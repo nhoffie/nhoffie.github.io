@@ -124,6 +124,12 @@ let appState = {
         adminMode: false,
         lastUpdated: new Date().toISOString()
     },
+    simulation: {
+        startRealTime: Date.now(), // Real-world timestamp when simulation started
+        lastSaveRealTime: Date.now(), // Real-world timestamp when last saved
+        simulationTime: 0, // Elapsed simulation time in milliseconds since Day 1, 00:00:00
+        paused: false // Whether time progression is paused
+    },
     nextAccountId: 19,
     nextTransactionId: 1,
     nextTransactionTypeId: 11,
@@ -139,7 +145,12 @@ let hasUnsavedChanges = false;
 
 function encodeSessionKey() {
     try {
+        // Update simulation time before saving
+        const currentSimTime = getCurrentSimulationTime();
+        appState.simulation.simulationTime = currentSimTime;
+        appState.simulation.lastSaveRealTime = Date.now();
         appState.settings.lastUpdated = new Date().toISOString();
+
         const jsonString = JSON.stringify(appState);
         // Use base64 encoding for simplicity
         return btoa(encodeURIComponent(jsonString));
@@ -191,10 +202,20 @@ function restoreSessionKey() {
     }
 
     if (confirm('This will replace all current data. Continue?')) {
+        // Calculate time elapsed since session was saved
+        const realTimeElapsed = Date.now() - restoredState.simulation.lastSaveRealTime;
+
+        // Add elapsed time to simulation time (real-time progression)
+        restoredState.simulation.simulationTime += realTimeElapsed;
+        restoredState.simulation.lastSaveRealTime = Date.now();
+
         appState = restoredState;
         hasUnsavedChanges = false;
         keyInput.value = '';
         showStatus('restoreStatus', 'Data restored successfully!', 'success');
+
+        // Restart the clock with the updated time
+        startSimulationClock();
         render();
     }
 }
@@ -1997,28 +2018,267 @@ function formatCurrency(amount) {
     }).format(amount);
 }
 
-function formatDate(dateString) {
-    const date = new Date(dateString + 'T00:00:00');
-    return date.toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
-    });
+// ====================================
+// SIMULATION TIME SYSTEM
+// ====================================
+// Custom calendar: 12 months × 28 days × 24 hours
+// Time progresses in real-time (1 real second = 1 simulation second)
+
+const SIMULATION_CONFIG = {
+    DAYS_PER_MONTH: 28,
+    MONTHS_PER_YEAR: 12,
+    HOURS_PER_DAY: 24,
+    MINUTES_PER_HOUR: 60,
+    SECONDS_PER_MINUTE: 60,
+    MS_PER_SECOND: 1000
+};
+
+// Calculate derived constants
+SIMULATION_CONFIG.SECONDS_PER_MINUTE = 60;
+SIMULATION_CONFIG.SECONDS_PER_HOUR = SIMULATION_CONFIG.SECONDS_PER_MINUTE * SIMULATION_CONFIG.MINUTES_PER_HOUR;
+SIMULATION_CONFIG.SECONDS_PER_DAY = SIMULATION_CONFIG.SECONDS_PER_HOUR * SIMULATION_CONFIG.HOURS_PER_DAY;
+SIMULATION_CONFIG.SECONDS_PER_MONTH = SIMULATION_CONFIG.SECONDS_PER_DAY * SIMULATION_CONFIG.DAYS_PER_MONTH;
+SIMULATION_CONFIG.MS_PER_DAY = SIMULATION_CONFIG.SECONDS_PER_DAY * SIMULATION_CONFIG.MS_PER_SECOND;
+SIMULATION_CONFIG.MS_PER_MONTH = SIMULATION_CONFIG.SECONDS_PER_MONTH * SIMULATION_CONFIG.MS_PER_SECOND;
+
+let simulationClockInterval = null;
+
+// Convert milliseconds to custom calendar time
+function msToCalendarTime(ms) {
+    let remainingSeconds = Math.floor(ms / SIMULATION_CONFIG.MS_PER_SECOND);
+
+    const months = Math.floor(remainingSeconds / SIMULATION_CONFIG.SECONDS_PER_MONTH);
+    remainingSeconds -= months * SIMULATION_CONFIG.SECONDS_PER_MONTH;
+
+    const days = Math.floor(remainingSeconds / SIMULATION_CONFIG.SECONDS_PER_DAY);
+    remainingSeconds -= days * SIMULATION_CONFIG.SECONDS_PER_DAY;
+
+    const hours = Math.floor(remainingSeconds / SIMULATION_CONFIG.SECONDS_PER_HOUR);
+    remainingSeconds -= hours * SIMULATION_CONFIG.SECONDS_PER_HOUR;
+
+    const minutes = Math.floor(remainingSeconds / SIMULATION_CONFIG.SECONDS_PER_MINUTE);
+    remainingSeconds -= minutes * SIMULATION_CONFIG.SECONDS_PER_MINUTE;
+
+    const seconds = remainingSeconds;
+
+    return {
+        month: months + 1, // Month 1-12
+        day: days + 1,     // Day 1-28
+        hour: hours,       // Hour 0-23
+        minute: minutes,   // Minute 0-59
+        second: seconds    // Second 0-59
+    };
 }
 
+// Convert custom calendar time to milliseconds
+function calendarTimeToMs(month, day, hour, minute, second) {
+    const monthMs = (month - 1) * SIMULATION_CONFIG.MS_PER_MONTH;
+    const dayMs = (day - 1) * SIMULATION_CONFIG.MS_PER_DAY;
+    const hourMs = hour * SIMULATION_CONFIG.SECONDS_PER_HOUR * SIMULATION_CONFIG.MS_PER_SECOND;
+    const minuteMs = minute * SIMULATION_CONFIG.SECONDS_PER_MINUTE * SIMULATION_CONFIG.MS_PER_SECOND;
+    const secondMs = second * SIMULATION_CONFIG.MS_PER_SECOND;
+
+    return monthMs + dayMs + hourMs + minuteMs + secondMs;
+}
+
+// Get current simulation time
+function getCurrentSimulationTime() {
+    if (appState.simulation.paused) {
+        return appState.simulation.simulationTime;
+    }
+
+    const realTimeElapsed = Date.now() - appState.simulation.lastSaveRealTime;
+    return appState.simulation.simulationTime + realTimeElapsed;
+}
+
+// Format simulation time as string
+function formatSimulationTime(ms) {
+    const time = msToCalendarTime(ms);
+    const hourStr = String(time.hour).padStart(2, '0');
+    const minuteStr = String(time.minute).padStart(2, '0');
+    const secondStr = String(time.second).padStart(2, '0');
+    return `Month ${time.month}, Day ${time.day} - ${hourStr}:${minuteStr}:${secondStr}`;
+}
+
+// Format simulation time for short display
+function formatSimulationTimeShort(ms) {
+    const time = msToCalendarTime(ms);
+    const hourStr = String(time.hour).padStart(2, '0');
+    const minuteStr = String(time.minute).padStart(2, '0');
+    const secondStr = String(time.second).padStart(2, '0');
+    return `M${time.month} D${time.day} ${hourStr}:${minuteStr}:${secondStr}`;
+}
+
+// Get current simulation time as formatted string
 function getTodayDate() {
-    return new Date().toISOString().split('T')[0];
+    const ms = getCurrentSimulationTime();
+    const time = msToCalendarTime(ms);
+    return `M${time.month}-D${time.day}`;
 }
 
+// Format date string for display
+function formatDate(dateString) {
+    // Handle both old ISO dates and new simulation dates
+    if (dateString.includes('-')) {
+        if (dateString.startsWith('M')) {
+            // New format: M1-D15
+            const parts = dateString.match(/M(\d+)-D(\d+)/);
+            if (parts) {
+                return `Month ${parts[1]}, Day ${parts[2]}`;
+            }
+        } else {
+            // Old format: YYYY-MM-DD
+            const date = new Date(dateString + 'T00:00:00');
+            return date.toLocaleDateString('en-US', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+            });
+        }
+    }
+    return dateString;
+}
+
+// Get first day of current month
 function getFirstDayOfMonth() {
-    const date = new Date();
-    return new Date(date.getFullYear(), date.getMonth(), 1).toISOString().split('T')[0];
+    const ms = getCurrentSimulationTime();
+    const time = msToCalendarTime(ms);
+    return `M${time.month}-D1`;
 }
 
+// Get previous day
 function getPreviousDay(dateString) {
+    if (dateString.startsWith('M')) {
+        const parts = dateString.match(/M(\d+)-D(\d+)/);
+        if (parts) {
+            let month = parseInt(parts[1]);
+            let day = parseInt(parts[2]);
+
+            day--;
+            if (day < 1) {
+                month--;
+                if (month < 1) {
+                    month = 12;
+                }
+                day = SIMULATION_CONFIG.DAYS_PER_MONTH;
+            }
+
+            return `M${month}-D${day}`;
+        }
+    }
+    // Fallback for old format
     const date = new Date(dateString + 'T00:00:00');
     date.setDate(date.getDate() - 1);
     return date.toISOString().split('T')[0];
+}
+
+// Update simulation clock (called every second)
+function updateSimulationClock() {
+    const clockElement = document.getElementById('simulationClock');
+    if (clockElement) {
+        const currentTime = getCurrentSimulationTime();
+        clockElement.textContent = formatSimulationTime(currentTime);
+
+        // Update pause/resume button text
+        const pauseBtn = document.getElementById('pauseTimeBtn');
+        if (pauseBtn) {
+            pauseBtn.textContent = appState.simulation.paused ? '▶ Resume Time' : '⏸ Pause Time';
+        }
+    }
+}
+
+// Start the simulation clock
+function startSimulationClock() {
+    if (simulationClockInterval) {
+        clearInterval(simulationClockInterval);
+    }
+    simulationClockInterval = setInterval(updateSimulationClock, 100); // Update 10 times per second for smooth display
+    updateSimulationClock(); // Initial update
+}
+
+// Stop the simulation clock
+function stopSimulationClock() {
+    if (simulationClockInterval) {
+        clearInterval(simulationClockInterval);
+        simulationClockInterval = null;
+    }
+}
+
+// Pause/Resume time progression
+function togglePauseTime() {
+    if (appState.simulation.paused) {
+        // Resuming - update lastSaveRealTime to now
+        appState.simulation.lastSaveRealTime = Date.now();
+        appState.simulation.paused = false;
+    } else {
+        // Pausing - update simulationTime to current value
+        appState.simulation.simulationTime = getCurrentSimulationTime();
+        appState.simulation.paused = true;
+    }
+    hasUnsavedChanges = true;
+    updateSimulationClock();
+}
+
+// Reset time to Day 1
+function resetTime() {
+    if (confirm('Reset time to Month 1, Day 1, 00:00:00?')) {
+        appState.simulation.simulationTime = 0;
+        appState.simulation.lastSaveRealTime = Date.now();
+        appState.simulation.startRealTime = Date.now();
+        hasUnsavedChanges = true;
+        updateSimulationClock();
+    }
+}
+
+// Set specific time (admin mode)
+function setSimulationTime() {
+    const month = parseInt(document.getElementById('setMonth').value);
+    const day = parseInt(document.getElementById('setDay').value);
+    const hour = parseInt(document.getElementById('setHour').value);
+    const minute = parseInt(document.getElementById('setMinute').value);
+    const second = parseInt(document.getElementById('setSecond').value);
+
+    // Validate inputs
+    if (isNaN(month) || month < 1 || month > 12) {
+        alert('Month must be between 1 and 12');
+        return;
+    }
+    if (isNaN(day) || day < 1 || day > 28) {
+        alert('Day must be between 1 and 28');
+        return;
+    }
+    if (isNaN(hour) || hour < 0 || hour > 23) {
+        alert('Hour must be between 0 and 23');
+        return;
+    }
+    if (isNaN(minute) || minute < 0 || minute > 59) {
+        alert('Minute must be between 0 and 59');
+        return;
+    }
+    if (isNaN(second) || second < 0 || second > 59) {
+        alert('Second must be between 0 and 59');
+        return;
+    }
+
+    const newTime = calendarTimeToMs(month, day, hour, minute, second);
+    appState.simulation.simulationTime = newTime;
+    appState.simulation.lastSaveRealTime = Date.now();
+    hasUnsavedChanges = true;
+    updateSimulationClock();
+
+    showStatus('timeControlStatus', 'Time updated successfully!', 'success');
+}
+
+// Populate time control inputs with current time
+function populateTimeControlInputs() {
+    const currentTime = getCurrentSimulationTime();
+    const time = msToCalendarTime(currentTime);
+
+    document.getElementById('setMonth').value = time.month;
+    document.getElementById('setDay').value = time.day;
+    document.getElementById('setHour').value = time.hour;
+    document.getElementById('setMinute').value = time.minute;
+    document.getElementById('setSecond').value = time.second;
 }
 
 function setDefaultTransactionDate() {
@@ -2121,6 +2381,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Update admin mode UI
     updateAdminModeUI();
+
+    // Start the simulation clock
+    startSimulationClock();
 });
 
 // ====================================
