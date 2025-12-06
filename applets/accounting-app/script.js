@@ -115,6 +115,7 @@ let appState = {
     trades: [],
     settings: {
         companyName: 'My Business',
+        adminMode: false,
         lastUpdated: new Date().toISOString()
     },
     nextAccountId: 18,
@@ -204,6 +205,39 @@ function showStatus(elementId, message, type) {
 }
 
 // ====================================
+// ADMIN MODE
+// ====================================
+
+function toggleAdminMode() {
+    appState.settings.adminMode = !appState.settings.adminMode;
+    hasUnsavedChanges = true;
+    render();
+    updateAdminModeUI();
+}
+
+function updateAdminModeUI() {
+    const adminToggle = document.getElementById('adminModeToggle');
+    const adminTab = document.querySelector('[data-tab="admin"]');
+
+    if (adminToggle) {
+        adminToggle.checked = appState.settings.adminMode;
+    }
+
+    // Show/hide admin tab
+    if (adminTab) {
+        if (appState.settings.adminMode) {
+            adminTab.classList.remove('hidden');
+        } else {
+            adminTab.classList.add('hidden');
+            // If admin tab is active, switch to accounts tab
+            if (adminTab.classList.contains('active')) {
+                document.querySelector('[data-tab="accounts"]').click();
+            }
+        }
+    }
+}
+
+// ====================================
 // TAB NAVIGATION
 // ====================================
 
@@ -262,14 +296,18 @@ function renderAccounts() {
     // Helper function to create account row
     const createAccountRow = (account, balance) => {
         const row = document.createElement('tr');
-        row.innerHTML = `
-            <td>${escapeHtml(account.number)}</td>
-            <td>${escapeHtml(account.name)}</td>
-            <td class="number">${formatCurrency(balance)}</td>
+        const actionsHtml = appState.settings.adminMode ? `
             <td>
                 <button class="btn" onclick="editAccount(${account.id})">Edit</button>
                 <button class="btn btn-danger" onclick="deleteAccount(${account.id})">Delete</button>
             </td>
+        ` : '<td>-</td>';
+
+        row.innerHTML = `
+            <td>${escapeHtml(account.number)}</td>
+            <td>${escapeHtml(account.name)}</td>
+            <td class="number">${formatCurrency(balance)}</td>
+            ${actionsHtml}
         `;
         return row;
     };
@@ -400,14 +438,18 @@ function renderTransactionTypes() {
             return `${entryType}: ${accountName}`;
         }).join(', ');
 
-        const row = document.createElement('tr');
-        row.innerHTML = `
-            <td>${escapeHtml(type.name)}</td>
-            <td>${entriesDisplay}</td>
+        const actionsHtml = appState.settings.adminMode ? `
             <td>
                 <button class="btn" onclick="editTransactionType(${type.id})">Edit</button>
                 <button class="btn btn-danger" onclick="deleteTransactionType(${type.id})">Delete</button>
             </td>
+        ` : '<td>-</td>';
+
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td>${escapeHtml(type.name)}</td>
+            <td>${entriesDisplay}</td>
+            ${actionsHtml}
         `;
         tbody.appendChild(row);
     });
@@ -744,6 +786,13 @@ function renderTransactions() {
             amountDisplay = formatCurrency(transaction.amount);
         }
 
+        const actionsHtml = appState.settings.adminMode ? `
+            <td>
+                <button class="btn" onclick="editTransaction(${transaction.id})">Edit</button>
+                <button class="btn btn-danger" onclick="deleteTransaction(${transaction.id})">Delete</button>
+            </td>
+        ` : '<td>-</td>';
+
         const row = document.createElement('tr');
         row.innerHTML = `
             <td>${escapeHtml(transaction.date)}</td>
@@ -751,10 +800,7 @@ function renderTransactions() {
             <td>${debitDisplay}</td>
             <td>${creditDisplay}</td>
             <td class="number">${amountDisplay}</td>
-            <td>
-                <button class="btn" onclick="editTransaction(${transaction.id})">Edit</button>
-                <button class="btn btn-danger" onclick="deleteTransaction(${transaction.id})">Delete</button>
-            </td>
+            ${actionsHtml}
         `;
         tbody.appendChild(row);
     });
@@ -1919,6 +1965,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Initial render
     render();
+
+    // Update admin mode UI
+    updateAdminModeUI();
 });
 
 // ====================================
