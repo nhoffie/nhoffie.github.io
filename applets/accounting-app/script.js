@@ -7,28 +7,42 @@ let appState = {
         { id: 1, number: '1000', name: 'Cash', type: 'Asset', openingBalance: 10000 },
         { id: 2, number: '1100', name: 'Accounts Receivable', type: 'Asset', openingBalance: 5000 },
         { id: 3, number: '1200', name: 'Inventory', type: 'Asset', openingBalance: 8000 },
-        { id: 4, number: '1500', name: 'Equipment', type: 'Asset', openingBalance: 15000 },
-        { id: 5, number: '2000', name: 'Accounts Payable', type: 'Liability', openingBalance: 3000 },
-        { id: 6, number: '2100', name: 'Notes Payable', type: 'Liability', openingBalance: 10000 },
-        { id: 7, number: '3000', name: 'Common Stock', type: 'Equity', openingBalance: 20000 },
-        { id: 8, number: '3100', name: 'Retained Earnings', type: 'Equity', openingBalance: 5000 },
-        { id: 9, number: '4000', name: 'Sales Revenue', type: 'Revenue', openingBalance: 0 },
-        { id: 10, number: '4100', name: 'Service Revenue', type: 'Revenue', openingBalance: 0 },
-        { id: 11, number: '5000', name: 'Cost of Goods Sold', type: 'Expense', openingBalance: 0 },
-        { id: 12, number: '5100', name: 'Rent Expense', type: 'Expense', openingBalance: 0 },
-        { id: 13, number: '5200', name: 'Utilities Expense', type: 'Expense', openingBalance: 0 },
-        { id: 14, number: '5300', name: 'Salaries Expense', type: 'Expense', openingBalance: 0 },
-        { id: 15, number: '5400', name: 'Supplies Expense', type: 'Expense', openingBalance: 0 }
+        { id: 4, number: '1210', name: 'Inventory - Power', type: 'Asset', openingBalance: 0 },
+        { id: 5, number: '1220', name: 'Inventory - Water', type: 'Asset', openingBalance: 0 },
+        { id: 6, number: '1500', name: 'Equipment', type: 'Asset', openingBalance: 15000 },
+        { id: 7, number: '2000', name: 'Accounts Payable', type: 'Liability', openingBalance: 3000 },
+        { id: 8, number: '2100', name: 'Notes Payable', type: 'Liability', openingBalance: 10000 },
+        { id: 9, number: '3000', name: 'Common Stock', type: 'Equity', openingBalance: 20000 },
+        { id: 10, number: '3100', name: 'Retained Earnings', type: 'Equity', openingBalance: 5000 },
+        { id: 11, number: '4000', name: 'Sales Revenue', type: 'Revenue', openingBalance: 0 },
+        { id: 12, number: '4100', name: 'Service Revenue', type: 'Revenue', openingBalance: 0 },
+        { id: 13, number: '4200', name: 'Gains on Commodity Sales', type: 'Revenue', openingBalance: 0 },
+        { id: 14, number: '5000', name: 'Cost of Goods Sold', type: 'Expense', openingBalance: 0 },
+        { id: 15, number: '5100', name: 'Rent Expense', type: 'Expense', openingBalance: 0 },
+        { id: 16, number: '5200', name: 'Utilities Expense', type: 'Expense', openingBalance: 0 },
+        { id: 17, number: '5300', name: 'Salaries Expense', type: 'Expense', openingBalance: 0 },
+        { id: 18, number: '5400', name: 'Supplies Expense', type: 'Expense', openingBalance: 0 },
+        { id: 19, number: '5500', name: 'Losses on Commodity Sales', type: 'Expense', openingBalance: 0 }
     ],
     transactions: [],
     transactionTypes: [],
+    commodities: [
+        { id: 1, name: 'Power', description: 'Electrical energy units', price: 50.00 },
+        { id: 2, name: 'Water', description: 'Fresh water units', price: 25.00 }
+    ],
+    portfolio: {
+        // Structure: { commodityId: { lots: [{ quantity, costBasis, purchaseDate, purchaseId }] } }
+    },
+    trades: [],
     settings: {
         companyName: 'My Business',
         lastUpdated: new Date().toISOString()
     },
-    nextAccountId: 16,
+    nextAccountId: 20,
     nextTransactionId: 1,
-    nextTransactionTypeId: 1
+    nextTransactionTypeId: 1,
+    nextCommodityId: 3,
+    nextTradeId: 1
 };
 
 let hasUnsavedChanges = false;
@@ -137,6 +151,8 @@ function setupTabNavigation() {
                 renderIncomeStatement();
             } else if (targetTab === 'cash-flow') {
                 renderCashFlowStatement();
+            } else if (targetTab === 'commodities') {
+                renderCommoditiesMarket();
             }
         });
     });
@@ -839,6 +855,513 @@ function updateAccountDropdowns() {
 }
 
 // ====================================
+// COMMODITIES TRADING
+// ====================================
+
+function getCashAccount() {
+    return appState.accounts.find(a => a.number === '1000');
+}
+
+function getCommodityInventoryAccount(commodityId) {
+    const commodity = appState.commodities.find(c => c.id === commodityId);
+    if (!commodity) return null;
+    return appState.accounts.find(a => a.name === `Inventory - ${commodity.name}`);
+}
+
+function getGainsAccount() {
+    return appState.accounts.find(a => a.number === '4200');
+}
+
+function getLossesAccount() {
+    return appState.accounts.find(a => a.number === '5500');
+}
+
+function getCashBalance() {
+    const balances = calculateAccountBalances();
+    const cashAccount = getCashAccount();
+    return cashAccount ? (balances[cashAccount.id] || 0) : 0;
+}
+
+function getPortfolioCommodity(commodityId) {
+    if (!appState.portfolio[commodityId]) {
+        appState.portfolio[commodityId] = { lots: [] };
+    }
+    return appState.portfolio[commodityId];
+}
+
+function getTotalQuantity(commodityId) {
+    const portfolio = getPortfolioCommodity(commodityId);
+    return portfolio.lots.reduce((sum, lot) => sum + lot.quantity, 0);
+}
+
+function getAverageCostBasis(commodityId) {
+    const portfolio = getPortfolioCommodity(commodityId);
+    const totalQuantity = getTotalQuantity(commodityId);
+    if (totalQuantity === 0) return 0;
+
+    const totalCost = portfolio.lots.reduce((sum, lot) => sum + (lot.quantity * lot.costBasis), 0);
+    return totalCost / totalQuantity;
+}
+
+function buyCommodity(commodityId, quantity) {
+    const commodity = appState.commodities.find(c => c.id === commodityId);
+    if (!commodity) {
+        alert('Commodity not found!');
+        return false;
+    }
+
+    const totalCost = quantity * commodity.price;
+    const cashBalance = getCashBalance();
+
+    if (totalCost > cashBalance) {
+        alert(`Insufficient cash! You need ${formatCurrency(totalCost)} but only have ${formatCurrency(cashBalance)}`);
+        return false;
+    }
+
+    // Get accounts
+    const cashAccount = getCashAccount();
+    const inventoryAccount = getCommodityInventoryAccount(commodityId);
+
+    if (!cashAccount || !inventoryAccount) {
+        alert('Required accounts not found!');
+        return false;
+    }
+
+    // Create transaction: Debit Inventory, Credit Cash
+    const transaction = {
+        id: appState.nextTransactionId++,
+        date: getTodayDate(),
+        description: `Purchase ${quantity} units of ${commodity.name} @ ${formatCurrency(commodity.price)}/unit`,
+        debitAccount: inventoryAccount.id,
+        creditAccount: cashAccount.id,
+        amount: totalCost
+    };
+
+    appState.transactions.push(transaction);
+
+    // Add to portfolio using FIFO (create new lot)
+    const portfolio = getPortfolioCommodity(commodityId);
+    portfolio.lots.push({
+        quantity: quantity,
+        costBasis: commodity.price,
+        purchaseDate: getTodayDate(),
+        purchaseId: appState.nextTradeId
+    });
+
+    // Record trade
+    appState.trades.push({
+        id: appState.nextTradeId++,
+        type: 'buy',
+        commodityId: commodityId,
+        quantity: quantity,
+        price: commodity.price,
+        totalValue: totalCost,
+        date: getTodayDate(),
+        transactionId: transaction.id
+    });
+
+    hasUnsavedChanges = true;
+    return true;
+}
+
+function sellCommodity(commodityId, quantity) {
+    const commodity = appState.commodities.find(c => c.id === commodityId);
+    if (!commodity) {
+        alert('Commodity not found!');
+        return false;
+    }
+
+    const availableQuantity = getTotalQuantity(commodityId);
+    if (quantity > availableQuantity) {
+        alert(`Insufficient inventory! You have ${availableQuantity} units but trying to sell ${quantity}`);
+        return false;
+    }
+
+    // Calculate proceeds
+    const totalProceeds = quantity * commodity.price;
+
+    // Get accounts
+    const cashAccount = getCashAccount();
+    const inventoryAccount = getCommodityInventoryAccount(commodityId);
+    const gainsAccount = getGainsAccount();
+    const lossesAccount = getLossesAccount();
+
+    if (!cashAccount || !inventoryAccount || !gainsAccount || !lossesAccount) {
+        alert('Required accounts not found!');
+        return false;
+    }
+
+    // Calculate cost basis using FIFO
+    const portfolio = getPortfolioCommodity(commodityId);
+    let remainingToSell = quantity;
+    let totalCostBasis = 0;
+    const soldLots = [];
+
+    for (let i = 0; i < portfolio.lots.length && remainingToSell > 0; i++) {
+        const lot = portfolio.lots[i];
+        const quantityFromLot = Math.min(lot.quantity, remainingToSell);
+
+        totalCostBasis += quantityFromLot * lot.costBasis;
+        soldLots.push({
+            lotIndex: i,
+            quantity: quantityFromLot,
+            costBasis: lot.costBasis
+        });
+
+        remainingToSell -= quantityFromLot;
+    }
+
+    // Calculate gain/loss
+    const gainLoss = totalProceeds - totalCostBasis;
+    const isGain = gainLoss >= 0;
+
+    // Create multi-entry transaction
+    const entries = [
+        // Debit Cash for proceeds
+        { account: cashAccount.id, type: 'debit', amount: totalProceeds },
+        // Credit Inventory for cost basis
+        { account: inventoryAccount.id, type: 'credit', amount: totalCostBasis }
+    ];
+
+    // Add gain or loss entry
+    if (Math.abs(gainLoss) > 0.01) {
+        if (isGain) {
+            // Credit Gains
+            entries.push({ account: gainsAccount.id, type: 'credit', amount: Math.abs(gainLoss) });
+        } else {
+            // Debit Losses
+            entries.push({ account: lossesAccount.id, type: 'debit', amount: Math.abs(gainLoss) });
+        }
+    }
+
+    const transaction = {
+        id: appState.nextTransactionId++,
+        date: getTodayDate(),
+        description: `Sale ${quantity} units of ${commodity.name} @ ${formatCurrency(commodity.price)}/unit (${isGain ? 'Gain' : 'Loss'}: ${formatCurrency(Math.abs(gainLoss))})`,
+        entries: entries
+    };
+
+    appState.transactions.push(transaction);
+
+    // Update portfolio - remove sold quantities using FIFO
+    soldLots.forEach(sold => {
+        const lot = portfolio.lots[sold.lotIndex];
+        lot.quantity -= sold.quantity;
+    });
+
+    // Remove empty lots
+    portfolio.lots = portfolio.lots.filter(lot => lot.quantity > 0);
+
+    // Record trade
+    appState.trades.push({
+        id: appState.nextTradeId++,
+        type: 'sell',
+        commodityId: commodityId,
+        quantity: quantity,
+        price: commodity.price,
+        totalValue: totalProceeds,
+        costBasis: totalCostBasis,
+        gainLoss: gainLoss,
+        date: getTodayDate(),
+        transactionId: transaction.id
+    });
+
+    hasUnsavedChanges = true;
+    return true;
+}
+
+function getPortfolioSummary() {
+    const summary = [];
+
+    appState.commodities.forEach(commodity => {
+        const quantity = getTotalQuantity(commodity.id);
+        if (quantity > 0 || true) { // Show all commodities
+            const avgCost = getAverageCostBasis(commodity.id);
+            const currentValue = quantity * commodity.price;
+            const totalCost = quantity * avgCost;
+            const unrealizedGainLoss = currentValue - totalCost;
+            const percentGainLoss = totalCost > 0 ? (unrealizedGainLoss / totalCost) * 100 : 0;
+
+            summary.push({
+                commodity: commodity,
+                quantity: quantity,
+                avgCost: avgCost,
+                currentPrice: commodity.price,
+                currentValue: currentValue,
+                totalCost: totalCost,
+                unrealizedGainLoss: unrealizedGainLoss,
+                percentGainLoss: percentGainLoss
+            });
+        }
+    });
+
+    return summary;
+}
+
+function renderCommoditiesMarket() {
+    renderCommoditiesList();
+    renderPortfolio();
+    renderTradeHistory();
+}
+
+function renderCommoditiesList() {
+    const container = document.getElementById('commoditiesList');
+    if (!container) return;
+
+    const cashBalance = getCashBalance();
+
+    container.innerHTML = `
+        <div class="cash-balance">
+            <strong>Available Cash:</strong> ${formatCurrency(cashBalance)}
+        </div>
+    `;
+
+    appState.commodities.forEach(commodity => {
+        const quantity = getTotalQuantity(commodity.id);
+
+        const commodityCard = document.createElement('div');
+        commodityCard.className = 'commodity-card';
+        commodityCard.innerHTML = `
+            <div class="commodity-header">
+                <h4>${escapeHtml(commodity.name)}</h4>
+                <div class="commodity-price">${formatCurrency(commodity.price)}<span class="price-unit">/unit</span></div>
+            </div>
+            <p class="commodity-description">${escapeHtml(commodity.description)}</p>
+            <div class="commodity-inventory">In Portfolio: <strong>${quantity} units</strong></div>
+
+            <div class="commodity-actions">
+                <div class="trade-section">
+                    <h5>Buy</h5>
+                    <div class="trade-controls">
+                        <input type="number" id="buy-quantity-${commodity.id}" min="1" step="1" value="1" class="quantity-input">
+                        <div class="trade-total" id="buy-total-${commodity.id}">${formatCurrency(commodity.price)}</div>
+                        <button class="btn btn-primary" onclick="executeBuy(${commodity.id})">Buy</button>
+                    </div>
+                </div>
+
+                <div class="trade-section">
+                    <h5>Sell</h5>
+                    <div class="trade-controls">
+                        <input type="number" id="sell-quantity-${commodity.id}" min="1" step="1" value="1" max="${quantity}" class="quantity-input" ${quantity === 0 ? 'disabled' : ''}>
+                        <div class="trade-total" id="sell-total-${commodity.id}">${formatCurrency(commodity.price)}</div>
+                        <button class="btn btn-danger" onclick="executeSell(${commodity.id})" ${quantity === 0 ? 'disabled' : ''}>Sell</button>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        container.appendChild(commodityCard);
+    });
+
+    // Add event listeners for quantity inputs
+    appState.commodities.forEach(commodity => {
+        const buyInput = document.getElementById(`buy-quantity-${commodity.id}`);
+        const sellInput = document.getElementById(`sell-quantity-${commodity.id}`);
+        const buyTotal = document.getElementById(`buy-total-${commodity.id}`);
+        const sellTotal = document.getElementById(`sell-total-${commodity.id}`);
+
+        if (buyInput) {
+            buyInput.addEventListener('input', () => {
+                const quantity = parseFloat(buyInput.value) || 0;
+                buyTotal.textContent = formatCurrency(quantity * commodity.price);
+            });
+        }
+
+        if (sellInput) {
+            sellInput.addEventListener('input', () => {
+                const quantity = parseFloat(sellInput.value) || 0;
+                sellTotal.textContent = formatCurrency(quantity * commodity.price);
+            });
+        }
+    });
+}
+
+function renderPortfolio() {
+    const container = document.getElementById('portfolioView');
+    if (!container) return;
+
+    const summary = getPortfolioSummary();
+    const totalValue = summary.reduce((sum, item) => sum + item.currentValue, 0);
+    const totalCost = summary.reduce((sum, item) => sum + item.totalCost, 0);
+    const totalGainLoss = totalValue - totalCost;
+    const totalPercentGainLoss = totalCost > 0 ? (totalGainLoss / totalCost) * 100 : 0;
+
+    let html = `
+        <table class="portfolio-table">
+            <thead>
+                <tr>
+                    <th>Commodity</th>
+                    <th>Quantity</th>
+                    <th>Avg Cost</th>
+                    <th>Current Price</th>
+                    <th>Market Value</th>
+                    <th>Total Cost</th>
+                    <th>Unrealized G/L</th>
+                    <th>G/L %</th>
+                </tr>
+            </thead>
+            <tbody>
+    `;
+
+    if (summary.filter(s => s.quantity > 0).length === 0) {
+        html += `
+            <tr>
+                <td colspan="8" style="text-align: center; color: #999;">No commodities in portfolio</td>
+            </tr>
+        `;
+    } else {
+        summary.filter(s => s.quantity > 0).forEach(item => {
+            const glClass = item.unrealizedGainLoss >= 0 ? 'positive' : 'negative';
+            html += `
+                <tr>
+                    <td>${escapeHtml(item.commodity.name)}</td>
+                    <td class="number">${item.quantity}</td>
+                    <td class="number">${formatCurrency(item.avgCost)}</td>
+                    <td class="number">${formatCurrency(item.currentPrice)}</td>
+                    <td class="number">${formatCurrency(item.currentValue)}</td>
+                    <td class="number">${formatCurrency(item.totalCost)}</td>
+                    <td class="number ${glClass}">${formatCurrency(item.unrealizedGainLoss)}</td>
+                    <td class="number ${glClass}">${item.percentGainLoss.toFixed(2)}%</td>
+                </tr>
+            `;
+        });
+
+        const totalGlClass = totalGainLoss >= 0 ? 'positive' : 'negative';
+        html += `
+            <tr class="portfolio-total">
+                <td colspan="4"><strong>TOTAL PORTFOLIO</strong></td>
+                <td class="number"><strong>${formatCurrency(totalValue)}</strong></td>
+                <td class="number"><strong>${formatCurrency(totalCost)}</strong></td>
+                <td class="number ${totalGlClass}"><strong>${formatCurrency(totalGainLoss)}</strong></td>
+                <td class="number ${totalGlClass}"><strong>${totalPercentGainLoss.toFixed(2)}%</strong></td>
+            </tr>
+        `;
+    }
+
+    html += `
+            </tbody>
+        </table>
+    `;
+
+    container.innerHTML = html;
+}
+
+function renderTradeHistory() {
+    const container = document.getElementById('tradeHistory');
+    if (!container) return;
+
+    // Get recent trades (last 20)
+    const recentTrades = [...appState.trades]
+        .sort((a, b) => new Date(b.date) - new Date(a.date))
+        .slice(0, 20);
+
+    let html = `
+        <table class="trades-table">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Type</th>
+                    <th>Commodity</th>
+                    <th>Quantity</th>
+                    <th>Price</th>
+                    <th>Total Value</th>
+                    <th>Gain/Loss</th>
+                </tr>
+            </thead>
+            <tbody>
+    `;
+
+    if (recentTrades.length === 0) {
+        html += `
+            <tr>
+                <td colspan="7" style="text-align: center; color: #999;">No trades yet</td>
+            </tr>
+        `;
+    } else {
+        recentTrades.forEach(trade => {
+            const commodity = appState.commodities.find(c => c.id === trade.commodityId);
+            const typeClass = trade.type === 'buy' ? 'trade-buy' : 'trade-sell';
+            const typeDisplay = trade.type === 'buy' ? 'BUY' : 'SELL';
+
+            let gainLossDisplay = '-';
+            let glClass = '';
+            if (trade.type === 'sell' && trade.gainLoss !== undefined) {
+                glClass = trade.gainLoss >= 0 ? 'positive' : 'negative';
+                gainLossDisplay = formatCurrency(trade.gainLoss);
+            }
+
+            html += `
+                <tr>
+                    <td>${escapeHtml(trade.date)}</td>
+                    <td><span class="trade-type-badge ${typeClass}">${typeDisplay}</span></td>
+                    <td>${commodity ? escapeHtml(commodity.name) : 'Unknown'}</td>
+                    <td class="number">${trade.quantity}</td>
+                    <td class="number">${formatCurrency(trade.price)}</td>
+                    <td class="number">${formatCurrency(trade.totalValue)}</td>
+                    <td class="number ${glClass}">${gainLossDisplay}</td>
+                </tr>
+            `;
+        });
+    }
+
+    html += `
+            </tbody>
+        </table>
+    `;
+
+    container.innerHTML = html;
+}
+
+function executeBuy(commodityId) {
+    const quantityInput = document.getElementById(`buy-quantity-${commodityId}`);
+    const quantity = parseFloat(quantityInput.value);
+
+    if (!quantity || quantity <= 0) {
+        alert('Please enter a valid quantity!');
+        return;
+    }
+
+    if (buyCommodity(commodityId, quantity)) {
+        quantityInput.value = '1';
+        render();
+
+        const commodity = appState.commodities.find(c => c.id === commodityId);
+        showCommodityStatus(`Successfully purchased ${quantity} units of ${commodity.name}!`, 'success');
+    }
+}
+
+function executeSell(commodityId) {
+    const quantityInput = document.getElementById(`sell-quantity-${commodityId}`);
+    const quantity = parseFloat(quantityInput.value);
+
+    if (!quantity || quantity <= 0) {
+        alert('Please enter a valid quantity!');
+        return;
+    }
+
+    if (sellCommodity(commodityId, quantity)) {
+        quantityInput.value = '1';
+        render();
+
+        const commodity = appState.commodities.find(c => c.id === commodityId);
+        showCommodityStatus(`Successfully sold ${quantity} units of ${commodity.name}!`, 'success');
+    }
+}
+
+function showCommodityStatus(message, type) {
+    const statusEl = document.getElementById('commodityStatus');
+    if (!statusEl) return;
+
+    statusEl.textContent = message;
+    statusEl.className = `status-message ${type}`;
+
+    setTimeout(() => {
+        statusEl.textContent = '';
+        statusEl.className = 'status-message';
+    }, 3000);
+}
+
+// ====================================
 // CALCULATIONS
 // ====================================
 
@@ -1259,6 +1782,8 @@ function render() {
         renderIncomeStatement();
     } else if (activeTab === 'cash-flow') {
         renderCashFlowStatement();
+    } else if (activeTab === 'commodities') {
+        renderCommoditiesMarket();
     }
 }
 
@@ -1318,3 +1843,86 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initial render
     render();
 });
+
+// ====================================
+// COMMODITIES SYSTEM DOCUMENTATION
+// ====================================
+
+/*
+ * ADDING NEW COMMODITIES
+ *
+ * To add a new commodity to the trading system, follow these steps:
+ *
+ * 1. Add the commodity to appState.commodities array:
+ *    - Each commodity needs: id, name, description, price
+ *    - Use appState.nextCommodityId for the ID and increment it
+ *
+ *    Example:
+ *    appState.commodities.push({
+ *        id: appState.nextCommodityId++,
+ *        name: 'Gold',
+ *        description: 'Precious metal commodity',
+ *        price: 100.00
+ *    });
+ *
+ * 2. Add a corresponding inventory account to appState.accounts:
+ *    - Account type must be 'Asset'
+ *    - Name format: 'Inventory - [Commodity Name]'
+ *    - Account number should follow your numbering scheme (e.g., 1230, 1240, etc.)
+ *
+ *    Example:
+ *    appState.accounts.push({
+ *        id: appState.nextAccountId++,
+ *        number: '1230',
+ *        name: 'Inventory - Gold',
+ *        type: 'Asset',
+ *        openingBalance: 0
+ *    });
+ *
+ * 3. The system will automatically:
+ *    - Display the new commodity in the trading interface
+ *    - Track purchases using FIFO cost basis
+ *    - Record all transactions in the double-entry bookkeeping system
+ *    - Calculate gains/losses on sales
+ *    - Show the commodity in portfolio view
+ *    - Include it in trade history
+ *
+ * ACCOUNTING ENTRIES
+ *
+ * Purchase Transaction:
+ *   DR: Inventory - [Commodity] (Asset increases)
+ *   CR: Cash (Asset decreases)
+ *
+ * Sale Transaction (with gain):
+ *   DR: Cash (Asset increases - proceeds)
+ *   CR: Inventory - [Commodity] (Asset decreases - cost basis)
+ *   CR: Gains on Commodity Sales (Revenue increases - gain amount)
+ *
+ * Sale Transaction (with loss):
+ *   DR: Cash (Asset increases - proceeds)
+ *   DR: Losses on Commodity Sales (Expense increases - loss amount)
+ *   CR: Inventory - [Commodity] (Asset decreases - cost basis)
+ *
+ * COST BASIS TRACKING
+ *
+ * The system uses FIFO (First In, First Out) for cost basis tracking:
+ * - Each purchase creates a new "lot" with quantity, cost basis, and purchase date
+ * - When selling, the oldest lots are sold first
+ * - Gains/losses are calculated as: Sale Proceeds - Cost Basis of sold units
+ *
+ * MODIFYING COMMODITY PRICES
+ *
+ * To change a commodity's price:
+ *
+ * 1. Find the commodity in appState.commodities
+ * 2. Update its price property
+ * 3. Call render() to update the UI
+ *
+ * Example:
+ * const commodity = appState.commodities.find(c => c.name === 'Power');
+ * commodity.price = 55.00;
+ * render();
+ *
+ * Note: Price changes only affect future trades. Existing portfolio lots
+ * retain their original cost basis for accurate gain/loss calculations.
+ */

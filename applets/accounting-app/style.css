@@ -540,6 +540,178 @@ footer a:hover {
     text-decoration: underline;
 }
 
+/* Commodities Market */
+.commodities-container {
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+}
+
+.commodities-section {
+    background: white;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 1.5rem;
+}
+
+.commodities-section h3 {
+    font-size: 1.2rem;
+    margin-bottom: 1rem;
+    color: var(--primary-color);
+}
+
+.cash-balance {
+    background: #f0fdf4;
+    border: 2px solid var(--success-color);
+    padding: 1rem;
+    border-radius: 4px;
+    font-size: 1.1rem;
+    margin-bottom: 1.5rem;
+    text-align: center;
+}
+
+.commodity-card {
+    background: var(--header-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 1rem;
+    margin-bottom: 1rem;
+}
+
+.commodity-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+}
+
+.commodity-header h4 {
+    font-size: 1.2rem;
+    margin: 0;
+}
+
+.commodity-price {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--primary-color);
+}
+
+.price-unit {
+    font-size: 0.8rem;
+    font-weight: 400;
+    color: #6b7280;
+}
+
+.commodity-description {
+    color: #6b7280;
+    font-size: 0.9rem;
+    margin-bottom: 0.75rem;
+}
+
+.commodity-inventory {
+    font-size: 0.9rem;
+    margin-bottom: 1rem;
+    padding: 0.5rem;
+    background: white;
+    border-radius: 4px;
+}
+
+.commodity-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+.trade-section {
+    background: white;
+    padding: 1rem;
+    border-radius: 4px;
+    border: 1px solid var(--border-color);
+}
+
+.trade-section h5 {
+    font-size: 0.9rem;
+    margin-bottom: 0.75rem;
+    color: var(--text-color);
+}
+
+.trade-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.quantity-input {
+    padding: 0.5rem;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 0.9rem;
+}
+
+.trade-total {
+    font-size: 1.1rem;
+    font-weight: 600;
+    padding: 0.5rem;
+    background: var(--header-bg);
+    border-radius: 4px;
+    text-align: center;
+    font-family: 'Courier New', monospace;
+}
+
+.portfolio-table,
+.trades-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: white;
+}
+
+.portfolio-table th,
+.portfolio-table td,
+.trades-table th,
+.trades-table td {
+    padding: 0.75rem;
+    text-align: left;
+    border: 1px solid var(--border-color);
+    font-size: 0.9rem;
+}
+
+.portfolio-table th,
+.trades-table th {
+    background: var(--header-bg);
+    font-weight: 600;
+}
+
+.portfolio-total {
+    background: var(--header-bg);
+    font-weight: 600;
+}
+
+.positive {
+    color: var(--success-color);
+}
+
+.negative {
+    color: var(--danger-color);
+}
+
+.trade-type-badge {
+    display: inline-block;
+    padding: 0.25rem 0.5rem;
+    border-radius: 3px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: white;
+}
+
+.trade-type-badge.trade-buy {
+    background: var(--success-color);
+}
+
+.trade-type-badge.trade-sell {
+    background: var(--danger-color);
+}
+
 /* Utility Classes */
 .hidden {
     display: none !important;
@@ -592,5 +764,21 @@ footer a:hover {
     .account-table .btn {
         padding: 0.2rem 0.4rem;
         font-size: 0.7rem;
+    }
+
+    .commodity-actions {
+        grid-template-columns: 1fr;
+    }
+
+    .portfolio-table,
+    .trades-table {
+        font-size: 0.8rem;
+    }
+
+    .portfolio-table th,
+    .portfolio-table td,
+    .trades-table th,
+    .trades-table td {
+        padding: 0.5rem;
     }
 }

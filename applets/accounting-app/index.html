@@ -34,6 +34,7 @@
             <button class="tab-btn active" data-tab="accounts">Chart of Accounts</button>
             <button class="tab-btn" data-tab="transactions">Transactions</button>
             <button class="tab-btn" data-tab="transaction-types">Transaction Types</button>
+            <button class="tab-btn" data-tab="commodities">Commodities Market</button>
             <button class="tab-btn" data-tab="balance-sheet">Balance Sheet</button>
             <button class="tab-btn" data-tab="income-statement">Income Statement</button>
             <button class="tab-btn" data-tab="cash-flow">Cash Flow Statement</button>
@@ -307,6 +308,35 @@
                 <tbody id="transactionTypesTableBody">
                 </tbody>
             </table>
+        </section>
+
+        <!-- Commodities Market Section -->
+        <section id="commodities" class="tab-content">
+            <h2>Commodities Market</h2>
+            <span id="commodityStatus" class="status-message"></span>
+
+            <div class="commodities-container">
+                <div class="commodities-section">
+                    <h3>Trading</h3>
+                    <div id="commoditiesList">
+                        <!-- Commodities cards will be rendered here -->
+                    </div>
+                </div>
+
+                <div class="commodities-section">
+                    <h3>Portfolio</h3>
+                    <div id="portfolioView">
+                        <!-- Portfolio table will be rendered here -->
+                    </div>
+                </div>
+
+                <div class="commodities-section">
+                    <h3>Trade History</h3>
+                    <div id="tradeHistory">
+                        <!-- Trade history table will be rendered here -->
+                    </div>
+                </div>
+            </div>
         </section>
 
         <!-- Balance Sheet Section -->
