@@ -4,31 +4,145 @@
 
 let appState = {
     accounts: [
-        { id: 1, number: '1000', name: 'Cash', type: 'Asset', openingBalance: 10000 },
-        { id: 2, number: '1100', name: 'Accounts Receivable', type: 'Asset', openingBalance: 5000 },
-        { id: 3, number: '1200', name: 'Inventory', type: 'Asset', openingBalance: 8000 },
-        { id: 4, number: '1500', name: 'Equipment', type: 'Asset', openingBalance: 15000 },
-        { id: 5, number: '2000', name: 'Accounts Payable', type: 'Liability', openingBalance: 3000 },
-        { id: 6, number: '2100', name: 'Notes Payable', type: 'Liability', openingBalance: 10000 },
-        { id: 7, number: '3000', name: 'Common Stock', type: 'Equity', openingBalance: 20000 },
-        { id: 8, number: '3100', name: 'Retained Earnings', type: 'Equity', openingBalance: 5000 },
-        { id: 9, number: '4000', name: 'Sales Revenue', type: 'Revenue', openingBalance: 0 },
-        { id: 10, number: '4100', name: 'Service Revenue', type: 'Revenue', openingBalance: 0 },
-        { id: 11, number: '5000', name: 'Cost of Goods Sold', type: 'Expense', openingBalance: 0 },
-        { id: 12, number: '5100', name: 'Rent Expense', type: 'Expense', openingBalance: 0 },
-        { id: 13, number: '5200', name: 'Utilities Expense', type: 'Expense', openingBalance: 0 },
-        { id: 14, number: '5300', name: 'Salaries Expense', type: 'Expense', openingBalance: 0 },
-        { id: 15, number: '5400', name: 'Supplies Expense', type: 'Expense', openingBalance: 0 }
+        { id: 1, number: '1000', name: 'Cash', type: 'Asset', openingBalance: 0 },
+        { id: 2, number: '1100', name: 'Accounts Receivable', type: 'Asset', openingBalance: 0 },
+        { id: 3, number: '1200', name: 'Inventory', type: 'Asset', openingBalance: 0 },
+        { id: 4, number: '1300', name: 'Real Estate', type: 'Asset', openingBalance: 0 },
+        { id: 5, number: '1500', name: 'Equipment', type: 'Asset', openingBalance: 0 },
+        { id: 6, number: '2000', name: 'Accounts Payable', type: 'Liability', openingBalance: 0 },
+        { id: 7, number: '2100', name: 'Notes Payable', type: 'Liability', openingBalance: 0 },
+        { id: 19, number: '2200', name: 'Bank Loans Payable', type: 'Liability', openingBalance: 0 },
+        { id: 8, number: '3000', name: 'Common Stock', type: 'Equity', openingBalance: 0 },
+        { id: 9, number: '3100', name: 'Retained Earnings', type: 'Equity', openingBalance: 0 },
+        { id: 10, number: '4000', name: 'Sales Revenue', type: 'Revenue', openingBalance: 0 },
+        { id: 11, number: '4100', name: 'Service Revenue', type: 'Revenue', openingBalance: 0 },
+        { id: 12, number: '4200', name: 'Gains on Commodity Sales', type: 'Revenue', openingBalance: 0 },
+        { id: 13, number: '5000', name: 'Cost of Goods Sold', type: 'Expense', openingBalance: 0 },
+        { id: 14, number: '5100', name: 'Rent Expense', type: 'Expense', openingBalance: 0 },
+        { id: 15, number: '5200', name: 'Utilities Expense', type: 'Expense', openingBalance: 0 },
+        { id: 16, number: '5300', name: 'Salaries Expense', type: 'Expense', openingBalance: 0 },
+        { id: 17, number: '5400', name: 'Supplies Expense', type: 'Expense', openingBalance: 0 },
+        { id: 18, number: '5500', name: 'Losses on Commodity Sales', type: 'Expense', openingBalance: 0 },
+        { id: 20, number: '5600', name: 'Interest Expense', type: 'Expense', openingBalance: 0 }
     ],
     transactions: [],
-    transactionTypes: [],
+    transactionTypes: [
+        {
+            id: 1,
+            name: 'Owner Investment',
+            entries: [
+                { account: 1, type: 'debit' },  // Cash
+                { account: 7, type: 'credit' }  // Common Stock
+            ]
+        },
+        {
+            id: 2,
+            name: 'Cash Sale',
+            entries: [
+                { account: 1, type: 'debit' },  // Cash
+                { account: 9, type: 'credit' }  // Sales Revenue
+            ]
+        },
+        {
+            id: 3,
+            name: 'Credit Sale',
+            entries: [
+                { account: 2, type: 'debit' },  // Accounts Receivable
+                { account: 9, type: 'credit' }  // Sales Revenue
+            ]
+        },
+        {
+            id: 4,
+            name: 'Collect Payment',
+            entries: [
+                { account: 1, type: 'debit' },  // Cash
+                { account: 2, type: 'credit' }  // Accounts Receivable
+            ]
+        },
+        {
+            id: 5,
+            name: 'Purchase Inventory (Cash)',
+            entries: [
+                { account: 3, type: 'debit' },  // Inventory
+                { account: 1, type: 'credit' }  // Cash
+            ]
+        },
+        {
+            id: 6,
+            name: 'Purchase Inventory (Credit)',
+            entries: [
+                { account: 3, type: 'debit' },  // Inventory
+                { account: 5, type: 'credit' }  // Accounts Payable
+            ]
+        },
+        {
+            id: 7,
+            name: 'Pay Supplier',
+            entries: [
+                { account: 5, type: 'debit' },  // Accounts Payable
+                { account: 1, type: 'credit' }  // Cash
+            ]
+        },
+        {
+            id: 8,
+            name: 'Pay Rent',
+            entries: [
+                { account: 13, type: 'debit' },  // Rent Expense
+                { account: 1, type: 'credit' }   // Cash
+            ]
+        },
+        {
+            id: 9,
+            name: 'Pay Utilities',
+            entries: [
+                { account: 14, type: 'debit' },  // Utilities Expense
+                { account: 1, type: 'credit' }   // Cash
+            ]
+        },
+        {
+            id: 10,
+            name: 'Pay Salaries',
+            entries: [
+                { account: 15, type: 'debit' },  // Salaries Expense
+                { account: 1, type: 'credit' }   // Cash
+            ]
+        }
+    ],
+    commodities: [
+        { id: 1, name: 'Power', description: 'Electrical energy units', price: 50.00 },
+        { id: 2, name: 'Water', description: 'Fresh water units', price: 25.00 }
+    ],
+    portfolio: {
+        // Structure: { commodityId: { lots: [{ quantity, costBasis, purchaseDate, purchaseId }] } }
+    },
+    trades: [],
+    map: {
+        gridSize: 20, // 20x20 grid
+        pricePerSquare: 500,
+        ownedSquares: []
+    },
     settings: {
         companyName: 'My Business',
+        adminMode: false,
         lastUpdated: new Date().toISOString()
     },
-    nextAccountId: 16,
+    simulation: {
+        startRealTime: Date.now(), // Real-world timestamp when simulation started
+        lastSaveRealTime: Date.now(), // Real-world timestamp when last saved
+        simulationTime: 0, // Elapsed simulation time in milliseconds since Day 1, 00:00:00
+        paused: false // Whether time progression is paused
+    },
+    loans: [],
+    // Structure: { id, principal, interestRate, termMonths, suggestedMonthlyPayment, remainingBalance, issueDate, maturityDate, lastInterestAccrualDate, status }
+    shares: [],
+    // Structure: { id, numberOfShares, pricePerShare, totalValue, issueDate, holder }
+    nextAccountId: 21,
     nextTransactionId: 1,
-    nextTransactionTypeId: 1
+    nextTransactionTypeId: 11,
+    nextCommodityId: 3,
+    nextTradeId: 1,
+    nextLoanId: 1,
+    nextShareIssuanceId: 1
 };
 
 let hasUnsavedChanges = false;
@@ -39,7 +153,12 @@ let hasUnsavedChanges = false;
 
 function encodeSessionKey() {
     try {
+        // Update simulation time before saving
+        const currentSimTime = getCurrentSimulationTime();
+        appState.simulation.simulationTime = currentSimTime;
+        appState.simulation.lastSaveRealTime = Date.now();
         appState.settings.lastUpdated = new Date().toISOString();
+
         const jsonString = JSON.stringify(appState);
         // Use base64 encoding for simplicity
         return btoa(encodeURIComponent(jsonString));
@@ -91,10 +210,44 @@ function restoreSessionKey() {
     }
 
     if (confirm('This will replace all current data. Continue?')) {
+        // Calculate time elapsed since session was saved
+        const realTimeElapsed = Date.now() - restoredState.simulation.lastSaveRealTime;
+
+        // Add elapsed time to simulation time (real-time progression)
+        restoredState.simulation.simulationTime += realTimeElapsed;
+        restoredState.simulation.lastSaveRealTime = Date.now();
+
         appState = restoredState;
+
+        // Backward compatibility: add missing properties for older session keys
+        if (!appState.shares) {
+            appState.shares = [];
+        }
+        if (!appState.nextShareIssuanceId) {
+            appState.nextShareIssuanceId = 1;
+        }
+
+        // Update old loan structure to new structure
+        if (appState.loans) {
+            appState.loans.forEach(loan => {
+                if (loan.monthlyPayment && !loan.suggestedMonthlyPayment) {
+                    loan.suggestedMonthlyPayment = loan.monthlyPayment;
+                }
+                if (!loan.lastInterestAccrualDate && loan.issueDate) {
+                    loan.lastInterestAccrualDate = loan.issueDate;
+                }
+                // Remove old properties
+                delete loan.monthlyPayment;
+                delete loan.nextPaymentDate;
+            });
+        }
+
         hasUnsavedChanges = false;
         keyInput.value = '';
         showStatus('restoreStatus', 'Data restored successfully!', 'success');
+
+        // Restart the clock with the updated time
+        startSimulationClock();
         render();
     }
 }
@@ -108,6 +261,39 @@ function showStatus(elementId, message, type) {
         statusElement.textContent = '';
         statusElement.className = 'status-message';
     }, 3000);
+}
+
+// ====================================
+// ADMIN MODE
+// ====================================
+
+function toggleAdminMode() {
+    appState.settings.adminMode = !appState.settings.adminMode;
+    hasUnsavedChanges = true;
+    render();
+    updateAdminModeUI();
+}
+
+function updateAdminModeUI() {
+    const adminToggle = document.getElementById('adminModeToggle');
+    const adminTab = document.querySelector('[data-tab="admin"]');
+
+    if (adminToggle) {
+        adminToggle.checked = appState.settings.adminMode;
+    }
+
+    // Show/hide admin tab
+    if (adminTab) {
+        if (appState.settings.adminMode) {
+            adminTab.classList.remove('hidden');
+        } else {
+            adminTab.classList.add('hidden');
+            // If admin tab is active, switch to accounts tab
+            if (adminTab.classList.contains('active')) {
+                document.querySelector('[data-tab="accounts"]').click();
+            }
+        }
+    }
 }
 
 // ====================================
@@ -137,6 +323,12 @@ function setupTabNavigation() {
                 renderIncomeStatement();
             } else if (targetTab === 'cash-flow') {
                 renderCashFlowStatement();
+            } else if (targetTab === 'commodities') {
+                renderCommoditiesMarket();
+            } else if (targetTab === 'map') {
+                renderMap();
+            } else if (targetTab === 'finance') {
+                renderFinancialManagement();
             }
         });
     });
@@ -167,14 +359,18 @@ function renderAccounts() {
     // Helper function to create account row
     const createAccountRow = (account, balance) => {
         const row = document.createElement('tr');
-        row.innerHTML = `
-            <td>${escapeHtml(account.number)}</td>
-            <td>${escapeHtml(account.name)}</td>
-            <td class="number">${formatCurrency(balance)}</td>
+        const actionsHtml = appState.settings.adminMode ? `
             <td>
                 <button class="btn" onclick="editAccount(${account.id})">Edit</button>
                 <button class="btn btn-danger" onclick="deleteAccount(${account.id})">Delete</button>
             </td>
+        ` : '<td>-</td>';
+
+        row.innerHTML = `
+            <td>${escapeHtml(account.number)}</td>
+            <td>${escapeHtml(account.name)}</td>
+            <td class="number">${formatCurrency(balance)}</td>
+            ${actionsHtml}
         `;
         return row;
     };
@@ -305,14 +501,18 @@ function renderTransactionTypes() {
             return `${entryType}: ${accountName}`;
         }).join(', ');
 
-        const row = document.createElement('tr');
-        row.innerHTML = `
-            <td>${escapeHtml(type.name)}</td>
-            <td>${entriesDisplay}</td>
+        const actionsHtml = appState.settings.adminMode ? `
             <td>
                 <button class="btn" onclick="editTransactionType(${type.id})">Edit</button>
                 <button class="btn btn-danger" onclick="deleteTransactionType(${type.id})">Delete</button>
             </td>
+        ` : '<td>-</td>';
+
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td>${escapeHtml(type.name)}</td>
+            <td>${entriesDisplay}</td>
+            ${actionsHtml}
         `;
         tbody.appendChild(row);
     });
@@ -649,6 +849,13 @@ function renderTransactions() {
             amountDisplay = formatCurrency(transaction.amount);
         }
 
+        const actionsHtml = appState.settings.adminMode ? `
+            <td>
+                <button class="btn" onclick="editTransaction(${transaction.id})">Edit</button>
+                <button class="btn btn-danger" onclick="deleteTransaction(${transaction.id})">Delete</button>
+            </td>
+        ` : '<td>-</td>';
+
         const row = document.createElement('tr');
         row.innerHTML = `
             <td>${escapeHtml(transaction.date)}</td>
@@ -656,10 +863,7 @@ function renderTransactions() {
             <td>${debitDisplay}</td>
             <td>${creditDisplay}</td>
             <td class="number">${amountDisplay}</td>
-            <td>
-                <button class="btn" onclick="editTransaction(${transaction.id})">Edit</button>
-                <button class="btn btn-danger" onclick="deleteTransaction(${transaction.id})">Delete</button>
-            </td>
+            ${actionsHtml}
         `;
         tbody.appendChild(row);
     });
@@ -836,6 +1040,1283 @@ function updateAccountDropdowns() {
         if (typeDebitSelect) typeDebitSelect.add(new Option(optionText, account.id));
         if (typeCreditSelect) typeCreditSelect.add(new Option(optionText, account.id));
     });
+}
+
+// ====================================
+// COMMODITIES TRADING
+// ====================================
+
+function getCashAccount() {
+    return appState.accounts.find(a => a.number === '1000');
+}
+
+function getInventoryAccount() {
+    return appState.accounts.find(a => a.number === '1200');
+}
+
+function getGainsAccount() {
+    return appState.accounts.find(a => a.number === '4200');
+}
+
+function getLossesAccount() {
+    return appState.accounts.find(a => a.number === '5500');
+}
+
+function getCashBalance() {
+    const balances = calculateAccountBalances();
+    const cashAccount = getCashAccount();
+    return cashAccount ? (balances[cashAccount.id] || 0) : 0;
+}
+
+function getPortfolioCommodity(commodityId) {
+    if (!appState.portfolio[commodityId]) {
+        appState.portfolio[commodityId] = { lots: [] };
+    }
+    return appState.portfolio[commodityId];
+}
+
+function getTotalQuantity(commodityId) {
+    const portfolio = getPortfolioCommodity(commodityId);
+    return portfolio.lots.reduce((sum, lot) => sum + lot.quantity, 0);
+}
+
+function getAverageCostBasis(commodityId) {
+    const portfolio = getPortfolioCommodity(commodityId);
+    const totalQuantity = getTotalQuantity(commodityId);
+    if (totalQuantity === 0) return 0;
+
+    const totalCost = portfolio.lots.reduce((sum, lot) => sum + (lot.quantity * lot.costBasis), 0);
+    return totalCost / totalQuantity;
+}
+
+function buyCommodity(commodityId, quantity) {
+    const commodity = appState.commodities.find(c => c.id === commodityId);
+    if (!commodity) {
+        alert('Commodity not found!');
+        return false;
+    }
+
+    const totalCost = quantity * commodity.price;
+    const cashBalance = getCashBalance();
+
+    if (totalCost > cashBalance) {
+        alert(`Insufficient cash! You need ${formatCurrency(totalCost)} but only have ${formatCurrency(cashBalance)}`);
+        return false;
+    }
+
+    // Get accounts
+    const cashAccount = getCashAccount();
+    const inventoryAccount = getInventoryAccount();
+
+    if (!cashAccount || !inventoryAccount) {
+        alert('Required accounts not found!');
+        return false;
+    }
+
+    // Create transaction: Debit Inventory, Credit Cash
+    const transaction = {
+        id: appState.nextTransactionId++,
+        date: getTodayDate(),
+        description: `Purchase ${quantity} units of ${commodity.name} @ ${formatCurrency(commodity.price)}/unit`,
+        debitAccount: inventoryAccount.id,
+        creditAccount: cashAccount.id,
+        amount: totalCost
+    };
+
+    appState.transactions.push(transaction);
+
+    // Add to portfolio using FIFO (create new lot)
+    const portfolio = getPortfolioCommodity(commodityId);
+    portfolio.lots.push({
+        quantity: quantity,
+        costBasis: commodity.price,
+        purchaseDate: getTodayDate(),
+        purchaseId: appState.nextTradeId
+    });
+
+    // Record trade
+    appState.trades.push({
+        id: appState.nextTradeId++,
+        type: 'buy',
+        commodityId: commodityId,
+        quantity: quantity,
+        price: commodity.price,
+        totalValue: totalCost,
+        date: getTodayDate(),
+        transactionId: transaction.id
+    });
+
+    hasUnsavedChanges = true;
+    return true;
+}
+
+function sellCommodity(commodityId, quantity) {
+    const commodity = appState.commodities.find(c => c.id === commodityId);
+    if (!commodity) {
+        alert('Commodity not found!');
+        return false;
+    }
+
+    const availableQuantity = getTotalQuantity(commodityId);
+    if (quantity > availableQuantity) {
+        alert(`Insufficient inventory! You have ${availableQuantity} units but trying to sell ${quantity}`);
+        return false;
+    }
+
+    // Calculate proceeds
+    const totalProceeds = quantity * commodity.price;
+
+    // Get accounts
+    const cashAccount = getCashAccount();
+    const inventoryAccount = getInventoryAccount();
+    const gainsAccount = getGainsAccount();
+    const lossesAccount = getLossesAccount();
+
+    if (!cashAccount || !inventoryAccount || !gainsAccount || !lossesAccount) {
+        alert('Required accounts not found!');
+        return false;
+    }
+
+    // Calculate cost basis using FIFO
+    const portfolio = getPortfolioCommodity(commodityId);
+    let remainingToSell = quantity;
+    let totalCostBasis = 0;
+    const soldLots = [];
+
+    for (let i = 0; i < portfolio.lots.length && remainingToSell > 0; i++) {
+        const lot = portfolio.lots[i];
+        const quantityFromLot = Math.min(lot.quantity, remainingToSell);
+
+        totalCostBasis += quantityFromLot * lot.costBasis;
+        soldLots.push({
+            lotIndex: i,
+            quantity: quantityFromLot,
+            costBasis: lot.costBasis
+        });
+
+        remainingToSell -= quantityFromLot;
+    }
+
+    // Calculate gain/loss
+    const gainLoss = totalProceeds - totalCostBasis;
+    const isGain = gainLoss >= 0;
+
+    // Create multi-entry transaction
+    const entries = [
+        // Debit Cash for proceeds
+        { account: cashAccount.id, type: 'debit', amount: totalProceeds },
+        // Credit Inventory for cost basis
+        { account: inventoryAccount.id, type: 'credit', amount: totalCostBasis }
+    ];
+
+    // Add gain or loss entry
+    if (Math.abs(gainLoss) > 0.01) {
+        if (isGain) {
+            // Credit Gains
+            entries.push({ account: gainsAccount.id, type: 'credit', amount: Math.abs(gainLoss) });
+        } else {
+            // Debit Losses
+            entries.push({ account: lossesAccount.id, type: 'debit', amount: Math.abs(gainLoss) });
+        }
+    }
+
+    const transaction = {
+        id: appState.nextTransactionId++,
+        date: getTodayDate(),
+        description: `Sale ${quantity} units of ${commodity.name} @ ${formatCurrency(commodity.price)}/unit (${isGain ? 'Gain' : 'Loss'}: ${formatCurrency(Math.abs(gainLoss))})`,
+        entries: entries
+    };
+
+    appState.transactions.push(transaction);
+
+    // Update portfolio - remove sold quantities using FIFO
+    soldLots.forEach(sold => {
+        const lot = portfolio.lots[sold.lotIndex];
+        lot.quantity -= sold.quantity;
+    });
+
+    // Remove empty lots
+    portfolio.lots = portfolio.lots.filter(lot => lot.quantity > 0);
+
+    // Record trade
+    appState.trades.push({
+        id: appState.nextTradeId++,
+        type: 'sell',
+        commodityId: commodityId,
+        quantity: quantity,
+        price: commodity.price,
+        totalValue: totalProceeds,
+        costBasis: totalCostBasis,
+        gainLoss: gainLoss,
+        date: getTodayDate(),
+        transactionId: transaction.id
+    });
+
+    hasUnsavedChanges = true;
+    return true;
+}
+
+function getPortfolioSummary() {
+    const summary = [];
+
+    appState.commodities.forEach(commodity => {
+        const quantity = getTotalQuantity(commodity.id);
+        if (quantity > 0 || true) { // Show all commodities
+            const avgCost = getAverageCostBasis(commodity.id);
+            const currentValue = quantity * commodity.price;
+            const totalCost = quantity * avgCost;
+            const unrealizedGainLoss = currentValue - totalCost;
+            const percentGainLoss = totalCost > 0 ? (unrealizedGainLoss / totalCost) * 100 : 0;
+
+            summary.push({
+                commodity: commodity,
+                quantity: quantity,
+                avgCost: avgCost,
+                currentPrice: commodity.price,
+                currentValue: currentValue,
+                totalCost: totalCost,
+                unrealizedGainLoss: unrealizedGainLoss,
+                percentGainLoss: percentGainLoss
+            });
+        }
+    });
+
+    return summary;
+}
+
+function renderCommoditiesMarket() {
+    renderCommoditiesList();
+    renderPortfolio();
+    renderTradeHistory();
+}
+
+function renderCommoditiesList() {
+    const container = document.getElementById('commoditiesList');
+    if (!container) return;
+
+    const cashBalance = getCashBalance();
+
+    container.innerHTML = `
+        <div class="cash-balance">
+            <strong>Available Cash:</strong> ${formatCurrency(cashBalance)}
+        </div>
+    `;
+
+    appState.commodities.forEach(commodity => {
+        const quantity = getTotalQuantity(commodity.id);
+
+        const commodityCard = document.createElement('div');
+        commodityCard.className = 'commodity-card';
+        commodityCard.innerHTML = `
+            <div class="commodity-header">
+                <h4>${escapeHtml(commodity.name)}</h4>
+                <div class="commodity-price">${formatCurrency(commodity.price)}<span class="price-unit">/unit</span></div>
+            </div>
+            <p class="commodity-description">${escapeHtml(commodity.description)}</p>
+            <div class="commodity-inventory">In Portfolio: <strong>${quantity} units</strong></div>
+
+            <div class="commodity-actions">
+                <div class="trade-section">
+                    <h5>Buy</h5>
+                    <div class="trade-controls">
+                        <input type="number" id="buy-quantity-${commodity.id}" min="1" step="1" value="1" class="quantity-input">
+                        <div class="trade-total" id="buy-total-${commodity.id}">${formatCurrency(commodity.price)}</div>
+                        <button class="btn btn-primary" onclick="executeBuy(${commodity.id})">Buy</button>
+                    </div>
+                </div>
+
+                <div class="trade-section">
+                    <h5>Sell</h5>
+                    <div class="trade-controls">
+                        <input type="number" id="sell-quantity-${commodity.id}" min="1" step="1" value="1" max="${quantity}" class="quantity-input" ${quantity === 0 ? 'disabled' : ''}>
+                        <div class="trade-total" id="sell-total-${commodity.id}">${formatCurrency(commodity.price)}</div>
+                        <button class="btn btn-danger" onclick="executeSell(${commodity.id})" ${quantity === 0 ? 'disabled' : ''}>Sell</button>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        container.appendChild(commodityCard);
+    });
+
+    // Add event listeners for quantity inputs
+    appState.commodities.forEach(commodity => {
+        const buyInput = document.getElementById(`buy-quantity-${commodity.id}`);
+        const sellInput = document.getElementById(`sell-quantity-${commodity.id}`);
+        const buyTotal = document.getElementById(`buy-total-${commodity.id}`);
+        const sellTotal = document.getElementById(`sell-total-${commodity.id}`);
+
+        if (buyInput) {
+            buyInput.addEventListener('input', () => {
+                const quantity = parseFloat(buyInput.value) || 0;
+                buyTotal.textContent = formatCurrency(quantity * commodity.price);
+            });
+        }
+
+        if (sellInput) {
+            sellInput.addEventListener('input', () => {
+                const quantity = parseFloat(sellInput.value) || 0;
+                sellTotal.textContent = formatCurrency(quantity * commodity.price);
+            });
+        }
+    });
+}
+
+function renderPortfolio() {
+    const container = document.getElementById('portfolioView');
+    if (!container) return;
+
+    const summary = getPortfolioSummary();
+    const totalValue = summary.reduce((sum, item) => sum + item.currentValue, 0);
+    const totalCost = summary.reduce((sum, item) => sum + item.totalCost, 0);
+    const totalGainLoss = totalValue - totalCost;
+    const totalPercentGainLoss = totalCost > 0 ? (totalGainLoss / totalCost) * 100 : 0;
+
+    let html = `
+        <table class="portfolio-table">
+            <thead>
+                <tr>
+                    <th>Commodity</th>
+                    <th>Quantity</th>
+                    <th>Avg Cost</th>
+                    <th>Current Price</th>
+                    <th>Market Value</th>
+                    <th>Total Cost</th>
+                    <th>Unrealized G/L</th>
+                    <th>G/L %</th>
+                </tr>
+            </thead>
+            <tbody>
+    `;
+
+    if (summary.filter(s => s.quantity > 0).length === 0) {
+        html += `
+            <tr>
+                <td colspan="8" style="text-align: center; color: #999;">No commodities in portfolio</td>
+            </tr>
+        `;
+    } else {
+        summary.filter(s => s.quantity > 0).forEach(item => {
+            const glClass = item.unrealizedGainLoss >= 0 ? 'positive' : 'negative';
+            html += `
+                <tr>
+                    <td>${escapeHtml(item.commodity.name)}</td>
+                    <td class="number">${item.quantity}</td>
+                    <td class="number">${formatCurrency(item.avgCost)}</td>
+                    <td class="number">${formatCurrency(item.currentPrice)}</td>
+                    <td class="number">${formatCurrency(item.currentValue)}</td>
+                    <td class="number">${formatCurrency(item.totalCost)}</td>
+                    <td class="number ${glClass}">${formatCurrency(item.unrealizedGainLoss)}</td>
+                    <td class="number ${glClass}">${item.percentGainLoss.toFixed(2)}%</td>
+                </tr>
+            `;
+        });
+
+        const totalGlClass = totalGainLoss >= 0 ? 'positive' : 'negative';
+        html += `
+            <tr class="portfolio-total">
+                <td colspan="4"><strong>TOTAL PORTFOLIO</strong></td>
+                <td class="number"><strong>${formatCurrency(totalValue)}</strong></td>
+                <td class="number"><strong>${formatCurrency(totalCost)}</strong></td>
+                <td class="number ${totalGlClass}"><strong>${formatCurrency(totalGainLoss)}</strong></td>
+                <td class="number ${totalGlClass}"><strong>${totalPercentGainLoss.toFixed(2)}%</strong></td>
+            </tr>
+        `;
+    }
+
+    html += `
+            </tbody>
+        </table>
+    `;
+
+    container.innerHTML = html;
+}
+
+function renderTradeHistory() {
+    const container = document.getElementById('tradeHistory');
+    if (!container) return;
+
+    // Get recent trades (last 20)
+    const recentTrades = [...appState.trades]
+        .sort((a, b) => new Date(b.date) - new Date(a.date))
+        .slice(0, 20);
+
+    let html = `
+        <table class="trades-table">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Type</th>
+                    <th>Commodity</th>
+                    <th>Quantity</th>
+                    <th>Price</th>
+                    <th>Total Value</th>
+                    <th>Gain/Loss</th>
+                </tr>
+            </thead>
+            <tbody>
+    `;
+
+    if (recentTrades.length === 0) {
+        html += `
+            <tr>
+                <td colspan="7" style="text-align: center; color: #999;">No trades yet</td>
+            </tr>
+        `;
+    } else {
+        recentTrades.forEach(trade => {
+            const commodity = appState.commodities.find(c => c.id === trade.commodityId);
+            const typeClass = trade.type === 'buy' ? 'trade-buy' : 'trade-sell';
+            const typeDisplay = trade.type === 'buy' ? 'BUY' : 'SELL';
+
+            let gainLossDisplay = '-';
+            let glClass = '';
+            if (trade.type === 'sell' && trade.gainLoss !== undefined) {
+                glClass = trade.gainLoss >= 0 ? 'positive' : 'negative';
+                gainLossDisplay = formatCurrency(trade.gainLoss);
+            }
+
+            html += `
+                <tr>
+                    <td>${escapeHtml(trade.date)}</td>
+                    <td><span class="trade-type-badge ${typeClass}">${typeDisplay}</span></td>
+                    <td>${commodity ? escapeHtml(commodity.name) : 'Unknown'}</td>
+                    <td class="number">${trade.quantity}</td>
+                    <td class="number">${formatCurrency(trade.price)}</td>
+                    <td class="number">${formatCurrency(trade.totalValue)}</td>
+                    <td class="number ${glClass}">${gainLossDisplay}</td>
+                </tr>
+            `;
+        });
+    }
+
+    html += `
+            </tbody>
+        </table>
+    `;
+
+    container.innerHTML = html;
+}
+
+function executeBuy(commodityId) {
+    const quantityInput = document.getElementById(`buy-quantity-${commodityId}`);
+    const quantity = parseFloat(quantityInput.value);
+
+    if (!quantity || quantity <= 0) {
+        alert('Please enter a valid quantity!');
+        return;
+    }
+
+    if (buyCommodity(commodityId, quantity)) {
+        quantityInput.value = '1';
+        render();
+
+        const commodity = appState.commodities.find(c => c.id === commodityId);
+        showCommodityStatus(`Successfully purchased ${quantity} units of ${commodity.name}!`, 'success');
+    }
+}
+
+function executeSell(commodityId) {
+    const quantityInput = document.getElementById(`sell-quantity-${commodityId}`);
+    const quantity = parseFloat(quantityInput.value);
+
+    if (!quantity || quantity <= 0) {
+        alert('Please enter a valid quantity!');
+        return;
+    }
+
+    if (sellCommodity(commodityId, quantity)) {
+        quantityInput.value = '1';
+        render();
+
+        const commodity = appState.commodities.find(c => c.id === commodityId);
+        showCommodityStatus(`Successfully sold ${quantity} units of ${commodity.name}!`, 'success');
+    }
+}
+
+function showCommodityStatus(message, type) {
+    const statusEl = document.getElementById('commodityStatus');
+    if (!statusEl) return;
+
+    statusEl.textContent = message;
+    statusEl.className = `status-message ${type}`;
+
+    setTimeout(() => {
+        statusEl.textContent = '';
+        statusEl.className = 'status-message';
+    }, 3000);
+}
+
+// ====================================
+// MAP / REAL ESTATE
+// ====================================
+
+function getRealEstateAccount() {
+    return appState.accounts.find(a => a.number === '1300');
+}
+
+function isSquareOwned(x, y) {
+    return appState.map.ownedSquares.some(square => square.x === x && square.y === y);
+}
+
+function purchaseProperty(x, y) {
+    // Check if already owned
+    if (isSquareOwned(x, y)) {
+        alert('You already own this property!');
+        return false;
+    }
+
+    // Check if within grid bounds
+    if (x < 0 || x >= appState.map.gridSize || y < 0 || y >= appState.map.gridSize) {
+        alert('Property is outside the map!');
+        return false;
+    }
+
+    const price = appState.map.pricePerSquare;
+    const cashBalance = getCashBalance();
+
+    if (price > cashBalance) {
+        alert(`Insufficient cash! You need ${formatCurrency(price)} but only have ${formatCurrency(cashBalance)}`);
+        return false;
+    }
+
+    // Get accounts
+    const cashAccount = getCashAccount();
+    const realEstateAccount = getRealEstateAccount();
+
+    if (!cashAccount || !realEstateAccount) {
+        alert('Required accounts not found!');
+        return false;
+    }
+
+    // Create transaction: Debit Real Estate, Credit Cash
+    const transaction = {
+        id: appState.nextTransactionId++,
+        date: getTodayDate(),
+        description: `Purchase property at (${x}, ${y}) for ${formatCurrency(price)}`,
+        debitAccount: realEstateAccount.id,
+        creditAccount: cashAccount.id,
+        amount: price
+    };
+
+    appState.transactions.push(transaction);
+
+    // Add to owned squares
+    appState.map.ownedSquares.push({
+        x: x,
+        y: y,
+        purchaseDate: getTodayDate(),
+        purchasePrice: price,
+        transactionId: transaction.id
+    });
+
+    hasUnsavedChanges = true;
+    return true;
+}
+
+function renderMap() {
+    const container = document.getElementById('mapGrid');
+    if (!container) return;
+
+    const cashBalance = getCashBalance();
+    const ownedCount = appState.map.ownedSquares.length;
+    const totalValue = ownedCount * appState.map.pricePerSquare;
+
+    // Update stats
+    const statsHtml = `
+        <div class="map-stats">
+            <div class="stat-item">
+                <span class="stat-label">Properties Owned:</span>
+                <span class="stat-value">${ownedCount} squares</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Total Real Estate Value:</span>
+                <span class="stat-value">${formatCurrency(totalValue)}</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Available Cash:</span>
+                <span class="stat-value">${formatCurrency(cashBalance)}</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Price per Square:</span>
+                <span class="stat-value">${formatCurrency(appState.map.pricePerSquare)}</span>
+            </div>
+        </div>
+    `;
+
+    document.getElementById('mapStats').innerHTML = statsHtml;
+
+    // Render grid
+    container.innerHTML = '';
+    container.style.gridTemplateColumns = `repeat(${appState.map.gridSize}, 1fr)`;
+    container.style.gridTemplateRows = `repeat(${appState.map.gridSize}, 1fr)`;
+
+    for (let y = 0; y < appState.map.gridSize; y++) {
+        for (let x = 0; x < appState.map.gridSize; x++) {
+            const square = document.createElement('div');
+            const owned = isSquareOwned(x, y);
+
+            square.className = `map-square ${owned ? 'owned' : 'available'}`;
+            square.dataset.x = x;
+            square.dataset.y = y;
+            square.title = owned ? `Owned property (${x}, ${y})` : `Available (${x}, ${y}) - ${formatCurrency(appState.map.pricePerSquare)}`;
+
+            if (!owned) {
+                square.addEventListener('click', () => {
+                    if (confirm(`Purchase property at (${x}, ${y}) for ${formatCurrency(appState.map.pricePerSquare)}?`)) {
+                        if (purchaseProperty(x, y)) {
+                            render();
+                            showMapStatus(`Successfully purchased property at (${x}, ${y})!`, 'success');
+                        }
+                    }
+                });
+            }
+
+            container.appendChild(square);
+        }
+    }
+}
+
+function showMapStatus(message, type) {
+    const statusEl = document.getElementById('mapStatus');
+    if (!statusEl) return;
+
+    statusEl.textContent = message;
+    statusEl.className = `status-message ${type}`;
+
+    setTimeout(() => {
+        statusEl.textContent = '';
+        statusEl.className = 'status-message';
+    }, 3000);
+}
+
+// ====================================
+// LOAN MANAGEMENT SYSTEM
+// ====================================
+
+// Helper function to add months to a date string
+function addMonthsToDate(dateString, months) {
+    const parts = dateString.match(/Y(\d+)-M(\d+)-D(\d+)/);
+    if (!parts) return dateString;
+
+    let year = parseInt(parts[1]);
+    let month = parseInt(parts[2]);
+    let day = parseInt(parts[3]);
+
+    month += months;
+
+    while (month > 12) {
+        month -= 12;
+        year++;
+    }
+
+    return `Y${year}-M${month}-D${day}`;
+}
+
+// Calculate company's creditworthiness and determine loan terms
+function calculateCreditworthiness() {
+    const balances = calculateAccountBalances();
+
+    const cashBalance = balances[1] || 0; // Cash account
+    const totalCurrentAssets = (balances[1] || 0) + (balances[2] || 0) + (balances[3] || 0); // Cash + AR + Inventory
+    const totalCurrentLiabilities = (balances[6] || 0) + (balances[7] || 0); // AP + Notes Payable
+    const realEstateValue = balances[4] || 0; // Real Estate
+    const totalLoans = balances[19] || 0; // Bank Loans Payable
+
+    // Calculate total assets and total liabilities
+    const totalAssets = totalCurrentAssets + realEstateValue;
+    const totalLiabilities = totalCurrentLiabilities + totalLoans;
+
+    const currentRatio = totalCurrentLiabilities > 0 ? totalCurrentAssets / totalCurrentLiabilities : 10;
+    const debtToAssetRatio = totalAssets > 0 ? totalLiabilities / totalAssets : 0;
+
+    // Calculate credit score (0-100) - for display purposes
+    let creditScore = 50; // Base score
+
+    // Current ratio factor (0-25 points)
+    if (currentRatio >= 2.0) creditScore += 25;
+    else if (currentRatio >= 1.5) creditScore += 20;
+    else if (currentRatio >= 1.0) creditScore += 15;
+    else if (currentRatio >= 0.5) creditScore += 5;
+
+    // Debt to asset ratio factor (0-25 points)
+    if (debtToAssetRatio <= 0.3) creditScore += 25;
+    else if (debtToAssetRatio <= 0.5) creditScore += 20;
+    else if (debtToAssetRatio <= 0.7) creditScore += 10;
+    else if (debtToAssetRatio <= 0.9) creditScore += 5;
+
+    // Cash factor (0-15 points)
+    if (cashBalance >= 50000) creditScore += 15;
+    else if (cashBalance >= 25000) creditScore += 10;
+    else if (cashBalance >= 10000) creditScore += 5;
+
+    // Real estate factor (0-10 points)
+    if (realEstateValue >= 20000) creditScore += 10;
+    else if (realEstateValue >= 10000) creditScore += 7;
+    else if (realEstateValue >= 5000) creditScore += 4;
+
+    creditScore = Math.min(100, Math.max(0, creditScore));
+
+    // Maximum loan formula: (0.75 × Total Assets) - Total Liabilities
+    const maxLoanAmount = Math.max(0, Math.floor((totalAssets * 0.75) - totalLiabilities));
+
+    // Interest rate formula: 3% + (Debt-to-Asset Ratio × 17%)
+    // This reflects risk - higher debt ratio means higher interest rate
+    const baseRate = 3.0;
+    const rateRange = 17.0;
+    const interestRate = baseRate + (Math.min(1.0, debtToAssetRatio) * rateRange);
+
+    return {
+        creditScore,
+        maxLoanAmount,
+        interestRate: parseFloat(interestRate.toFixed(2)),
+        currentRatio: parseFloat(currentRatio.toFixed(2)),
+        debtToAssetRatio: parseFloat(debtToAssetRatio.toFixed(3)),
+        cashBalance,
+        totalAssets,
+        totalLiabilities
+    };
+}
+
+// Apply for and receive a bank loan
+function applyForLoan(principal, termMonths) {
+    const creditInfo = calculateCreditworthiness();
+
+    if (principal > creditInfo.maxLoanAmount) {
+        alert(`Loan amount exceeds maximum allowed (${formatCurrency(creditInfo.maxLoanAmount)}). Your creditworthiness limits your borrowing capacity.`);
+        return false;
+    }
+
+    if (principal < 1000) {
+        alert('Minimum loan amount is $1,000.');
+        return false;
+    }
+
+    const interestRate = creditInfo.interestRate / 100;
+    const monthlyRate = interestRate / 12;
+    const suggestedMonthlyPayment = principal * (monthlyRate * Math.pow(1 + monthlyRate, termMonths)) / (Math.pow(1 + monthlyRate, termMonths) - 1);
+
+    const cashAccount = getCashAccount();
+    const loansPayableAccount = appState.accounts.find(a => a.number === '2200');
+
+    const issueDate = getTodayDate();
+
+    // Create loan record
+    const loan = {
+        id: appState.nextLoanId++,
+        principal,
+        interestRate: creditInfo.interestRate,
+        termMonths,
+        suggestedMonthlyPayment: parseFloat(suggestedMonthlyPayment.toFixed(2)),
+        remainingBalance: principal,
+        issueDate,
+        maturityDate: addMonthsToDate(issueDate, termMonths),
+        lastInterestAccrualDate: issueDate,
+        status: 'active'
+    };
+
+    appState.loans.push(loan);
+
+    // Record transaction: Debit Cash, Credit Bank Loans Payable
+    const transaction = {
+        id: appState.nextTransactionId++,
+        date: issueDate,
+        description: `Bank loan received - ${termMonths} months @ ${creditInfo.interestRate}% APR`,
+        debitAccount: cashAccount.id,
+        creditAccount: loansPayableAccount.id,
+        amount: principal
+    };
+
+    appState.transactions.push(transaction);
+    hasUnsavedChanges = true;
+
+    return true;
+}
+
+// Accrue monthly interest on a loan (compounds by adding to balance)
+function accrueInterestOnLoan(loanId) {
+    const loan = appState.loans.find(l => l.id === loanId);
+    if (!loan || loan.status !== 'active') {
+        return false;
+    }
+
+    const today = getTodayDate();
+    const monthlyRate = (loan.interestRate / 100) / 12;
+
+    // Calculate months elapsed since last accrual
+    const lastAccrual = loan.lastInterestAccrualDate;
+    const monthsElapsed = getMonthsBetweenDates(lastAccrual, today);
+
+    if (monthsElapsed < 1) {
+        // Not enough time has passed
+        return false;
+    }
+
+    const loansPayableAccount = appState.accounts.find(a => a.number === '2200');
+    const interestExpenseAccount = appState.accounts.find(a => a.number === '5600');
+
+    // Accrue interest for each month
+    for (let i = 0; i < monthsElapsed; i++) {
+        const interestAmount = loan.remainingBalance * monthlyRate;
+        const accrualDate = addMonthsToDate(lastAccrual, i + 1);
+
+        // Record transaction: Debit Interest Expense, Credit Bank Loans Payable
+        const transaction = {
+            id: appState.nextTransactionId++,
+            date: accrualDate,
+            description: `Loan #${loanId} - Interest accrued for month`,
+            debitAccount: interestExpenseAccount.id,
+            creditAccount: loansPayableAccount.id,
+            amount: parseFloat(interestAmount.toFixed(2))
+        };
+
+        appState.transactions.push(transaction);
+
+        // Add interest to remaining balance (compound)
+        loan.remainingBalance += interestAmount;
+    }
+
+    // Update last accrual date
+    loan.lastInterestAccrualDate = addMonthsToDate(lastAccrual, monthsElapsed);
+    hasUnsavedChanges = true;
+    return true;
+}
+
+// Make a loan payment (user-specified amount)
+function makeLoanPayment(loanId, paymentAmount) {
+    const loan = appState.loans.find(l => l.id === loanId);
+    if (!loan || loan.status !== 'active') {
+        alert('Loan not found or already paid off.');
+        return false;
+    }
+
+    if (paymentAmount < 0.01) {
+        alert('Payment amount must be at least $0.01.');
+        return false;
+    }
+
+    const cashBalance = getCashBalance();
+    if (cashBalance < paymentAmount) {
+        alert(`Insufficient cash to make payment. Available: ${formatCurrency(cashBalance)}`);
+        return false;
+    }
+
+    // First, accrue any pending interest
+    accrueInterestOnLoan(loanId);
+
+    const cashAccount = getCashAccount();
+    const loansPayableAccount = appState.accounts.find(a => a.number === '2200');
+
+    const paymentDate = getTodayDate();
+
+    // Payment goes entirely toward principal
+    const actualPayment = Math.min(paymentAmount, loan.remainingBalance);
+
+    // Record transaction: Debit Bank Loans Payable, Credit Cash
+    const transaction = {
+        id: appState.nextTransactionId++,
+        date: paymentDate,
+        description: `Loan #${loanId} payment - Principal reduction`,
+        debitAccount: loansPayableAccount.id,
+        creditAccount: cashAccount.id,
+        amount: parseFloat(actualPayment.toFixed(2))
+    };
+
+    appState.transactions.push(transaction);
+
+    // Reduce loan balance
+    loan.remainingBalance -= actualPayment;
+
+    if (loan.remainingBalance <= 0.01) {
+        loan.remainingBalance = 0;
+        loan.status = 'paid';
+    }
+
+    hasUnsavedChanges = true;
+    return true;
+}
+
+// Helper function to calculate months between two dates
+function getMonthsBetweenDates(date1, date2) {
+    const parts1 = date1.match(/Y(\d+)-M(\d+)-D(\d+)/);
+    const parts2 = date2.match(/Y(\d+)-M(\d+)-D(\d+)/);
+
+    if (!parts1 || !parts2) return 0;
+
+    const year1 = parseInt(parts1[1]);
+    const month1 = parseInt(parts1[2]);
+    const year2 = parseInt(parts2[1]);
+    const month2 = parseInt(parts2[2]);
+
+    return (year2 - year1) * 12 + (month2 - month1);
+}
+
+// ====================================
+// EQUITY MANAGEMENT
+// ====================================
+
+// Issue shares to raise capital
+function issueShares(numberOfShares, pricePerShare, holder = 'Owner') {
+    if (numberOfShares < 1) {
+        alert('Must issue at least 1 share.');
+        return false;
+    }
+
+    if (pricePerShare < 0.01) {
+        alert('Share price must be at least $0.01.');
+        return false;
+    }
+
+    const totalValue = numberOfShares * pricePerShare;
+    const issueDate = getTodayDate();
+
+    const shareIssuance = {
+        id: appState.nextShareIssuanceId++,
+        numberOfShares,
+        pricePerShare,
+        totalValue,
+        issueDate,
+        holder
+    };
+
+    appState.shares.push(shareIssuance);
+
+    // Find accounts
+    const cashAccount = appState.accounts.find(a => a.number === '1000');
+    const commonStockAccount = appState.accounts.find(a => a.number === '3000');
+
+    // Record transaction: Debit Cash, Credit Common Stock
+    const transaction = {
+        id: appState.nextTransactionId++,
+        date: issueDate,
+        description: `Issued ${numberOfShares} shares at ${formatCurrency(pricePerShare)} per share to ${holder}`,
+        debitAccount: cashAccount.id,
+        creditAccount: commonStockAccount.id,
+        amount: totalValue
+    };
+
+    appState.transactions.push(transaction);
+    hasUnsavedChanges = true;
+    return true;
+}
+
+// Get total shares outstanding and total equity value
+function getSharesSummary() {
+    const totalShares = appState.shares.reduce((sum, issuance) => sum + issuance.numberOfShares, 0);
+    const totalEquityValue = appState.shares.reduce((sum, issuance) => sum + issuance.totalValue, 0);
+
+    // Get Common Stock account balance
+    const balances = calculateAccountBalances();
+    const commonStockBalance = balances[8] || 0; // Common Stock account ID 8
+
+    return {
+        totalShares,
+        totalEquityValue,
+        commonStockBalance,
+        averagePricePerShare: totalShares > 0 ? totalEquityValue / totalShares : 0
+    };
+}
+
+// Render financial management section
+function renderFinancialManagement() {
+    const container = document.getElementById('financeContent');
+    if (!container) return;
+
+    container.innerHTML = `
+        <div class="finance-sections">
+            <!-- Loan Management Section -->
+            <div class="finance-section">
+                <h3 class="section-title">Bank Loans</h3>
+                <div id="loanManagementContent"></div>
+            </div>
+
+            <!-- Equity Management Section -->
+            <div class="finance-section">
+                <h3 class="section-title">Equity & Shares</h3>
+                <div id="equityContent"></div>
+            </div>
+
+            <!-- Placeholder for future sections -->
+            <!--
+            <div class="finance-section">
+                <h3 class="section-title">Corporate Bonds</h3>
+                <div id="bondsContent"></div>
+            </div>
+            -->
+        </div>
+    `;
+
+    // Render management content
+    renderLoanManagement();
+    renderEquityManagement();
+}
+
+// Render loan management content
+function renderLoanManagement() {
+    const container = document.getElementById('loanManagementContent');
+    if (!container) return;
+
+    const creditInfo = calculateCreditworthiness();
+
+    // Loans section
+    const loansHtml = appState.loans
+        .filter(loan => loan.status === 'active')
+        .map(loan => {
+            const monthsSinceAccrual = getMonthsBetweenDates(loan.lastInterestAccrualDate, getTodayDate());
+            return `
+            <tr>
+                <td>#${loan.id}</td>
+                <td>${formatCurrency(loan.principal)}</td>
+                <td>${loan.interestRate}%</td>
+                <td>${loan.termMonths} mo.</td>
+                <td>${formatCurrency(loan.remainingBalance)}</td>
+                <td>${loan.lastInterestAccrualDate}</td>
+                <td>${monthsSinceAccrual} mo.</td>
+                <td>
+                    <div class="payment-input-group">
+                        <input type="number" id="paymentAmount_${loan.id}" min="0.01" step="0.01" placeholder="${formatCurrency(loan.suggestedMonthlyPayment)}" class="payment-input">
+                        <button class="btn btn-sm" onclick="const amt = parseFloat(document.getElementById('paymentAmount_${loan.id}').value); if(amt && makeLoanPayment(${loan.id}, amt)) { render(); }">Pay</button>
+                    </div>
+                    <small class="suggested-payment">Suggested: ${formatCurrency(loan.suggestedMonthlyPayment)}</small>
+                </td>
+            </tr>
+            `;
+        }).join('') || '<tr><td colspan="8">No active loans</td></tr>';
+
+    container.innerHTML = `
+        <div class="loan-overview">
+            <h4>Company Financial Health</h4>
+            <div class="loan-stats">
+                <div class="stat-card">
+                    <div class="stat-label">Total Assets</div>
+                    <div class="stat-value">${formatCurrency(creditInfo.totalAssets)}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Total Liabilities</div>
+                    <div class="stat-value">${formatCurrency(creditInfo.totalLiabilities)}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Debt-to-Asset Ratio</div>
+                    <div class="stat-value">${creditInfo.debtToAssetRatio}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Current Ratio</div>
+                    <div class="stat-value">${creditInfo.currentRatio}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Cash Balance</div>
+                    <div class="stat-value">${formatCurrency(creditInfo.cashBalance)}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Credit Score</div>
+                    <div class="stat-value">${creditInfo.creditScore}/100</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="loan-formulas">
+            <div class="formula-card">
+                <h5>Maximum Loan Calculation</h5>
+                <div class="formula-display">
+                    <div class="formula-line">
+                        <span class="formula-label">Formula:</span>
+                        <code>(0.75 × Total Assets) - Total Liabilities</code>
+                    </div>
+                    <div class="formula-line">
+                        <span class="formula-label">Calculation:</span>
+                        <code>(0.75 × ${formatCurrency(creditInfo.totalAssets)}) - ${formatCurrency(creditInfo.totalLiabilities)}</code>
+                    </div>
+                    <div class="formula-line">
+                        <span class="formula-label">Result:</span>
+                        <strong>${formatCurrency(creditInfo.maxLoanAmount)}</strong>
+                    </div>
+                </div>
+            </div>
+
+            <div class="formula-card">
+                <h5>Interest Rate Calculation</h5>
+                <div class="formula-display">
+                    <div class="formula-line">
+                        <span class="formula-label">Formula:</span>
+                        <code>3% + (Debt-to-Asset Ratio × 17%)</code>
+                    </div>
+                    <div class="formula-line">
+                        <span class="formula-label">Calculation:</span>
+                        <code>3% + (${creditInfo.debtToAssetRatio} × 17%)</code>
+                    </div>
+                    <div class="formula-line">
+                        <span class="formula-label">Result:</span>
+                        <strong>${creditInfo.interestRate}% APR</strong>
+                    </div>
+                </div>
+                <p class="formula-note">Higher debt-to-asset ratio = higher risk = higher interest rate</p>
+            </div>
+        </div>
+
+        <div class="loan-section">
+            <h4>Apply for Bank Loan</h4>
+            <div class="loan-application">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="loanAmount">Loan Amount (Max: ${formatCurrency(creditInfo.maxLoanAmount)}):</label>
+                        <input type="number" id="loanAmount" min="1000" step="1000" placeholder="e.g., 10000">
+                    </div>
+                    <div class="form-group">
+                        <label for="loanTerm">Term (months):</label>
+                        <select id="loanTerm">
+                            <option value="12">12 months</option>
+                            <option value="24">24 months</option>
+                            <option value="36">36 months</option>
+                            <option value="60">60 months</option>
+                            <option value="120">120 months (10 years)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <button class="btn btn-primary" onclick="if(applyForLoan(parseFloat(document.getElementById('loanAmount').value), parseInt(document.getElementById('loanTerm').value))) { render(); document.getElementById('loanAmount').value = ''; }">Apply for Loan</button>
+                    </div>
+                </div>
+                <p class="help-text">Loans are approved based on your company's financial position. The interest rate of ${creditInfo.interestRate}% reflects your current debt-to-asset ratio of ${creditInfo.debtToAssetRatio}.</p>
+            </div>
+
+            <h4>Outstanding Loans</h4>
+            <div class="loan-info-box">
+                <strong>How Loan Interest Works:</strong>
+                <p>Interest accrues monthly and compounds (adds to your loan balance). When you make a payment, any accrued interest is first added to the balance, then your payment reduces the principal. You can pay any amount you want - the "Suggested" payment is the amortized amount that would pay off the loan in the original term.</p>
+            </div>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Principal</th>
+                        <th>Rate (APR)</th>
+                        <th>Term</th>
+                        <th>Current Balance</th>
+                        <th>Last Interest Accrual</th>
+                        <th>Months Since</th>
+                        <th>Payment Amount</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${loansHtml}
+                </tbody>
+            </table>
+        </div>
+    `;
+}
+
+// Render equity management content
+function renderEquityManagement() {
+    const container = document.getElementById('equityContent');
+    if (!container) return;
+
+    const sharesSummary = getSharesSummary();
+
+    // Share issuances table
+    const sharesHtml = appState.shares
+        .map(issuance => `
+            <tr>
+                <td>#${issuance.id}</td>
+                <td>${issuance.numberOfShares}</td>
+                <td>${formatCurrency(issuance.pricePerShare)}</td>
+                <td>${formatCurrency(issuance.totalValue)}</td>
+                <td>${issuance.holder}</td>
+                <td>${issuance.issueDate}</td>
+            </tr>
+        `).join('') || '<tr><td colspan="6">No shares issued yet</td></tr>';
+
+    container.innerHTML = `
+        <div class="equity-overview">
+            <h4>Company Equity Summary</h4>
+            <div class="equity-stats">
+                <div class="stat-card">
+                    <div class="stat-label">Total Shares Outstanding</div>
+                    <div class="stat-value">${sharesSummary.totalShares.toLocaleString()}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Total Equity Value</div>
+                    <div class="stat-value">${formatCurrency(sharesSummary.totalEquityValue)}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Common Stock Balance</div>
+                    <div class="stat-value">${formatCurrency(sharesSummary.commonStockBalance)}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Average Price Per Share</div>
+                    <div class="stat-value">${formatCurrency(sharesSummary.averagePricePerShare)}</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="equity-section">
+            <h4>Issue New Shares</h4>
+            <div class="equity-issuance">
+                <p class="help-text">Contribute capital to the company in exchange for shares of stock. The capital increases the company's cash and equity accounts.</p>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="shareQuantity">Number of Shares:</label>
+                        <input type="number" id="shareQuantity" min="1" step="1" placeholder="e.g., 100">
+                    </div>
+                    <div class="form-group">
+                        <label for="sharePrice">Price Per Share:</label>
+                        <input type="number" id="sharePrice" min="0.01" step="0.01" placeholder="e.g., 10.00">
+                    </div>
+                    <div class="form-group">
+                        <label for="shareHolder">Issue To:</label>
+                        <select id="shareHolder">
+                            <option value="Owner">Owner</option>
+                            <option value="Public">Public</option>
+                            <option value="Investor">Investor</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <button class="btn btn-primary" onclick="if(issueShares(parseInt(document.getElementById('shareQuantity').value), parseFloat(document.getElementById('sharePrice').value), document.getElementById('shareHolder').value)) { render(); document.getElementById('shareQuantity').value = ''; document.getElementById('sharePrice').value = ''; }">Issue Shares</button>
+                    </div>
+                </div>
+                <div id="sharePreview" class="share-preview hidden">
+                    <strong>Total Capital Raised:</strong> <span id="sharePreviewAmount">$0.00</span>
+                </div>
+            </div>
+
+            <h4>Share Issuance History</h4>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Shares</th>
+                        <th>Price/Share</th>
+                        <th>Total Value</th>
+                        <th>Issued To</th>
+                        <th>Date</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${sharesHtml}
+                </tbody>
+            </table>
+        </div>
+    `;
+
+    // Add event listeners for share preview
+    const quantityInput = document.getElementById('shareQuantity');
+    const priceInput = document.getElementById('sharePrice');
+    const previewDiv = document.getElementById('sharePreview');
+    const previewAmount = document.getElementById('sharePreviewAmount');
+
+    const updatePreview = () => {
+        const quantity = parseInt(quantityInput.value) || 0;
+        const price = parseFloat(priceInput.value) || 0;
+        const total = quantity * price;
+
+        if (quantity > 0 && price > 0) {
+            previewDiv.classList.remove('hidden');
+            previewAmount.textContent = formatCurrency(total);
+        } else {
+            previewDiv.classList.add('hidden');
+        }
+    };
+
+    quantityInput.addEventListener('input', updatePreview);
+    priceInput.addEventListener('input', updatePreview);
 }
 
 // ====================================
@@ -1200,28 +2681,310 @@ function formatCurrency(amount) {
     }).format(amount);
 }
 
-function formatDate(dateString) {
-    const date = new Date(dateString + 'T00:00:00');
-    return date.toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
-    });
+// ====================================
+// SIMULATION TIME SYSTEM
+// ====================================
+// Custom calendar: Years × 12 months × 28 days × 24 hours
+// Time progresses in real-time (1 real second = 1 simulation second)
+
+const SIMULATION_CONFIG = {
+    DAYS_PER_MONTH: 28,
+    MONTHS_PER_YEAR: 12,
+    HOURS_PER_DAY: 24,
+    MINUTES_PER_HOUR: 60,
+    SECONDS_PER_MINUTE: 60,
+    MS_PER_SECOND: 1000
+};
+
+// Calculate derived constants
+SIMULATION_CONFIG.SECONDS_PER_MINUTE = 60;
+SIMULATION_CONFIG.SECONDS_PER_HOUR = SIMULATION_CONFIG.SECONDS_PER_MINUTE * SIMULATION_CONFIG.MINUTES_PER_HOUR;
+SIMULATION_CONFIG.SECONDS_PER_DAY = SIMULATION_CONFIG.SECONDS_PER_HOUR * SIMULATION_CONFIG.HOURS_PER_DAY;
+SIMULATION_CONFIG.SECONDS_PER_MONTH = SIMULATION_CONFIG.SECONDS_PER_DAY * SIMULATION_CONFIG.DAYS_PER_MONTH;
+SIMULATION_CONFIG.SECONDS_PER_YEAR = SIMULATION_CONFIG.SECONDS_PER_MONTH * SIMULATION_CONFIG.MONTHS_PER_YEAR;
+SIMULATION_CONFIG.MS_PER_DAY = SIMULATION_CONFIG.SECONDS_PER_DAY * SIMULATION_CONFIG.MS_PER_SECOND;
+SIMULATION_CONFIG.MS_PER_MONTH = SIMULATION_CONFIG.SECONDS_PER_MONTH * SIMULATION_CONFIG.MS_PER_SECOND;
+SIMULATION_CONFIG.MS_PER_YEAR = SIMULATION_CONFIG.SECONDS_PER_YEAR * SIMULATION_CONFIG.MS_PER_SECOND;
+
+let simulationClockInterval = null;
+
+// Convert milliseconds to custom calendar time
+function msToCalendarTime(ms) {
+    let remainingSeconds = Math.floor(ms / SIMULATION_CONFIG.MS_PER_SECOND);
+
+    const years = Math.floor(remainingSeconds / SIMULATION_CONFIG.SECONDS_PER_YEAR);
+    remainingSeconds -= years * SIMULATION_CONFIG.SECONDS_PER_YEAR;
+
+    const months = Math.floor(remainingSeconds / SIMULATION_CONFIG.SECONDS_PER_MONTH);
+    remainingSeconds -= months * SIMULATION_CONFIG.SECONDS_PER_MONTH;
+
+    const days = Math.floor(remainingSeconds / SIMULATION_CONFIG.SECONDS_PER_DAY);
+    remainingSeconds -= days * SIMULATION_CONFIG.SECONDS_PER_DAY;
+
+    const hours = Math.floor(remainingSeconds / SIMULATION_CONFIG.SECONDS_PER_HOUR);
+    remainingSeconds -= hours * SIMULATION_CONFIG.SECONDS_PER_HOUR;
+
+    const minutes = Math.floor(remainingSeconds / SIMULATION_CONFIG.SECONDS_PER_MINUTE);
+    remainingSeconds -= minutes * SIMULATION_CONFIG.SECONDS_PER_MINUTE;
+
+    const seconds = remainingSeconds;
+
+    return {
+        year: years + 1,   // Year 1+
+        month: months + 1, // Month 1-12
+        day: days + 1,     // Day 1-28
+        hour: hours,       // Hour 0-23
+        minute: minutes,   // Minute 0-59
+        second: seconds    // Second 0-59
+    };
 }
 
+// Convert custom calendar time to milliseconds
+function calendarTimeToMs(year, month, day, hour, minute, second) {
+    const yearMs = (year - 1) * SIMULATION_CONFIG.MS_PER_YEAR;
+    const monthMs = (month - 1) * SIMULATION_CONFIG.MS_PER_MONTH;
+    const dayMs = (day - 1) * SIMULATION_CONFIG.MS_PER_DAY;
+    const hourMs = hour * SIMULATION_CONFIG.SECONDS_PER_HOUR * SIMULATION_CONFIG.MS_PER_SECOND;
+    const minuteMs = minute * SIMULATION_CONFIG.SECONDS_PER_MINUTE * SIMULATION_CONFIG.MS_PER_SECOND;
+    const secondMs = second * SIMULATION_CONFIG.MS_PER_SECOND;
+
+    return yearMs + monthMs + dayMs + hourMs + minuteMs + secondMs;
+}
+
+// Get current simulation time
+function getCurrentSimulationTime() {
+    if (appState.simulation.paused) {
+        return appState.simulation.simulationTime;
+    }
+
+    const realTimeElapsed = Date.now() - appState.simulation.lastSaveRealTime;
+    return appState.simulation.simulationTime + realTimeElapsed;
+}
+
+// Format simulation time as string
+function formatSimulationTime(ms) {
+    const time = msToCalendarTime(ms);
+    const hourStr = String(time.hour).padStart(2, '0');
+    const minuteStr = String(time.minute).padStart(2, '0');
+    const secondStr = String(time.second).padStart(2, '0');
+    return `Year ${time.year}, Month ${time.month}, Day ${time.day} - ${hourStr}:${minuteStr}:${secondStr}`;
+}
+
+// Format simulation time for short display
+function formatSimulationTimeShort(ms) {
+    const time = msToCalendarTime(ms);
+    const hourStr = String(time.hour).padStart(2, '0');
+    const minuteStr = String(time.minute).padStart(2, '0');
+    const secondStr = String(time.second).padStart(2, '0');
+    return `Y${time.year} M${time.month} D${time.day} ${hourStr}:${minuteStr}:${secondStr}`;
+}
+
+// Get current simulation time as formatted string
 function getTodayDate() {
-    return new Date().toISOString().split('T')[0];
+    const ms = getCurrentSimulationTime();
+    const time = msToCalendarTime(ms);
+    return `Y${time.year}-M${time.month}-D${time.day}`;
 }
 
+// Format date string for display
+function formatDate(dateString) {
+    // Handle both old ISO dates and new simulation dates
+    if (dateString.includes('-')) {
+        if (dateString.startsWith('Y')) {
+            // New format: Y1-M1-D15
+            const parts = dateString.match(/Y(\d+)-M(\d+)-D(\d+)/);
+            if (parts) {
+                return `Year ${parts[1]}, Month ${parts[2]}, Day ${parts[3]}`;
+            }
+        } else if (dateString.startsWith('M')) {
+            // Old format without year: M1-D15
+            const parts = dateString.match(/M(\d+)-D(\d+)/);
+            if (parts) {
+                return `Year 1, Month ${parts[1]}, Day ${parts[2]}`;
+            }
+        } else {
+            // Old format: YYYY-MM-DD
+            const date = new Date(dateString + 'T00:00:00');
+            return date.toLocaleDateString('en-US', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+            });
+        }
+    }
+    return dateString;
+}
+
+// Get first day of current month
 function getFirstDayOfMonth() {
-    const date = new Date();
-    return new Date(date.getFullYear(), date.getMonth(), 1).toISOString().split('T')[0];
+    const ms = getCurrentSimulationTime();
+    const time = msToCalendarTime(ms);
+    return `Y${time.year}-M${time.month}-D1`;
 }
 
+// Get previous day
 function getPreviousDay(dateString) {
+    if (dateString.startsWith('Y')) {
+        const parts = dateString.match(/Y(\d+)-M(\d+)-D(\d+)/);
+        if (parts) {
+            let year = parseInt(parts[1]);
+            let month = parseInt(parts[2]);
+            let day = parseInt(parts[3]);
+
+            day--;
+            if (day < 1) {
+                month--;
+                if (month < 1) {
+                    year--;
+                    if (year < 1) {
+                        year = 1;
+                    }
+                    month = SIMULATION_CONFIG.MONTHS_PER_YEAR;
+                }
+                day = SIMULATION_CONFIG.DAYS_PER_MONTH;
+            }
+
+            return `Y${year}-M${month}-D${day}`;
+        }
+    } else if (dateString.startsWith('M')) {
+        // Old format without year: M1-D15 (assume Year 1)
+        const parts = dateString.match(/M(\d+)-D(\d+)/);
+        if (parts) {
+            let year = 1;
+            let month = parseInt(parts[1]);
+            let day = parseInt(parts[2]);
+
+            day--;
+            if (day < 1) {
+                month--;
+                if (month < 1) {
+                    month = SIMULATION_CONFIG.MONTHS_PER_YEAR;
+                }
+                day = SIMULATION_CONFIG.DAYS_PER_MONTH;
+            }
+
+            return `Y${year}-M${month}-D${day}`;
+        }
+    }
+    // Fallback for old format
     const date = new Date(dateString + 'T00:00:00');
     date.setDate(date.getDate() - 1);
     return date.toISOString().split('T')[0];
+}
+
+// Update simulation clock (called every second)
+function updateSimulationClock() {
+    const clockElement = document.getElementById('simulationClock');
+    if (clockElement) {
+        const currentTime = getCurrentSimulationTime();
+        clockElement.textContent = formatSimulationTime(currentTime);
+
+        // Update pause/resume button text
+        const pauseBtn = document.getElementById('pauseTimeBtn');
+        if (pauseBtn) {
+            pauseBtn.textContent = appState.simulation.paused ? '▶ Resume Time' : '⏸ Pause Time';
+        }
+    }
+}
+
+// Start the simulation clock
+function startSimulationClock() {
+    if (simulationClockInterval) {
+        clearInterval(simulationClockInterval);
+    }
+    simulationClockInterval = setInterval(updateSimulationClock, 100); // Update 10 times per second for smooth display
+    updateSimulationClock(); // Initial update
+}
+
+// Stop the simulation clock
+function stopSimulationClock() {
+    if (simulationClockInterval) {
+        clearInterval(simulationClockInterval);
+        simulationClockInterval = null;
+    }
+}
+
+// Pause/Resume time progression
+function togglePauseTime() {
+    if (appState.simulation.paused) {
+        // Resuming - update lastSaveRealTime to now
+        appState.simulation.lastSaveRealTime = Date.now();
+        appState.simulation.paused = false;
+    } else {
+        // Pausing - update simulationTime to current value
+        appState.simulation.simulationTime = getCurrentSimulationTime();
+        appState.simulation.paused = true;
+    }
+    hasUnsavedChanges = true;
+    updateSimulationClock();
+}
+
+// Reset time to Year 1, Month 1, Day 1
+function resetTime() {
+    if (confirm('Reset time to Year 1, Month 1, Day 1, 00:00:00?')) {
+        appState.simulation.simulationTime = 0;
+        appState.simulation.lastSaveRealTime = Date.now();
+        appState.simulation.startRealTime = Date.now();
+        hasUnsavedChanges = true;
+        updateSimulationClock();
+    }
+}
+
+// Set specific time (admin mode)
+function setSimulationTime() {
+    const year = parseInt(document.getElementById('setYear').value);
+    const month = parseInt(document.getElementById('setMonth').value);
+    const day = parseInt(document.getElementById('setDay').value);
+    const hour = parseInt(document.getElementById('setHour').value);
+    const minute = parseInt(document.getElementById('setMinute').value);
+    const second = parseInt(document.getElementById('setSecond').value);
+
+    // Validate inputs
+    if (isNaN(year) || year < 1) {
+        alert('Year must be 1 or greater');
+        return;
+    }
+    if (isNaN(month) || month < 1 || month > 12) {
+        alert('Month must be between 1 and 12');
+        return;
+    }
+    if (isNaN(day) || day < 1 || day > 28) {
+        alert('Day must be between 1 and 28');
+        return;
+    }
+    if (isNaN(hour) || hour < 0 || hour > 23) {
+        alert('Hour must be between 0 and 23');
+        return;
+    }
+    if (isNaN(minute) || minute < 0 || minute > 59) {
+        alert('Minute must be between 0 and 59');
+        return;
+    }
+    if (isNaN(second) || second < 0 || second > 59) {
+        alert('Second must be between 0 and 59');
+        return;
+    }
+
+    const newTime = calendarTimeToMs(year, month, day, hour, minute, second);
+    appState.simulation.simulationTime = newTime;
+    appState.simulation.lastSaveRealTime = Date.now();
+    hasUnsavedChanges = true;
+    updateSimulationClock();
+
+    showStatus('timeControlStatus', 'Time updated successfully!', 'success');
+}
+
+// Populate time control inputs with current time
+function populateTimeControlInputs() {
+    const currentTime = getCurrentSimulationTime();
+    const time = msToCalendarTime(currentTime);
+
+    document.getElementById('setYear').value = time.year;
+    document.getElementById('setMonth').value = time.month;
+    document.getElementById('setDay').value = time.day;
+    document.getElementById('setHour').value = time.hour;
+    document.getElementById('setMinute').value = time.minute;
+    document.getElementById('setSecond').value = time.second;
 }
 
 function setDefaultTransactionDate() {
@@ -1259,6 +3022,12 @@ function render() {
         renderIncomeStatement();
     } else if (activeTab === 'cash-flow') {
         renderCashFlowStatement();
+    } else if (activeTab === 'commodities') {
+        renderCommoditiesMarket();
+    } else if (activeTab === 'map') {
+        renderMap();
+    } else if (activeTab === 'finance') {
+        renderFinancialManagement();
     }
 }
 
@@ -1317,4 +3086,84 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Initial render
     render();
+
+    // Update admin mode UI
+    updateAdminModeUI();
+
+    // Start the simulation clock
+    startSimulationClock();
 });
+
+// ====================================
+// COMMODITIES SYSTEM DOCUMENTATION
+// ====================================
+
+/*
+ * ADDING NEW COMMODITIES
+ *
+ * To add a new commodity to the trading system:
+ *
+ * 1. Add the commodity to appState.commodities array:
+ *    - Each commodity needs: id, name, description, price
+ *    - Use appState.nextCommodityId for the ID and increment it
+ *
+ *    Example:
+ *    appState.commodities.push({
+ *        id: appState.nextCommodityId++,
+ *        name: 'Gold',
+ *        description: 'Precious metal commodity',
+ *        price: 100.00
+ *    });
+ *
+ * 2. The system will automatically:
+ *    - Display the new commodity in the trading interface
+ *    - Track purchases using FIFO cost basis in the portfolio
+ *    - Record all transactions using the general Inventory account (1200)
+ *    - Calculate gains/losses on sales
+ *    - Show the commodity in portfolio view
+ *    - Include it in trade history
+ *
+ * Note: All commodities use the same general Inventory account for bookkeeping.
+ * The portfolio tracking system maintains separate FIFO lots for each commodity
+ * to properly track cost basis and calculate gains/losses.
+ *
+ * ACCOUNTING ENTRIES
+ *
+ * Purchase Transaction:
+ *   DR: Inventory (1200) - Asset increases
+ *   CR: Cash (1000) - Asset decreases
+ *
+ * Sale Transaction (with gain):
+ *   DR: Cash (1000) - Asset increases (proceeds)
+ *   CR: Inventory (1200) - Asset decreases (cost basis)
+ *   CR: Gains on Commodity Sales (4200) - Revenue increases (gain amount)
+ *
+ * Sale Transaction (with loss):
+ *   DR: Cash (1000) - Asset increases (proceeds)
+ *   DR: Losses on Commodity Sales (5500) - Expense increases (loss amount)
+ *   CR: Inventory (1200) - Asset decreases (cost basis)
+ *
+ * COST BASIS TRACKING
+ *
+ * The system uses FIFO (First In, First Out) for cost basis tracking:
+ * - Each purchase creates a new "lot" with quantity, cost basis, and purchase date
+ * - When selling, the oldest lots are sold first
+ * - Gains/losses are calculated as: Sale Proceeds - Cost Basis of sold units
+ * - Portfolio tracking is separate from the general ledger Inventory account
+ *
+ * MODIFYING COMMODITY PRICES
+ *
+ * To change a commodity's price:
+ *
+ * 1. Find the commodity in appState.commodities
+ * 2. Update its price property
+ * 3. Call render() to update the UI
+ *
+ * Example:
+ * const commodity = appState.commodities.find(c => c.name === 'Power');
+ * commodity.price = 55.00;
+ * render();
+ *
+ * Note: Price changes only affect future trades. Existing portfolio lots
+ * retain their original cost basis for accurate gain/loss calculations.
+ */
