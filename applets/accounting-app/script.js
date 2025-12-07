@@ -11,7 +11,8 @@ let appState = {
         { id: 5, number: '1500', name: 'Equipment', type: 'Asset', openingBalance: 0 },
         { id: 6, number: '2000', name: 'Accounts Payable', type: 'Liability', openingBalance: 0 },
         { id: 7, number: '2100', name: 'Notes Payable', type: 'Liability', openingBalance: 0 },
-        { id: 19, number: '2200', name: 'Bank Loans Payable', type: 'Liability', openingBalance: 0 },
+        { id: 19, number: '2200', name: 'Bank Loans Payable - Principal', type: 'Liability', openingBalance: 0 },
+        { id: 21, number: '2210', name: 'Bank Loans Payable - Interest', type: 'Liability', openingBalance: 0 },
         { id: 8, number: '3000', name: 'Common Stock', type: 'Equity', openingBalance: 0 },
         { id: 9, number: '3100', name: 'Retained Earnings', type: 'Equity', openingBalance: 0 },
         { id: 10, number: '4000', name: 'Sales Revenue', type: 'Revenue', openingBalance: 0 },
@@ -133,10 +134,10 @@ let appState = {
         paused: false // Whether time progression is paused
     },
     loans: [],
-    // Structure: { id, principal, interestRate, termMonths, suggestedMonthlyPayment, remainingBalance, issueDate, maturityDate, lastInterestAccrualDate, status }
+    // Structure: { id, principal, interestRate, termMonths, suggestedMonthlyPayment, principalBalance, accruedInterestBalance, issueDate, maturityDate, lastInterestAccrualDate, status }
     shares: [],
     // Structure: { id, numberOfShares, pricePerShare, totalValue, issueDate, holder }
-    nextAccountId: 21,
+    nextAccountId: 22,
     nextTransactionId: 1,
     nextTransactionTypeId: 11,
     nextCommodityId: 3,
@@ -236,10 +237,32 @@ function restoreSessionKey() {
                 if (!loan.lastInterestAccrualDate && loan.issueDate) {
                     loan.lastInterestAccrualDate = loan.issueDate;
                 }
+                // Migrate from remainingBalance to principalBalance + accruedInterestBalance
+                if (loan.remainingBalance !== undefined && loan.principalBalance === undefined) {
+                    loan.principalBalance = loan.remainingBalance;
+                    loan.accruedInterestBalance = 0;
+                }
                 // Remove old properties
                 delete loan.monthlyPayment;
                 delete loan.nextPaymentDate;
+                delete loan.remainingBalance;
             });
+        }
+
+        // Ensure new account exists for interest payable
+        if (!appState.accounts.find(a => a.number === '2210')) {
+            appState.accounts.push({
+                id: 21,
+                number: '2210',
+                name: 'Bank Loans Payable - Interest',
+                type: 'Liability',
+                openingBalance: 0
+            });
+        }
+        // Update old "Bank Loans Payable" account name to "Bank Loans Payable - Principal"
+        const oldLoansAccount = appState.accounts.find(a => a.number === '2200');
+        if (oldLoansAccount && oldLoansAccount.name === 'Bank Loans Payable') {
+            oldLoansAccount.name = 'Bank Loans Payable - Principal';
         }
 
         hasUnsavedChanges = false;
@@ -1721,7 +1744,9 @@ function calculateCreditworthiness() {
     const totalCurrentAssets = (balances[1] || 0) + (balances[2] || 0) + (balances[3] || 0); // Cash + AR + Inventory
     const totalCurrentLiabilities = (balances[6] || 0) + (balances[7] || 0); // AP + Notes Payable
     const realEstateValue = balances[4] || 0; // Real Estate
-    const totalLoans = balances[19] || 0; // Bank Loans Payable
+    const loansPrincipal = balances[19] || 0; // Bank Loans Payable - Principal
+    const loansInterest = balances[21] || 0; // Bank Loans Payable - Interest
+    const totalLoans = loansPrincipal + loansInterest;
 
     // Calculate total assets and total liabilities
     const totalAssets = totalCurrentAssets + realEstateValue;
@@ -1808,7 +1833,8 @@ function applyForLoan(principal, termMonths) {
         interestRate: creditInfo.interestRate,
         termMonths,
         suggestedMonthlyPayment: parseFloat(suggestedMonthlyPayment.toFixed(2)),
-        remainingBalance: principal,
+        principalBalance: principal,
+        accruedInterestBalance: 0,
         issueDate,
         maturityDate: addMonthsToDate(issueDate, termMonths),
         lastInterestAccrualDate: issueDate,
@@ -1852,28 +1878,31 @@ function accrueInterestOnLoan(loanId) {
         return false;
     }
 
-    const loansPayableAccount = appState.accounts.find(a => a.number === '2200');
+    const loansPrincipalAccount = appState.accounts.find(a => a.number === '2200');
+    const loansInterestAccount = appState.accounts.find(a => a.number === '2210');
     const interestExpenseAccount = appState.accounts.find(a => a.number === '5600');
 
     // Accrue interest for each month
     for (let i = 0; i < monthsElapsed; i++) {
-        const interestAmount = loan.remainingBalance * monthlyRate;
+        // Interest compounds on the total outstanding balance (principal + accrued interest)
+        const outstandingBalance = loan.principalBalance + loan.accruedInterestBalance;
+        const interestAmount = outstandingBalance * monthlyRate;
         const accrualDate = addMonthsToDate(lastAccrual, i + 1);
 
-        // Record transaction: Debit Interest Expense, Credit Bank Loans Payable
+        // Record transaction: Debit Interest Expense, Credit Bank Loans Payable - Interest
         const transaction = {
             id: appState.nextTransactionId++,
             date: accrualDate,
             description: `Loan #${loanId} - Interest accrued for month`,
             debitAccount: interestExpenseAccount.id,
-            creditAccount: loansPayableAccount.id,
+            creditAccount: loansInterestAccount.id,
             amount: parseFloat(interestAmount.toFixed(2))
         };
 
         appState.transactions.push(transaction);
 
-        // Add interest to remaining balance (compound)
-        loan.remainingBalance += interestAmount;
+        // Add interest to accrued interest balance (compound)
+        loan.accruedInterestBalance += interestAmount;
     }
 
     // Update last accrual date
@@ -1905,30 +1934,56 @@ function makeLoanPayment(loanId, paymentAmount) {
     accrueInterestOnLoan(loanId);
 
     const cashAccount = getCashAccount();
-    const loansPayableAccount = appState.accounts.find(a => a.number === '2200');
+    const loansPrincipalAccount = appState.accounts.find(a => a.number === '2200');
+    const loansInterestAccount = appState.accounts.find(a => a.number === '2210');
 
     const paymentDate = getTodayDate();
+    const totalBalance = loan.principalBalance + loan.accruedInterestBalance;
+    const actualPayment = Math.min(paymentAmount, totalBalance);
 
-    // Payment goes entirely toward principal
-    const actualPayment = Math.min(paymentAmount, loan.remainingBalance);
+    let remainingPayment = actualPayment;
 
-    // Record transaction: Debit Bank Loans Payable, Credit Cash
-    const transaction = {
-        id: appState.nextTransactionId++,
-        date: paymentDate,
-        description: `Loan #${loanId} payment - Principal reduction`,
-        debitAccount: loansPayableAccount.id,
-        creditAccount: cashAccount.id,
-        amount: parseFloat(actualPayment.toFixed(2))
-    };
+    // First, pay down accrued interest
+    if (loan.accruedInterestBalance > 0 && remainingPayment > 0) {
+        const interestPayment = Math.min(remainingPayment, loan.accruedInterestBalance);
 
-    appState.transactions.push(transaction);
+        // Record transaction: Debit Bank Loans Payable - Interest, Credit Cash
+        const interestTransaction = {
+            id: appState.nextTransactionId++,
+            date: paymentDate,
+            description: `Loan #${loanId} payment - Interest paid`,
+            debitAccount: loansInterestAccount.id,
+            creditAccount: cashAccount.id,
+            amount: parseFloat(interestPayment.toFixed(2))
+        };
 
-    // Reduce loan balance
-    loan.remainingBalance -= actualPayment;
+        appState.transactions.push(interestTransaction);
+        loan.accruedInterestBalance -= interestPayment;
+        remainingPayment -= interestPayment;
+    }
 
-    if (loan.remainingBalance <= 0.01) {
-        loan.remainingBalance = 0;
+    // Then, pay down principal
+    if (loan.principalBalance > 0 && remainingPayment > 0) {
+        const principalPayment = Math.min(remainingPayment, loan.principalBalance);
+
+        // Record transaction: Debit Bank Loans Payable - Principal, Credit Cash
+        const principalTransaction = {
+            id: appState.nextTransactionId++,
+            date: paymentDate,
+            description: `Loan #${loanId} payment - Principal reduction`,
+            debitAccount: loansPrincipalAccount.id,
+            creditAccount: cashAccount.id,
+            amount: parseFloat(principalPayment.toFixed(2))
+        };
+
+        appState.transactions.push(principalTransaction);
+        loan.principalBalance -= principalPayment;
+    }
+
+    // Mark loan as paid if both balances are near zero
+    if (loan.principalBalance <= 0.01 && loan.accruedInterestBalance <= 0.01) {
+        loan.principalBalance = 0;
+        loan.accruedInterestBalance = 0;
         loan.status = 'paid';
     }
 
@@ -2021,10 +2076,11 @@ function getSharesSummary() {
 function calculateCurrentSuggestedPayment(loan) {
     const today = getTodayDate();
     const remainingMonths = getMonthsBetweenDates(today, loan.maturityDate);
+    const totalBalance = loan.principalBalance + loan.accruedInterestBalance;
 
     // If loan is past maturity or has very few months left, suggest paying full balance
     if (remainingMonths <= 0) {
-        return loan.remainingBalance;
+        return totalBalance;
     }
 
     // Calculate amortized payment based on current balance and remaining term
@@ -2032,12 +2088,12 @@ function calculateCurrentSuggestedPayment(loan) {
 
     // If interest rate is 0, just divide evenly
     if (monthlyRate === 0) {
-        return loan.remainingBalance / remainingMonths;
+        return totalBalance / remainingMonths;
     }
 
     // Standard amortization formula: P * [r(1+r)^n] / [(1+r)^n - 1]
     // where P = current balance, r = monthly rate, n = remaining months
-    const suggestedPayment = loan.remainingBalance *
+    const suggestedPayment = totalBalance *
         (monthlyRate * Math.pow(1 + monthlyRate, remainingMonths)) /
         (Math.pow(1 + monthlyRate, remainingMonths) - 1);
 
@@ -2098,13 +2154,20 @@ function renderLoanManagement() {
         .map(loan => {
             const monthsSinceAccrual = getMonthsBetweenDates(loan.lastInterestAccrualDate, getTodayDate());
             const suggestedPayment = calculateCurrentSuggestedPayment(loan);
+            const totalBalance = loan.principalBalance + loan.accruedInterestBalance;
             return `
             <tr>
                 <td>#${loan.id}</td>
                 <td>${formatCurrency(loan.principal)}</td>
                 <td>${loan.interestRate}%</td>
                 <td>${loan.termMonths} mo.</td>
-                <td>${formatCurrency(loan.remainingBalance)}</td>
+                <td>
+                    <div class="balance-breakdown">
+                        <div>Principal: ${formatCurrency(loan.principalBalance)}</div>
+                        <div>Interest: ${formatCurrency(loan.accruedInterestBalance)}</div>
+                        <div><strong>Total: ${formatCurrency(totalBalance)}</strong></div>
+                    </div>
+                </td>
                 <td>${loan.lastInterestAccrualDate}</td>
                 <td>${monthsSinceAccrual} mo.</td>
                 <td>
@@ -2216,7 +2279,7 @@ function renderLoanManagement() {
             <h4>Outstanding Loans</h4>
             <div class="loan-info-box">
                 <strong>How Loan Interest Works:</strong>
-                <p>Interest automatically accrues monthly and compounds (adds to your loan balance). When you make a payment, any accrued interest is first added to the balance, then your payment reduces the principal. You can pay any amount you want - the "Suggested" payment is dynamically calculated based on your current balance and remaining time to pay off the loan by its maturity date.</p>
+                <p>Interest automatically accrues monthly and compounds on your total outstanding balance (principal + accrued interest). The principal and interest are tracked separately in different liability accounts. When you make a payment, it first pays down any accrued interest, then reduces the principal. The "Suggested" payment is dynamically calculated based on your current total balance and remaining time to pay off the loan by its maturity date.</p>
             </div>
             <table class="data-table">
                 <thead>
