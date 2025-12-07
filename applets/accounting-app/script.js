@@ -2982,6 +2982,9 @@ function updateSimulationClock() {
         if (pauseBtn) {
             pauseBtn.textContent = appState.simulation.paused ? '▶ Resume Time' : '⏸ Pause Time';
         }
+
+        // Auto-update financial statement end dates to current date
+        updateStatementEndDates();
     }
 }
 
@@ -3121,6 +3124,26 @@ function setDefaultStatementDates() {
     document.getElementById('incomeEndDate').value = getTodayDate();
     document.getElementById('cashFlowStartDate').value = getFirstDayOfMonth();
     document.getElementById('cashFlowEndDate').value = getTodayDate();
+}
+
+// Update end dates for financial statements to current date (preserves user's start dates)
+function updateStatementEndDates() {
+    const currentDate = getTodayDate();
+
+    // Update balance sheet date (always current date)
+    document.getElementById('balanceSheetDate').value = currentDate;
+
+    // Update end dates only (preserve user's start date inputs)
+    document.getElementById('incomeEndDate').value = currentDate;
+    document.getElementById('cashFlowEndDate').value = currentDate;
+
+    // If start dates are empty, set them to first day of current month
+    if (!document.getElementById('incomeStartDate').value) {
+        document.getElementById('incomeStartDate').value = getFirstDayOfMonth();
+    }
+    if (!document.getElementById('cashFlowStartDate').value) {
+        document.getElementById('cashFlowStartDate').value = getFirstDayOfMonth();
+    }
 }
 
 function escapeHtml(text) {
