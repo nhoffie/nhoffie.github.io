@@ -1151,6 +1151,49 @@ footer a:hover {
     margin-bottom: 1.5rem;
 }
 
+.loan-info-box {
+    background: #fffbeb;
+    border: 2px solid #fbbf24;
+    border-radius: 4px;
+    padding: 1rem;
+    margin-bottom: 1rem;
+}
+
+.loan-info-box strong {
+    color: #92400e;
+    display: block;
+    margin-bottom: 0.5rem;
+}
+
+.loan-info-box p {
+    color: #78350f;
+    margin: 0;
+    font-size: 0.9rem;
+    line-height: 1.5;
+}
+
+.payment-input-group {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    margin-bottom: 0.25rem;
+}
+
+.payment-input {
+    width: 120px;
+    padding: 0.375rem 0.5rem;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 0.875rem;
+}
+
+.suggested-payment {
+    display: block;
+    color: #6b7280;
+    font-size: 0.75rem;
+    font-style: italic;
+}
+
 .loan-formulas {
     display: grid;
     grid-template-columns: repeat(2, 1fr);

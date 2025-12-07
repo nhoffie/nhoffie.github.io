@@ -133,7 +133,7 @@ let appState = {
         paused: false // Whether time progression is paused
     },
     loans: [],
-    // Structure: { id, principal, interestRate, termMonths, monthlyPayment, remainingBalance, issueDate, maturityDate, nextPaymentDate, status }
+    // Structure: { id, principal, interestRate, termMonths, suggestedMonthlyPayment, remainingBalance, issueDate, maturityDate, lastInterestAccrualDate, status }
     shares: [],
     // Structure: { id, numberOfShares, pricePerShare, totalValue, issueDate, holder }
     nextAccountId: 21,
@@ -225,6 +225,21 @@ function restoreSessionKey() {
         }
         if (!appState.nextShareIssuanceId) {
             appState.nextShareIssuanceId = 1;
+        }
+
+        // Update old loan structure to new structure
+        if (appState.loans) {
+            appState.loans.forEach(loan => {
+                if (loan.monthlyPayment && !loan.suggestedMonthlyPayment) {
+                    loan.suggestedMonthlyPayment = loan.monthlyPayment;
+                }
+                if (!loan.lastInterestAccrualDate && loan.issueDate) {
+                    loan.lastInterestAccrualDate = loan.issueDate;
+                }
+                // Remove old properties
+                delete loan.monthlyPayment;
+                delete loan.nextPaymentDate;
+            });
         }
 
         hasUnsavedChanges = false;
@@ -1779,7 +1794,7 @@ function applyForLoan(principal, termMonths) {
 
     const interestRate = creditInfo.interestRate / 100;
     const monthlyRate = interestRate / 12;
-    const monthlyPayment = principal * (monthlyRate * Math.pow(1 + monthlyRate, termMonths)) / (Math.pow(1 + monthlyRate, termMonths) - 1);
+    const suggestedMonthlyPayment = principal * (monthlyRate * Math.pow(1 + monthlyRate, termMonths)) / (Math.pow(1 + monthlyRate, termMonths) - 1);
 
     const cashAccount = getCashAccount();
     const loansPayableAccount = appState.accounts.find(a => a.number === '2200');
@@ -1792,12 +1807,12 @@ function applyForLoan(principal, termMonths) {
         principal,
         interestRate: creditInfo.interestRate,
         termMonths,
-        monthlyPayment: parseFloat(monthlyPayment.toFixed(2)),
+        suggestedMonthlyPayment: parseFloat(suggestedMonthlyPayment.toFixed(2)),
         remainingBalance: principal,
         issueDate,
         maturityDate: addMonthsToDate(issueDate, termMonths),
-        status: 'active',
-        nextPaymentDate: addMonthsToDate(issueDate, 1)
+        lastInterestAccrualDate: issueDate,
+        status: 'active'
     };
 
     appState.loans.push(loan);
@@ -1818,47 +1833,99 @@ function applyForLoan(principal, termMonths) {
     return true;
 }
 
-// Make a loan payment
-function makeLoanPayment(loanId) {
+// Accrue monthly interest on a loan (compounds by adding to balance)
+function accrueInterestOnLoan(loanId) {
+    const loan = appState.loans.find(l => l.id === loanId);
+    if (!loan || loan.status !== 'active') {
+        return false;
+    }
+
+    const today = getTodayDate();
+    const monthlyRate = (loan.interestRate / 100) / 12;
+
+    // Calculate months elapsed since last accrual
+    const lastAccrual = loan.lastInterestAccrualDate;
+    const monthsElapsed = getMonthsBetweenDates(lastAccrual, today);
+
+    if (monthsElapsed < 1) {
+        // Not enough time has passed
+        return false;
+    }
+
+    const loansPayableAccount = appState.accounts.find(a => a.number === '2200');
+    const interestExpenseAccount = appState.accounts.find(a => a.number === '5600');
+
+    // Accrue interest for each month
+    for (let i = 0; i < monthsElapsed; i++) {
+        const interestAmount = loan.remainingBalance * monthlyRate;
+        const accrualDate = addMonthsToDate(lastAccrual, i + 1);
+
+        // Record transaction: Debit Interest Expense, Credit Bank Loans Payable
+        const transaction = {
+            id: appState.nextTransactionId++,
+            date: accrualDate,
+            description: `Loan #${loanId} - Interest accrued for month`,
+            debitAccount: interestExpenseAccount.id,
+            creditAccount: loansPayableAccount.id,
+            amount: parseFloat(interestAmount.toFixed(2))
+        };
+
+        appState.transactions.push(transaction);
+
+        // Add interest to remaining balance (compound)
+        loan.remainingBalance += interestAmount;
+    }
+
+    // Update last accrual date
+    loan.lastInterestAccrualDate = addMonthsToDate(lastAccrual, monthsElapsed);
+    hasUnsavedChanges = true;
+    return true;
+}
+
+// Make a loan payment (user-specified amount)
+function makeLoanPayment(loanId, paymentAmount) {
     const loan = appState.loans.find(l => l.id === loanId);
     if (!loan || loan.status !== 'active') {
         alert('Loan not found or already paid off.');
         return false;
     }
 
-    const cashBalance = getCashBalance();
-    if (cashBalance < loan.monthlyPayment) {
-        alert(`Insufficient cash to make payment. Required: ${formatCurrency(loan.monthlyPayment)}, Available: ${formatCurrency(cashBalance)}`);
+    if (paymentAmount < 0.01) {
+        alert('Payment amount must be at least $0.01.');
         return false;
     }
 
-    const monthlyRate = (loan.interestRate / 100) / 12;
-    const interestPortion = loan.remainingBalance * monthlyRate;
-    const principalPortion = loan.monthlyPayment - interestPortion;
+    const cashBalance = getCashBalance();
+    if (cashBalance < paymentAmount) {
+        alert(`Insufficient cash to make payment. Available: ${formatCurrency(cashBalance)}`);
+        return false;
+    }
+
+    // First, accrue any pending interest
+    accrueInterestOnLoan(loanId);
 
     const cashAccount = getCashAccount();
     const loansPayableAccount = appState.accounts.find(a => a.number === '2200');
-    const interestExpenseAccount = appState.accounts.find(a => a.number === '5600');
 
     const paymentDate = getTodayDate();
 
-    // Record multi-entry transaction
+    // Payment goes entirely toward principal
+    const actualPayment = Math.min(paymentAmount, loan.remainingBalance);
+
+    // Record transaction: Debit Bank Loans Payable, Credit Cash
     const transaction = {
         id: appState.nextTransactionId++,
         date: paymentDate,
-        description: `Loan #${loanId} payment - Principal: ${formatCurrency(principalPortion)}, Interest: ${formatCurrency(interestPortion)}`,
-        entries: [
-            { account: loansPayableAccount.id, type: 'debit', amount: principalPortion },
-            { account: interestExpenseAccount.id, type: 'debit', amount: interestPortion },
-            { account: cashAccount.id, type: 'credit', amount: loan.monthlyPayment }
-        ]
+        description: `Loan #${loanId} payment - Principal reduction`,
+        debitAccount: loansPayableAccount.id,
+        creditAccount: cashAccount.id,
+        amount: parseFloat(actualPayment.toFixed(2))
     };
 
     appState.transactions.push(transaction);
 
-    // Update loan balance
-    loan.remainingBalance -= principalPortion;
-    loan.nextPaymentDate = addMonthsToDate(paymentDate, 1);
+    // Reduce loan balance
+    loan.remainingBalance -= actualPayment;
 
     if (loan.remainingBalance <= 0.01) {
         loan.remainingBalance = 0;
@@ -1867,6 +1934,21 @@ function makeLoanPayment(loanId) {
 
     hasUnsavedChanges = true;
     return true;
+}
+
+// Helper function to calculate months between two dates
+function getMonthsBetweenDates(date1, date2) {
+    const parts1 = date1.match(/Y(\d+)-M(\d+)-D(\d+)/);
+    const parts2 = date2.match(/Y(\d+)-M(\d+)-D(\d+)/);
+
+    if (!parts1 || !parts2) return 0;
+
+    const year1 = parseInt(parts1[1]);
+    const month1 = parseInt(parts1[2]);
+    const year2 = parseInt(parts2[1]);
+    const month2 = parseInt(parts2[2]);
+
+    return (year2 - year1) * 12 + (month2 - month1);
 }
 
 // ====================================
@@ -1979,20 +2061,27 @@ function renderLoanManagement() {
     // Loans section
     const loansHtml = appState.loans
         .filter(loan => loan.status === 'active')
-        .map(loan => `
+        .map(loan => {
+            const monthsSinceAccrual = getMonthsBetweenDates(loan.lastInterestAccrualDate, getTodayDate());
+            return `
             <tr>
                 <td>#${loan.id}</td>
                 <td>${formatCurrency(loan.principal)}</td>
                 <td>${loan.interestRate}%</td>
-                <td>${loan.termMonths}</td>
+                <td>${loan.termMonths} mo.</td>
                 <td>${formatCurrency(loan.remainingBalance)}</td>
-                <td>${formatCurrency(loan.monthlyPayment)}</td>
-                <td>${loan.nextPaymentDate}</td>
+                <td>${loan.lastInterestAccrualDate}</td>
+                <td>${monthsSinceAccrual} mo.</td>
                 <td>
-                    <button class="btn btn-sm" onclick="if(makeLoanPayment(${loan.id})) render();">Make Payment</button>
+                    <div class="payment-input-group">
+                        <input type="number" id="paymentAmount_${loan.id}" min="0.01" step="0.01" placeholder="${formatCurrency(loan.suggestedMonthlyPayment)}" class="payment-input">
+                        <button class="btn btn-sm" onclick="const amt = parseFloat(document.getElementById('paymentAmount_${loan.id}').value); if(amt && makeLoanPayment(${loan.id}, amt)) { render(); }">Pay</button>
+                    </div>
+                    <small class="suggested-payment">Suggested: ${formatCurrency(loan.suggestedMonthlyPayment)}</small>
                 </td>
             </tr>
-        `).join('') || '<tr><td colspan="8">No active loans</td></tr>';
+            `;
+        }).join('') || '<tr><td colspan="8">No active loans</td></tr>';
 
     container.innerHTML = `
         <div class="loan-overview">
@@ -2090,17 +2179,21 @@ function renderLoanManagement() {
             </div>
 
             <h4>Outstanding Loans</h4>
+            <div class="loan-info-box">
+                <strong>How Loan Interest Works:</strong>
+                <p>Interest accrues monthly and compounds (adds to your loan balance). When you make a payment, any accrued interest is first added to the balance, then your payment reduces the principal. You can pay any amount you want - the "Suggested" payment is the amortized amount that would pay off the loan in the original term.</p>
+            </div>
             <table class="data-table">
                 <thead>
                     <tr>
                         <th>ID</th>
                         <th>Principal</th>
-                        <th>Rate</th>
-                        <th>Term (months)</th>
-                        <th>Balance</th>
-                        <th>Monthly Payment</th>
-                        <th>Next Payment</th>
-                        <th>Actions</th>
+                        <th>Rate (APR)</th>
+                        <th>Term</th>
+                        <th>Current Balance</th>
+                        <th>Last Interest Accrual</th>
+                        <th>Months Since</th>
+                        <th>Payment Amount</th>
                     </tr>
                 </thead>
                 <tbody>
