@@ -1056,6 +1056,14 @@ footer a:hover {
     .formula-label {
         min-width: auto;
     }
+
+    .equity-stats {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .equity-section .form-row {
+        flex-direction: column;
+    }
 }
 
 /* Financial Management */
@@ -1207,4 +1215,67 @@ footer a:hover {
 .btn-sm {
     padding: 0.375rem 0.75rem;
     font-size: 0.875rem;
+}
+
+/* Equity Management */
+.equity-overview {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    color: white;
+    padding: 2rem;
+    border-radius: 8px;
+    margin-bottom: 2rem;
+}
+
+.equity-overview h4 {
+    color: white;
+    margin-bottom: 1.5rem;
+    font-size: 1.3rem;
+}
+
+.equity-stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1.5rem;
+}
+
+.equity-section {
+    background: white;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 2rem;
+    margin-bottom: 2rem;
+}
+
+.equity-section h4 {
+    color: var(--primary-color);
+    margin-bottom: 1.5rem;
+    font-size: 1.2rem;
+}
+
+.equity-issuance {
+    background: #f0fdf4;
+    padding: 1.5rem;
+    border-radius: 4px;
+    margin-bottom: 1.5rem;
+}
+
+.share-preview {
+    margin-top: 1rem;
+    padding: 1rem;
+    background: white;
+    border: 2px solid #10b981;
+    border-radius: 4px;
+    text-align: center;
+    font-size: 1.1rem;
+}
+
+.share-preview strong {
+    color: #059669;
+}
+
+.share-preview span {
+    color: #047857;
+    font-size: 1.3rem;
+    font-weight: 700;
+    margin-left: 0.5rem;
 }

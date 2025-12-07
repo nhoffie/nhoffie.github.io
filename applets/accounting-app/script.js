@@ -134,12 +134,15 @@ let appState = {
     },
     loans: [],
     // Structure: { id, principal, interestRate, termMonths, monthlyPayment, remainingBalance, issueDate, maturityDate, nextPaymentDate, status }
+    shares: [],
+    // Structure: { id, numberOfShares, pricePerShare, totalValue, issueDate, holder }
     nextAccountId: 21,
     nextTransactionId: 1,
     nextTransactionTypeId: 11,
     nextCommodityId: 3,
     nextTradeId: 1,
-    nextLoanId: 1
+    nextLoanId: 1,
+    nextShareIssuanceId: 1
 };
 
 let hasUnsavedChanges = false;
@@ -215,6 +218,15 @@ function restoreSessionKey() {
         restoredState.simulation.lastSaveRealTime = Date.now();
 
         appState = restoredState;
+
+        // Backward compatibility: add missing properties for older session keys
+        if (!appState.shares) {
+            appState.shares = [];
+        }
+        if (!appState.nextShareIssuanceId) {
+            appState.nextShareIssuanceId = 1;
+        }
+
         hasUnsavedChanges = false;
         keyInput.value = '';
         showStatus('restoreStatus', 'Data restored successfully!', 'success');
@@ -1857,6 +1869,72 @@ function makeLoanPayment(loanId) {
     return true;
 }
 
+// ====================================
+// EQUITY MANAGEMENT
+// ====================================
+
+// Issue shares to raise capital
+function issueShares(numberOfShares, pricePerShare, holder = 'Owner') {
+    if (numberOfShares < 1) {
+        alert('Must issue at least 1 share.');
+        return false;
+    }
+
+    if (pricePerShare < 0.01) {
+        alert('Share price must be at least $0.01.');
+        return false;
+    }
+
+    const totalValue = numberOfShares * pricePerShare;
+    const issueDate = getTodayDate();
+
+    const shareIssuance = {
+        id: appState.nextShareIssuanceId++,
+        numberOfShares,
+        pricePerShare,
+        totalValue,
+        issueDate,
+        holder
+    };
+
+    appState.shares.push(shareIssuance);
+
+    // Find accounts
+    const cashAccount = appState.accounts.find(a => a.number === '1000');
+    const commonStockAccount = appState.accounts.find(a => a.number === '3000');
+
+    // Record transaction: Debit Cash, Credit Common Stock
+    const transaction = {
+        id: appState.nextTransactionId++,
+        date: issueDate,
+        description: `Issued ${numberOfShares} shares at ${formatCurrency(pricePerShare)} per share to ${holder}`,
+        debitAccount: cashAccount.id,
+        creditAccount: commonStockAccount.id,
+        amount: totalValue
+    };
+
+    appState.transactions.push(transaction);
+    hasUnsavedChanges = true;
+    return true;
+}
+
+// Get total shares outstanding and total equity value
+function getSharesSummary() {
+    const totalShares = appState.shares.reduce((sum, issuance) => sum + issuance.numberOfShares, 0);
+    const totalEquityValue = appState.shares.reduce((sum, issuance) => sum + issuance.totalValue, 0);
+
+    // Get Common Stock account balance
+    const balances = calculateAccountBalances();
+    const commonStockBalance = balances[8] || 0; // Common Stock account ID 8
+
+    return {
+        totalShares,
+        totalEquityValue,
+        commonStockBalance,
+        averagePricePerShare: totalShares > 0 ? totalEquityValue / totalShares : 0
+    };
+}
+
 // Render financial management section
 function renderFinancialManagement() {
     const container = document.getElementById('financeContent');
@@ -1870,23 +1948,25 @@ function renderFinancialManagement() {
                 <div id="loanManagementContent"></div>
             </div>
 
+            <!-- Equity Management Section -->
+            <div class="finance-section">
+                <h3 class="section-title">Equity & Shares</h3>
+                <div id="equityContent"></div>
+            </div>
+
             <!-- Placeholder for future sections -->
             <!--
             <div class="finance-section">
                 <h3 class="section-title">Corporate Bonds</h3>
                 <div id="bondsContent"></div>
             </div>
-
-            <div class="finance-section">
-                <h3 class="section-title">Equity & Shares</h3>
-                <div id="equityContent"></div>
-            </div>
             -->
         </div>
     `;
 
-    // Render loan management content
+    // Render management content
     renderLoanManagement();
+    renderEquityManagement();
 }
 
 // Render loan management content
@@ -2029,6 +2109,121 @@ function renderLoanManagement() {
             </table>
         </div>
     `;
+}
+
+// Render equity management content
+function renderEquityManagement() {
+    const container = document.getElementById('equityContent');
+    if (!container) return;
+
+    const sharesSummary = getSharesSummary();
+
+    // Share issuances table
+    const sharesHtml = appState.shares
+        .map(issuance => `
+            <tr>
+                <td>#${issuance.id}</td>
+                <td>${issuance.numberOfShares}</td>
+                <td>${formatCurrency(issuance.pricePerShare)}</td>
+                <td>${formatCurrency(issuance.totalValue)}</td>
+                <td>${issuance.holder}</td>
+                <td>${issuance.issueDate}</td>
+            </tr>
+        `).join('') || '<tr><td colspan="6">No shares issued yet</td></tr>';
+
+    container.innerHTML = `
+        <div class="equity-overview">
+            <h4>Company Equity Summary</h4>
+            <div class="equity-stats">
+                <div class="stat-card">
+                    <div class="stat-label">Total Shares Outstanding</div>
+                    <div class="stat-value">${sharesSummary.totalShares.toLocaleString()}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Total Equity Value</div>
+                    <div class="stat-value">${formatCurrency(sharesSummary.totalEquityValue)}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Common Stock Balance</div>
+                    <div class="stat-value">${formatCurrency(sharesSummary.commonStockBalance)}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Average Price Per Share</div>
+                    <div class="stat-value">${formatCurrency(sharesSummary.averagePricePerShare)}</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="equity-section">
+            <h4>Issue New Shares</h4>
+            <div class="equity-issuance">
+                <p class="help-text">Contribute capital to the company in exchange for shares of stock. The capital increases the company's cash and equity accounts.</p>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="shareQuantity">Number of Shares:</label>
+                        <input type="number" id="shareQuantity" min="1" step="1" placeholder="e.g., 100">
+                    </div>
+                    <div class="form-group">
+                        <label for="sharePrice">Price Per Share:</label>
+                        <input type="number" id="sharePrice" min="0.01" step="0.01" placeholder="e.g., 10.00">
+                    </div>
+                    <div class="form-group">
+                        <label for="shareHolder">Issue To:</label>
+                        <select id="shareHolder">
+                            <option value="Owner">Owner</option>
+                            <option value="Public">Public</option>
+                            <option value="Investor">Investor</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <button class="btn btn-primary" onclick="if(issueShares(parseInt(document.getElementById('shareQuantity').value), parseFloat(document.getElementById('sharePrice').value), document.getElementById('shareHolder').value)) { render(); document.getElementById('shareQuantity').value = ''; document.getElementById('sharePrice').value = ''; }">Issue Shares</button>
+                    </div>
+                </div>
+                <div id="sharePreview" class="share-preview hidden">
+                    <strong>Total Capital Raised:</strong> <span id="sharePreviewAmount">$0.00</span>
+                </div>
+            </div>
+
+            <h4>Share Issuance History</h4>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Shares</th>
+                        <th>Price/Share</th>
+                        <th>Total Value</th>
+                        <th>Issued To</th>
+                        <th>Date</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${sharesHtml}
+                </tbody>
+            </table>
+        </div>
+    `;
+
+    // Add event listeners for share preview
+    const quantityInput = document.getElementById('shareQuantity');
+    const priceInput = document.getElementById('sharePrice');
+    const previewDiv = document.getElementById('sharePreview');
+    const previewAmount = document.getElementById('sharePreviewAmount');
+
+    const updatePreview = () => {
+        const quantity = parseInt(quantityInput.value) || 0;
+        const price = parseFloat(priceInput.value) || 0;
+        const total = quantity * price;
+
+        if (quantity > 0 && price > 0) {
+            previewDiv.classList.remove('hidden');
+            previewAmount.textContent = formatCurrency(total);
+        } else {
+            previewDiv.classList.add('hidden');
+        }
+    };
+
+    quantityInput.addEventListener('input', updatePreview);
+    priceInput.addEventListener('input', updatePreview);
 }
 
 // ====================================
