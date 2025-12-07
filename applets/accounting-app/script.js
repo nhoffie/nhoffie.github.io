@@ -11,6 +11,7 @@ let appState = {
         { id: 5, number: '1500', name: 'Equipment', type: 'Asset', openingBalance: 0 },
         { id: 6, number: '2000', name: 'Accounts Payable', type: 'Liability', openingBalance: 0 },
         { id: 7, number: '2100', name: 'Notes Payable', type: 'Liability', openingBalance: 0 },
+        { id: 19, number: '2200', name: 'Bank Loans Payable', type: 'Liability', openingBalance: 0 },
         { id: 8, number: '3000', name: 'Common Stock', type: 'Equity', openingBalance: 0 },
         { id: 9, number: '3100', name: 'Retained Earnings', type: 'Equity', openingBalance: 0 },
         { id: 10, number: '4000', name: 'Sales Revenue', type: 'Revenue', openingBalance: 0 },
@@ -21,7 +22,8 @@ let appState = {
         { id: 15, number: '5200', name: 'Utilities Expense', type: 'Expense', openingBalance: 0 },
         { id: 16, number: '5300', name: 'Salaries Expense', type: 'Expense', openingBalance: 0 },
         { id: 17, number: '5400', name: 'Supplies Expense', type: 'Expense', openingBalance: 0 },
-        { id: 18, number: '5500', name: 'Losses on Commodity Sales', type: 'Expense', openingBalance: 0 }
+        { id: 18, number: '5500', name: 'Losses on Commodity Sales', type: 'Expense', openingBalance: 0 },
+        { id: 20, number: '5600', name: 'Interest Expense', type: 'Expense', openingBalance: 0 }
     ],
     transactions: [],
     transactionTypes: [
@@ -130,11 +132,14 @@ let appState = {
         simulationTime: 0, // Elapsed simulation time in milliseconds since Day 1, 00:00:00
         paused: false // Whether time progression is paused
     },
-    nextAccountId: 19,
+    loans: [],
+    // Structure: { id, principal, interestRate, termMonths, monthlyPayment, remainingBalance, issueDate, maturityDate, nextPaymentDate, status }
+    nextAccountId: 21,
     nextTransactionId: 1,
     nextTransactionTypeId: 11,
     nextCommodityId: 3,
-    nextTradeId: 1
+    nextTradeId: 1,
+    nextLoanId: 1
 };
 
 let hasUnsavedChanges = false;
@@ -1657,6 +1662,299 @@ function showMapStatus(message, type) {
 }
 
 // ====================================
+// LOAN MANAGEMENT SYSTEM
+// ====================================
+
+// Helper function to add months to a date string
+function addMonthsToDate(dateString, months) {
+    const parts = dateString.match(/Y(\d+)-M(\d+)-D(\d+)/);
+    if (!parts) return dateString;
+
+    let year = parseInt(parts[1]);
+    let month = parseInt(parts[2]);
+    let day = parseInt(parts[3]);
+
+    month += months;
+
+    while (month > 12) {
+        month -= 12;
+        year++;
+    }
+
+    return `Y${year}-M${month}-D${day}`;
+}
+
+// Calculate company's creditworthiness and determine loan terms
+function calculateCreditworthiness() {
+    const balances = calculateAccountBalances();
+
+    const cashBalance = balances[1] || 0; // Cash account
+    const totalCurrentAssets = (balances[1] || 0) + (balances[2] || 0) + (balances[3] || 0); // Cash + AR + Inventory
+    const totalCurrentLiabilities = (balances[6] || 0) + (balances[7] || 0); // AP + Notes Payable
+    const realEstateValue = balances[4] || 0; // Real Estate
+    const totalLoans = balances[19] || 0; // Bank Loans Payable
+
+    const currentRatio = totalCurrentLiabilities > 0 ? totalCurrentAssets / totalCurrentLiabilities : 10;
+    const debtToAssetRatio = (totalCurrentAssets + realEstateValue) > 0
+        ? totalLoans / (totalCurrentAssets + realEstateValue)
+        : 0;
+
+    // Calculate credit score (0-100)
+    let creditScore = 50; // Base score
+
+    // Current ratio factor (0-25 points)
+    if (currentRatio >= 2.0) creditScore += 25;
+    else if (currentRatio >= 1.5) creditScore += 20;
+    else if (currentRatio >= 1.0) creditScore += 15;
+    else if (currentRatio >= 0.5) creditScore += 5;
+
+    // Debt to asset ratio factor (0-25 points)
+    if (debtToAssetRatio <= 0.3) creditScore += 25;
+    else if (debtToAssetRatio <= 0.5) creditScore += 20;
+    else if (debtToAssetRatio <= 0.7) creditScore += 10;
+    else if (debtToAssetRatio <= 0.9) creditScore += 5;
+
+    // Cash factor (0-15 points)
+    if (cashBalance >= 50000) creditScore += 15;
+    else if (cashBalance >= 25000) creditScore += 10;
+    else if (cashBalance >= 10000) creditScore += 5;
+
+    // Real estate factor (0-10 points)
+    if (realEstateValue >= 20000) creditScore += 10;
+    else if (realEstateValue >= 10000) creditScore += 7;
+    else if (realEstateValue >= 5000) creditScore += 4;
+
+    creditScore = Math.min(100, Math.max(0, creditScore));
+
+    // Determine maximum loan amount (based on assets)
+    const maxLoanAmount = Math.floor((totalCurrentAssets + realEstateValue * 0.8) * 0.7);
+
+    // Determine interest rate (3% to 20% based on credit score)
+    const baseRate = 3.0;
+    const rateRange = 17.0;
+    const interestRate = baseRate + (rateRange * (100 - creditScore) / 100);
+
+    return {
+        creditScore,
+        maxLoanAmount,
+        interestRate: parseFloat(interestRate.toFixed(2)),
+        currentRatio: parseFloat(currentRatio.toFixed(2)),
+        debtToAssetRatio: parseFloat(debtToAssetRatio.toFixed(2)),
+        cashBalance,
+        totalAssets: totalCurrentAssets + realEstateValue
+    };
+}
+
+// Apply for and receive a bank loan
+function applyForLoan(principal, termMonths) {
+    const creditInfo = calculateCreditworthiness();
+
+    if (principal > creditInfo.maxLoanAmount) {
+        alert(`Loan amount exceeds maximum allowed (${formatCurrency(creditInfo.maxLoanAmount)}). Your creditworthiness limits your borrowing capacity.`);
+        return false;
+    }
+
+    if (principal < 1000) {
+        alert('Minimum loan amount is $1,000.');
+        return false;
+    }
+
+    const interestRate = creditInfo.interestRate / 100;
+    const monthlyRate = interestRate / 12;
+    const monthlyPayment = principal * (monthlyRate * Math.pow(1 + monthlyRate, termMonths)) / (Math.pow(1 + monthlyRate, termMonths) - 1);
+
+    const cashAccount = getCashAccount();
+    const loansPayableAccount = appState.accounts.find(a => a.number === '2200');
+
+    const issueDate = getTodayDate();
+
+    // Create loan record
+    const loan = {
+        id: appState.nextLoanId++,
+        principal,
+        interestRate: creditInfo.interestRate,
+        termMonths,
+        monthlyPayment: parseFloat(monthlyPayment.toFixed(2)),
+        remainingBalance: principal,
+        issueDate,
+        maturityDate: addMonthsToDate(issueDate, termMonths),
+        status: 'active',
+        nextPaymentDate: addMonthsToDate(issueDate, 1)
+    };
+
+    appState.loans.push(loan);
+
+    // Record transaction: Debit Cash, Credit Bank Loans Payable
+    const transaction = {
+        id: appState.nextTransactionId++,
+        date: issueDate,
+        description: `Bank loan received - ${termMonths} months @ ${creditInfo.interestRate}% APR`,
+        debitAccount: cashAccount.id,
+        creditAccount: loansPayableAccount.id,
+        amount: principal
+    };
+
+    appState.transactions.push(transaction);
+    hasUnsavedChanges = true;
+
+    return true;
+}
+
+// Make a loan payment
+function makeLoanPayment(loanId) {
+    const loan = appState.loans.find(l => l.id === loanId);
+    if (!loan || loan.status !== 'active') {
+        alert('Loan not found or already paid off.');
+        return false;
+    }
+
+    const cashBalance = getCashBalance();
+    if (cashBalance < loan.monthlyPayment) {
+        alert(`Insufficient cash to make payment. Required: ${formatCurrency(loan.monthlyPayment)}, Available: ${formatCurrency(cashBalance)}`);
+        return false;
+    }
+
+    const monthlyRate = (loan.interestRate / 100) / 12;
+    const interestPortion = loan.remainingBalance * monthlyRate;
+    const principalPortion = loan.monthlyPayment - interestPortion;
+
+    const cashAccount = getCashAccount();
+    const loansPayableAccount = appState.accounts.find(a => a.number === '2200');
+    const interestExpenseAccount = appState.accounts.find(a => a.number === '5600');
+
+    const paymentDate = getTodayDate();
+
+    // Record multi-entry transaction
+    const transaction = {
+        id: appState.nextTransactionId++,
+        date: paymentDate,
+        description: `Loan #${loanId} payment - Principal: ${formatCurrency(principalPortion)}, Interest: ${formatCurrency(interestPortion)}`,
+        entries: [
+            { account: loansPayableAccount.id, type: 'debit', amount: principalPortion },
+            { account: interestExpenseAccount.id, type: 'debit', amount: interestPortion },
+            { account: cashAccount.id, type: 'credit', amount: loan.monthlyPayment }
+        ]
+    };
+
+    appState.transactions.push(transaction);
+
+    // Update loan balance
+    loan.remainingBalance -= principalPortion;
+    loan.nextPaymentDate = addMonthsToDate(paymentDate, 1);
+
+    if (loan.remainingBalance <= 0.01) {
+        loan.remainingBalance = 0;
+        loan.status = 'paid';
+    }
+
+    hasUnsavedChanges = true;
+    return true;
+}
+
+// Render loan management section
+function renderLoanManagement() {
+    const container = document.getElementById('loanContent');
+    if (!container) return;
+
+    const creditInfo = calculateCreditworthiness();
+
+    // Loans section
+    const loansHtml = appState.loans
+        .filter(loan => loan.status === 'active')
+        .map(loan => `
+            <tr>
+                <td>#${loan.id}</td>
+                <td>${formatCurrency(loan.principal)}</td>
+                <td>${loan.interestRate}%</td>
+                <td>${loan.termMonths}</td>
+                <td>${formatCurrency(loan.remainingBalance)}</td>
+                <td>${formatCurrency(loan.monthlyPayment)}</td>
+                <td>${loan.nextPaymentDate}</td>
+                <td>
+                    <button class="btn btn-sm" onclick="if(makeLoanPayment(${loan.id})) render();">Make Payment</button>
+                </td>
+            </tr>
+        `).join('') || '<tr><td colspan="8">No active loans</td></tr>';
+
+    container.innerHTML = `
+        <div class="loan-overview">
+            <h3>Company Financial Health</h3>
+            <div class="loan-stats">
+                <div class="stat-card">
+                    <div class="stat-label">Credit Score</div>
+                    <div class="stat-value">${creditInfo.creditScore}/100</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Max Loan Available</div>
+                    <div class="stat-value">${formatCurrency(creditInfo.maxLoanAmount)}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Interest Rate</div>
+                    <div class="stat-value">${creditInfo.interestRate}%</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Current Ratio</div>
+                    <div class="stat-value">${creditInfo.currentRatio}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Debt-to-Asset Ratio</div>
+                    <div class="stat-value">${creditInfo.debtToAssetRatio}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Cash Balance</div>
+                    <div class="stat-value">${formatCurrency(creditInfo.cashBalance)}</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="loan-section">
+            <h3>Apply for Bank Loan</h3>
+            <div class="loan-application">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="loanAmount">Loan Amount:</label>
+                        <input type="number" id="loanAmount" min="1000" step="1000" placeholder="e.g., 10000">
+                    </div>
+                    <div class="form-group">
+                        <label for="loanTerm">Term (months):</label>
+                        <select id="loanTerm">
+                            <option value="12">12 months</option>
+                            <option value="24">24 months</option>
+                            <option value="36">36 months</option>
+                            <option value="60">60 months</option>
+                            <option value="120">120 months (10 years)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <button class="btn btn-primary" onclick="if(applyForLoan(parseFloat(document.getElementById('loanAmount').value), parseInt(document.getElementById('loanTerm').value))) { render(); document.getElementById('loanAmount').value = ''; }">Apply for Loan</button>
+                    </div>
+                </div>
+                <p class="help-text">Your credit score determines your interest rate and maximum borrowing capacity. Loan terms are based on current assets (${formatCurrency(creditInfo.totalAssets)}), current liabilities, cash on hand, and real estate value.</p>
+            </div>
+
+            <h3>Outstanding Loans</h3>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Principal</th>
+                        <th>Rate</th>
+                        <th>Term (months)</th>
+                        <th>Balance</th>
+                        <th>Monthly Payment</th>
+                        <th>Next Payment</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${loansHtml}
+                </tbody>
+            </table>
+        </div>
+    `;
+}
+
+// ====================================
 // CALCULATIONS
 // ====================================
 
@@ -2363,6 +2661,8 @@ function render() {
         renderCommoditiesMarket();
     } else if (activeTab === 'map') {
         renderMap();
+    } else if (activeTab === 'loans') {
+        renderLoanManagement();
     }
 }
 
