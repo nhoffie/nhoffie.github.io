@@ -3025,7 +3025,32 @@ function resetTime() {
         appState.simulation.startRealTime = Date.now();
         hasUnsavedChanges = true;
         updateSimulationClock();
+        render();
     }
+}
+
+// Adjust time by a specific number of milliseconds (positive = forward, negative = backward)
+function adjustTime(milliseconds) {
+    // Get current simulation time
+    const currentTime = getCurrentSimulationTime();
+
+    // Calculate new time
+    let newTime = currentTime + milliseconds;
+
+    // Prevent going before Year 1
+    if (newTime < 0) {
+        newTime = 0;
+        alert('Cannot go before Year 1, Month 1, Day 1, 00:00:00');
+    }
+
+    // Update simulation time
+    appState.simulation.simulationTime = newTime;
+    appState.simulation.lastSaveRealTime = Date.now();
+    hasUnsavedChanges = true;
+
+    // Update display
+    updateSimulationClock();
+    render();
 }
 
 // Set specific time (admin mode)
@@ -3068,6 +3093,7 @@ function setSimulationTime() {
     appState.simulation.lastSaveRealTime = Date.now();
     hasUnsavedChanges = true;
     updateSimulationClock();
+    render();
 
     showStatus('timeControlStatus', 'Time updated successfully!', 'success');
 }
