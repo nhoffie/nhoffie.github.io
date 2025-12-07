@@ -2699,6 +2699,75 @@ function renderCashFlowStatement() {
 
     const operatingCash = netIncome - arChange + apChange;
 
+    // Get financing activities from transactions in the period
+    const periodTransactions = appState.transactions.filter(t => {
+        return isDateInRange(t.date, startDate, endDate);
+    });
+
+    // Categorize financing activities
+    const loanProceeds = periodTransactions.filter(t =>
+        t.description.includes('Bank loan received')
+    );
+    const loanPrincipalPayments = periodTransactions.filter(t =>
+        t.description.includes('payment - Principal reduction')
+    );
+    const loanInterestPayments = periodTransactions.filter(t =>
+        t.description.includes('payment - Interest paid')
+    );
+    const stockIssuances = periodTransactions.filter(t =>
+        t.description.includes('Issued') && t.description.includes('shares')
+    );
+
+    const totalLoanProceeds = loanProceeds.reduce((sum, t) => sum + t.amount, 0);
+    const totalLoanPrincipalPayments = loanPrincipalPayments.reduce((sum, t) => sum + t.amount, 0);
+    const totalLoanInterestPayments = loanInterestPayments.reduce((sum, t) => sum + t.amount, 0);
+    const totalStockIssuances = stockIssuances.reduce((sum, t) => sum + t.amount, 0);
+
+    const netFinancingCash = totalLoanProceeds + totalStockIssuances - totalLoanPrincipalPayments - totalLoanInterestPayments;
+
+    // Build financing activities HTML
+    let financingActivitiesHtml = '';
+
+    if (loanProceeds.length > 0) {
+        financingActivitiesHtml += `
+            <div class="statement-item">
+                <span>Loan Proceeds</span>
+                <span>${formatCurrency(totalLoanProceeds)}</span>
+            </div>`;
+    }
+
+    if (stockIssuances.length > 0) {
+        financingActivitiesHtml += `
+            <div class="statement-item">
+                <span>Stock Issuances</span>
+                <span>${formatCurrency(totalStockIssuances)}</span>
+            </div>`;
+    }
+
+    if (loanPrincipalPayments.length > 0) {
+        financingActivitiesHtml += `
+            <div class="statement-item">
+                <span>Loan Principal Payments</span>
+                <span>(${formatCurrency(totalLoanPrincipalPayments)})</span>
+            </div>`;
+    }
+
+    if (loanInterestPayments.length > 0) {
+        financingActivitiesHtml += `
+            <div class="statement-item">
+                <span>Loan Interest Payments</span>
+                <span>(${formatCurrency(totalLoanInterestPayments)})</span>
+            </div>`;
+    }
+
+    if (financingActivitiesHtml === '') {
+        financingActivitiesHtml = `
+            <div class="statement-item">
+                <span>No financing activities recorded</span>
+                <span>${formatCurrency(0)}</span>
+            </div>`;
+    }
+
     const content = document.getElementById('cashFlowContent');
     content.innerHTML = `
         <div class="statement-section">
@@ -2740,13 +2809,10 @@ function renderCashFlowStatement() {
 
         <div class="statement-section">
             <div class="statement-category">FINANCING ACTIVITIES</div>
-            <div class="statement-item">
-                <span>No financing activities recorded</span>
-                <span>${formatCurrency(0)}</span>
-            </div>
+            ${financingActivitiesHtml}
             <div class="statement-subtotal">
                 <span>Net Cash from Financing Activities</span>
-                <span>${formatCurrency(0)}</span>
+                <span>${formatCurrency(netFinancingCash)}</span>
             </div>
         </div>
 
@@ -2968,6 +3034,60 @@ function getPreviousDay(dateString) {
     const date = new Date(dateString + 'T00:00:00');
     date.setDate(date.getDate() - 1);
     return date.toISOString().split('T')[0];
+}
+
+// Check if a date is within a range (inclusive)
+function isDateInRange(dateString, startDate, endDate) {
+    // Parse dates in Y#-M#-D# format
+    const parseSimDate = (ds) => {
+        const parts = ds.match(/Y(\d+)-M(\d+)-D(\d+)/);
+        if (!parts) return null;
+        return {
+            year: parseInt(parts[1]),
+            month: parseInt(parts[2]),
+            day: parseInt(parts[3])
+        };
+    };
+
+    const date = parseSimDate(dateString);
+    const start = parseSimDate(startDate);
+    const end = parseSimDate(endDate);
+
+    if (!date || !start || !end) return false;
+
+    // Compare years first
+    if (date.year < start.year || date.year > end.year) return false;
+    if (date.year > start.year && date.year < end.year) return true;
+
+    // Same year as start or end - need to compare months/days
+    if (date.year === start.year && date.year === end.year) {
+        // All in same year
+        if (date.month < start.month || date.month > end.month) return false;
+        if (date.month > start.month && date.month < end.month) return true;
+
+        // Need to check days
+        if (date.month === start.month && date.month === end.month) {
+            return date.day >= start.day && date.day <= end.day;
+        }
+        if (date.month === start.month) {
+            return date.day >= start.day;
+        }
+        if (date.month === end.month) {
+            return date.day <= end.day;
+        }
+    } else if (date.year === start.year) {
+        // Date is in start year
+        if (date.month < start.month) return false;
+        if (date.month > start.month) return true;
+        return date.day >= start.day;
+    } else if (date.year === end.year) {
+        // Date is in end year
+        if (date.month > end.month) return false;
+        if (date.month < end.month) return true;
+        return date.day <= end.day;
+    }
+
+    return true;
 }
 
 // Update simulation clock (called every second)
