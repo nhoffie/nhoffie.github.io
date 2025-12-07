@@ -1696,12 +1696,14 @@ function calculateCreditworthiness() {
     const realEstateValue = balances[4] || 0; // Real Estate
     const totalLoans = balances[19] || 0; // Bank Loans Payable
 
-    const currentRatio = totalCurrentLiabilities > 0 ? totalCurrentAssets / totalCurrentLiabilities : 10;
-    const debtToAssetRatio = (totalCurrentAssets + realEstateValue) > 0
-        ? totalLoans / (totalCurrentAssets + realEstateValue)
-        : 0;
+    // Calculate total assets and total liabilities
+    const totalAssets = totalCurrentAssets + realEstateValue;
+    const totalLiabilities = totalCurrentLiabilities + totalLoans;
 
-    // Calculate credit score (0-100)
+    const currentRatio = totalCurrentLiabilities > 0 ? totalCurrentAssets / totalCurrentLiabilities : 10;
+    const debtToAssetRatio = totalAssets > 0 ? totalLiabilities / totalAssets : 0;
+
+    // Calculate credit score (0-100) - for display purposes
     let creditScore = 50; // Base score
 
     // Current ratio factor (0-25 points)
@@ -1728,22 +1730,24 @@ function calculateCreditworthiness() {
 
     creditScore = Math.min(100, Math.max(0, creditScore));
 
-    // Determine maximum loan amount (based on assets)
-    const maxLoanAmount = Math.floor((totalCurrentAssets + realEstateValue * 0.8) * 0.7);
+    // Maximum loan formula: (0.75 × Total Assets) - Total Liabilities
+    const maxLoanAmount = Math.max(0, Math.floor((totalAssets * 0.75) - totalLiabilities));
 
-    // Determine interest rate (3% to 20% based on credit score)
+    // Interest rate formula: 3% + (Debt-to-Asset Ratio × 17%)
+    // This reflects risk - higher debt ratio means higher interest rate
     const baseRate = 3.0;
     const rateRange = 17.0;
-    const interestRate = baseRate + (rateRange * (100 - creditScore) / 100);
+    const interestRate = baseRate + (Math.min(1.0, debtToAssetRatio) * rateRange);
 
     return {
         creditScore,
         maxLoanAmount,
         interestRate: parseFloat(interestRate.toFixed(2)),
         currentRatio: parseFloat(currentRatio.toFixed(2)),
-        debtToAssetRatio: parseFloat(debtToAssetRatio.toFixed(2)),
+        debtToAssetRatio: parseFloat(debtToAssetRatio.toFixed(3)),
         cashBalance,
-        totalAssets: totalCurrentAssets + realEstateValue
+        totalAssets,
+        totalLiabilities
     };
 }
 
@@ -1915,29 +1919,68 @@ function renderLoanManagement() {
             <h4>Company Financial Health</h4>
             <div class="loan-stats">
                 <div class="stat-card">
-                    <div class="stat-label">Credit Score</div>
-                    <div class="stat-value">${creditInfo.creditScore}/100</div>
+                    <div class="stat-label">Total Assets</div>
+                    <div class="stat-value">${formatCurrency(creditInfo.totalAssets)}</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-label">Max Loan Available</div>
-                    <div class="stat-value">${formatCurrency(creditInfo.maxLoanAmount)}</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-label">Interest Rate</div>
-                    <div class="stat-value">${creditInfo.interestRate}%</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-label">Current Ratio</div>
-                    <div class="stat-value">${creditInfo.currentRatio}</div>
+                    <div class="stat-label">Total Liabilities</div>
+                    <div class="stat-value">${formatCurrency(creditInfo.totalLiabilities)}</div>
                 </div>
                 <div class="stat-card">
                     <div class="stat-label">Debt-to-Asset Ratio</div>
                     <div class="stat-value">${creditInfo.debtToAssetRatio}</div>
                 </div>
                 <div class="stat-card">
+                    <div class="stat-label">Current Ratio</div>
+                    <div class="stat-value">${creditInfo.currentRatio}</div>
+                </div>
+                <div class="stat-card">
                     <div class="stat-label">Cash Balance</div>
                     <div class="stat-value">${formatCurrency(creditInfo.cashBalance)}</div>
                 </div>
+                <div class="stat-card">
+                    <div class="stat-label">Credit Score</div>
+                    <div class="stat-value">${creditInfo.creditScore}/100</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="loan-formulas">
+            <div class="formula-card">
+                <h5>Maximum Loan Calculation</h5>
+                <div class="formula-display">
+                    <div class="formula-line">
+                        <span class="formula-label">Formula:</span>
+                        <code>(0.75 × Total Assets) - Total Liabilities</code>
+                    </div>
+                    <div class="formula-line">
+                        <span class="formula-label">Calculation:</span>
+                        <code>(0.75 × ${formatCurrency(creditInfo.totalAssets)}) - ${formatCurrency(creditInfo.totalLiabilities)}</code>
+                    </div>
+                    <div class="formula-line">
+                        <span class="formula-label">Result:</span>
+                        <strong>${formatCurrency(creditInfo.maxLoanAmount)}</strong>
+                    </div>
+                </div>
+            </div>
+
+            <div class="formula-card">
+                <h5>Interest Rate Calculation</h5>
+                <div class="formula-display">
+                    <div class="formula-line">
+                        <span class="formula-label">Formula:</span>
+                        <code>3% + (Debt-to-Asset Ratio × 17%)</code>
+                    </div>
+                    <div class="formula-line">
+                        <span class="formula-label">Calculation:</span>
+                        <code>3% + (${creditInfo.debtToAssetRatio} × 17%)</code>
+                    </div>
+                    <div class="formula-line">
+                        <span class="formula-label">Result:</span>
+                        <strong>${creditInfo.interestRate}% APR</strong>
+                    </div>
+                </div>
+                <p class="formula-note">Higher debt-to-asset ratio = higher risk = higher interest rate</p>
             </div>
         </div>
 
@@ -1946,7 +1989,7 @@ function renderLoanManagement() {
             <div class="loan-application">
                 <div class="form-row">
                     <div class="form-group">
-                        <label for="loanAmount">Loan Amount:</label>
+                        <label for="loanAmount">Loan Amount (Max: ${formatCurrency(creditInfo.maxLoanAmount)}):</label>
                         <input type="number" id="loanAmount" min="1000" step="1000" placeholder="e.g., 10000">
                     </div>
                     <div class="form-group">
@@ -1963,7 +2006,7 @@ function renderLoanManagement() {
                         <button class="btn btn-primary" onclick="if(applyForLoan(parseFloat(document.getElementById('loanAmount').value), parseInt(document.getElementById('loanTerm').value))) { render(); document.getElementById('loanAmount').value = ''; }">Apply for Loan</button>
                     </div>
                 </div>
-                <p class="help-text">Your credit score determines your interest rate and maximum borrowing capacity. Loan terms are based on current assets (${formatCurrency(creditInfo.totalAssets)}), current liabilities, cash on hand, and real estate value.</p>
+                <p class="help-text">Loans are approved based on your company's financial position. The interest rate of ${creditInfo.interestRate}% reflects your current debt-to-asset ratio of ${creditInfo.debtToAssetRatio}.</p>
             </div>
 
             <h4>Outstanding Loans</h4>

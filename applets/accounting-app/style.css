@@ -1043,6 +1043,19 @@ footer a:hover {
     .loan-section .form-row {
         flex-direction: column;
     }
+
+    .loan-formulas {
+        grid-template-columns: 1fr;
+    }
+
+    .formula-line {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .formula-label {
+        min-width: auto;
+    }
 }
 
 /* Financial Management */
@@ -1128,6 +1141,67 @@ footer a:hover {
     padding: 1.5rem;
     border-radius: 4px;
     margin-bottom: 1.5rem;
+}
+
+.loan-formulas {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.formula-card {
+    background: #f0f9ff;
+    border: 2px solid #0ea5e9;
+    border-radius: 8px;
+    padding: 1.5rem;
+}
+
+.formula-card h5 {
+    color: #0369a1;
+    margin-bottom: 1rem;
+    font-size: 1.1rem;
+}
+
+.formula-display {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.formula-line {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+}
+
+.formula-label {
+    font-weight: 600;
+    color: #0369a1;
+    min-width: 100px;
+}
+
+.formula-line code {
+    background: white;
+    padding: 0.5rem 0.75rem;
+    border-radius: 4px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.95rem;
+    border: 1px solid #bae6fd;
+}
+
+.formula-line strong {
+    color: #0c4a6e;
+    font-size: 1.1rem;
+}
+
+.formula-note {
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid #bae6fd;
+    font-size: 0.875rem;
+    color: #0369a1;
+    font-style: italic;
 }
 
 .btn-sm {
