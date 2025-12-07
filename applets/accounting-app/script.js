@@ -2017,6 +2017,33 @@ function getSharesSummary() {
     };
 }
 
+// Calculate suggested payment based on current balance and remaining term
+function calculateCurrentSuggestedPayment(loan) {
+    const today = getTodayDate();
+    const remainingMonths = getMonthsBetweenDates(today, loan.maturityDate);
+
+    // If loan is past maturity or has very few months left, suggest paying full balance
+    if (remainingMonths <= 0) {
+        return loan.remainingBalance;
+    }
+
+    // Calculate amortized payment based on current balance and remaining term
+    const monthlyRate = (loan.interestRate / 100) / 12;
+
+    // If interest rate is 0, just divide evenly
+    if (monthlyRate === 0) {
+        return loan.remainingBalance / remainingMonths;
+    }
+
+    // Standard amortization formula: P * [r(1+r)^n] / [(1+r)^n - 1]
+    // where P = current balance, r = monthly rate, n = remaining months
+    const suggestedPayment = loan.remainingBalance *
+        (monthlyRate * Math.pow(1 + monthlyRate, remainingMonths)) /
+        (Math.pow(1 + monthlyRate, remainingMonths) - 1);
+
+    return parseFloat(suggestedPayment.toFixed(2));
+}
+
 // Render financial management section
 function renderFinancialManagement() {
     const container = document.getElementById('financeContent');
@@ -2056,6 +2083,13 @@ function renderLoanManagement() {
     const container = document.getElementById('loanManagementContent');
     if (!container) return;
 
+    // Auto-accrue interest on all active loans if needed
+    appState.loans
+        .filter(loan => loan.status === 'active')
+        .forEach(loan => {
+            accrueInterestOnLoan(loan.id);
+        });
+
     const creditInfo = calculateCreditworthiness();
 
     // Loans section
@@ -2063,6 +2097,7 @@ function renderLoanManagement() {
         .filter(loan => loan.status === 'active')
         .map(loan => {
             const monthsSinceAccrual = getMonthsBetweenDates(loan.lastInterestAccrualDate, getTodayDate());
+            const suggestedPayment = calculateCurrentSuggestedPayment(loan);
             return `
             <tr>
                 <td>#${loan.id}</td>
@@ -2074,10 +2109,10 @@ function renderLoanManagement() {
                 <td>${monthsSinceAccrual} mo.</td>
                 <td>
                     <div class="payment-input-group">
-                        <input type="number" id="paymentAmount_${loan.id}" min="0.01" step="0.01" placeholder="${formatCurrency(loan.suggestedMonthlyPayment)}" class="payment-input">
+                        <input type="number" id="paymentAmount_${loan.id}" min="0.01" step="0.01" placeholder="${formatCurrency(suggestedPayment)}" class="payment-input">
                         <button class="btn btn-sm" onclick="const amt = parseFloat(document.getElementById('paymentAmount_${loan.id}').value); if(amt && makeLoanPayment(${loan.id}, amt)) { render(); }">Pay</button>
                     </div>
-                    <small class="suggested-payment">Suggested: ${formatCurrency(loan.suggestedMonthlyPayment)}</small>
+                    <small class="suggested-payment">Suggested: ${formatCurrency(suggestedPayment)}</small>
                 </td>
             </tr>
             `;
@@ -2181,7 +2216,7 @@ function renderLoanManagement() {
             <h4>Outstanding Loans</h4>
             <div class="loan-info-box">
                 <strong>How Loan Interest Works:</strong>
-                <p>Interest accrues monthly and compounds (adds to your loan balance). When you make a payment, any accrued interest is first added to the balance, then your payment reduces the principal. You can pay any amount you want - the "Suggested" payment is the amortized amount that would pay off the loan in the original term.</p>
+                <p>Interest automatically accrues monthly and compounds (adds to your loan balance). When you make a payment, any accrued interest is first added to the balance, then your payment reduces the principal. You can pay any amount you want - the "Suggested" payment is dynamically calculated based on your current balance and remaining time to pay off the loan by its maturity date.</p>
             </div>
             <table class="data-table">
                 <thead>
