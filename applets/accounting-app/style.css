@@ -1045,6 +1045,28 @@ footer a:hover {
     }
 }
 
+/* Financial Management */
+.finance-sections {
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+}
+
+.finance-section {
+    background: white;
+    border: 2px solid var(--border-color);
+    border-radius: 8px;
+    padding: 2rem;
+}
+
+.finance-section .section-title {
+    color: var(--primary-color);
+    margin-bottom: 1.5rem;
+    font-size: 1.5rem;
+    border-bottom: 2px solid var(--primary-color);
+    padding-bottom: 0.75rem;
+}
+
 /* Loan Management */
 .loan-overview {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -1054,10 +1076,10 @@ footer a:hover {
     margin-bottom: 2rem;
 }
 
-.loan-overview h3 {
+.loan-overview h4 {
     color: white;
     margin-bottom: 1.5rem;
-    font-size: 1.5rem;
+    font-size: 1.3rem;
 }
 
 .loan-stats {
@@ -1095,10 +1117,10 @@ footer a:hover {
     margin-bottom: 2rem;
 }
 
-.loan-section h3 {
+.loan-section h4 {
     color: var(--primary-color);
     margin-bottom: 1.5rem;
-    font-size: 1.3rem;
+    font-size: 1.2rem;
 }
 
 .loan-application {

@@ -300,8 +300,8 @@ function setupTabNavigation() {
                 renderCommoditiesMarket();
             } else if (targetTab === 'map') {
                 renderMap();
-            } else if (targetTab === 'loans') {
-                renderLoanManagement();
+            } else if (targetTab === 'finance') {
+                renderFinancialManagement();
             }
         });
     });
@@ -1853,9 +1853,41 @@ function makeLoanPayment(loanId) {
     return true;
 }
 
-// Render loan management section
+// Render financial management section
+function renderFinancialManagement() {
+    const container = document.getElementById('financeContent');
+    if (!container) return;
+
+    container.innerHTML = `
+        <div class="finance-sections">
+            <!-- Loan Management Section -->
+            <div class="finance-section">
+                <h3 class="section-title">Bank Loans</h3>
+                <div id="loanManagementContent"></div>
+            </div>
+
+            <!-- Placeholder for future sections -->
+            <!--
+            <div class="finance-section">
+                <h3 class="section-title">Corporate Bonds</h3>
+                <div id="bondsContent"></div>
+            </div>
+
+            <div class="finance-section">
+                <h3 class="section-title">Equity & Shares</h3>
+                <div id="equityContent"></div>
+            </div>
+            -->
+        </div>
+    `;
+
+    // Render loan management content
+    renderLoanManagement();
+}
+
+// Render loan management content
 function renderLoanManagement() {
-    const container = document.getElementById('loanContent');
+    const container = document.getElementById('loanManagementContent');
     if (!container) return;
 
     const creditInfo = calculateCreditworthiness();
@@ -1880,7 +1912,7 @@ function renderLoanManagement() {
 
     container.innerHTML = `
         <div class="loan-overview">
-            <h3>Company Financial Health</h3>
+            <h4>Company Financial Health</h4>
             <div class="loan-stats">
                 <div class="stat-card">
                     <div class="stat-label">Credit Score</div>
@@ -1910,7 +1942,7 @@ function renderLoanManagement() {
         </div>
 
         <div class="loan-section">
-            <h3>Apply for Bank Loan</h3>
+            <h4>Apply for Bank Loan</h4>
             <div class="loan-application">
                 <div class="form-row">
                     <div class="form-group">
@@ -1934,7 +1966,7 @@ function renderLoanManagement() {
                 <p class="help-text">Your credit score determines your interest rate and maximum borrowing capacity. Loan terms are based on current assets (${formatCurrency(creditInfo.totalAssets)}), current liabilities, cash on hand, and real estate value.</p>
             </div>
 
-            <h3>Outstanding Loans</h3>
+            <h4>Outstanding Loans</h4>
             <table class="data-table">
                 <thead>
                     <tr>
@@ -2663,8 +2695,8 @@ function render() {
         renderCommoditiesMarket();
     } else if (activeTab === 'map') {
         renderMap();
-    } else if (activeTab === 'loans') {
-        renderLoanManagement();
+    } else if (activeTab === 'finance') {
+        renderFinancialManagement();
     }
 }
 
