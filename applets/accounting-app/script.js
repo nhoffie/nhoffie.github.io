@@ -300,6 +300,8 @@ function setupTabNavigation() {
                 renderCommoditiesMarket();
             } else if (targetTab === 'map') {
                 renderMap();
+            } else if (targetTab === 'loans') {
+                renderLoanManagement();
             }
         });
     });
