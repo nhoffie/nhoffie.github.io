@@ -2431,7 +2431,7 @@ function calculateAccountBalances(asOfDate = null) {
 
     // Filter transactions by date if specified
     const relevantTransactions = asOfDate
-        ? appState.transactions.filter(t => t.date <= asOfDate)
+        ? appState.transactions.filter(t => compareDates(t.date, asOfDate) <= 0)
         : appState.transactions;
 
     // Apply transactions
@@ -3088,6 +3088,38 @@ function isDateInRange(dateString, startDate, endDate) {
     }
 
     return true;
+}
+
+// Compare two simulation dates (-1 if date1 < date2, 0 if equal, 1 if date1 > date2)
+function compareDates(date1, date2) {
+    const parseSimDate = (ds) => {
+        const parts = ds.match(/Y(\d+)-M(\d+)-D(\d+)/);
+        if (!parts) return null;
+        return {
+            year: parseInt(parts[1]),
+            month: parseInt(parts[2]),
+            day: parseInt(parts[3])
+        };
+    };
+
+    const d1 = parseSimDate(date1);
+    const d2 = parseSimDate(date2);
+
+    if (!d1 || !d2) return 0;
+
+    // Compare years
+    if (d1.year < d2.year) return -1;
+    if (d1.year > d2.year) return 1;
+
+    // Same year, compare months
+    if (d1.month < d2.month) return -1;
+    if (d1.month > d2.month) return 1;
+
+    // Same month, compare days
+    if (d1.day < d2.day) return -1;
+    if (d1.day > d2.day) return 1;
+
+    return 0;
 }
 
 // Update simulation clock (called every second)
