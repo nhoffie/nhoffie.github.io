@@ -3246,7 +3246,7 @@ function formatCurrency(amount) {
 // SIMULATION TIME SYSTEM
 // ====================================
 // Custom calendar: Years × 12 months × 28 days × 24 hours
-// Time progresses in real-time (1 real second = 1 simulation second)
+// Time progresses at 60x speed (1 real second = 1 simulation minute)
 
 const SIMULATION_CONFIG = {
     DAYS_PER_MONTH: 28,
@@ -3254,7 +3254,8 @@ const SIMULATION_CONFIG = {
     HOURS_PER_DAY: 24,
     MINUTES_PER_HOUR: 60,
     SECONDS_PER_MINUTE: 60,
-    MS_PER_SECOND: 1000
+    MS_PER_SECOND: 1000,
+    TIME_SCALE: 60  // 1 real second = 60 simulation seconds (1 simulation minute)
 };
 
 // Calculate derived constants
@@ -3319,7 +3320,8 @@ function getCurrentSimulationTime() {
     }
 
     const realTimeElapsed = Date.now() - appState.simulation.lastSaveRealTime;
-    return appState.simulation.simulationTime + realTimeElapsed;
+    const simulationTimeElapsed = realTimeElapsed * SIMULATION_CONFIG.TIME_SCALE;
+    return appState.simulation.simulationTime + simulationTimeElapsed;
 }
 
 // Format simulation time as string
