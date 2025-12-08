@@ -8,6 +8,7 @@ let appState = {
         { id: 2, number: '1100', name: 'Accounts Receivable', type: 'Asset', openingBalance: 0 },
         { id: 3, number: '1200', name: 'Inventory', type: 'Asset', openingBalance: 0 },
         { id: 4, number: '1300', name: 'Real Estate', type: 'Asset', openingBalance: 0 },
+        { id: 22, number: '1400', name: 'Buildings', type: 'Asset', openingBalance: 0 },
         { id: 5, number: '1500', name: 'Equipment', type: 'Asset', openingBalance: 0 },
         { id: 6, number: '2000', name: 'Accounts Payable', type: 'Liability', openingBalance: 0 },
         { id: 7, number: '2100', name: 'Notes Payable', type: 'Liability', openingBalance: 0 },
@@ -111,7 +112,10 @@ let appState = {
     ],
     commodities: [
         { id: 1, name: 'Power', description: 'Electrical energy units', price: 50.00 },
-        { id: 2, name: 'Water', description: 'Fresh water units', price: 25.00 }
+        { id: 2, name: 'Water', description: 'Fresh water units', price: 25.00 },
+        { id: 3, name: 'Lumber', description: 'Construction-grade lumber', price: 100.00 },
+        { id: 4, name: 'Steel', description: 'Structural steel beams', price: 200.00 },
+        { id: 5, name: 'Concrete', description: 'Ready-mix concrete', price: 150.00 }
     ],
     portfolio: {
         // Structure: { commodityId: { lots: [{ quantity, costBasis, purchaseDate, purchaseId }] } }
@@ -137,13 +141,18 @@ let appState = {
     // Structure: { id, principal, interestRate, termMonths, suggestedMonthlyPayment, principalBalance, accruedInterestBalance, issueDate, maturityDate, lastInterestAccrualDate, status }
     shares: [],
     // Structure: { id, numberOfShares, pricePerShare, totalValue, issueDate, holder }
-    nextAccountId: 22,
+    buildings: [],
+    // Structure: { id, type, x, y, status, startDate, completionDate, cost, interior: { grid: 4x4 array } }
+    constructionQueue: [],
+    // Structure: { buildingId, completionDate }
+    nextAccountId: 23,
     nextTransactionId: 1,
     nextTransactionTypeId: 11,
-    nextCommodityId: 3,
+    nextCommodityId: 6,
     nextTradeId: 1,
     nextLoanId: 1,
-    nextShareIssuanceId: 1
+    nextShareIssuanceId: 1,
+    nextBuildingId: 1
 };
 
 let hasUnsavedChanges = false;
@@ -263,6 +272,39 @@ function restoreSessionKey() {
         const oldLoansAccount = appState.accounts.find(a => a.number === '2200');
         if (oldLoansAccount && oldLoansAccount.name === 'Bank Loans Payable') {
             oldLoansAccount.name = 'Bank Loans Payable - Principal';
+        }
+
+        // Add Buildings account if it doesn't exist
+        if (!appState.accounts.find(a => a.number === '1400')) {
+            appState.accounts.push({
+                id: 22,
+                number: '1400',
+                name: 'Buildings',
+                type: 'Asset',
+                openingBalance: 0
+            });
+        }
+
+        // Add construction commodities if they don't exist
+        if (!appState.commodities.find(c => c.id === 3)) {
+            appState.commodities.push({ id: 3, name: 'Lumber', description: 'Construction-grade lumber', price: 100.00 });
+        }
+        if (!appState.commodities.find(c => c.id === 4)) {
+            appState.commodities.push({ id: 4, name: 'Steel', description: 'Structural steel beams', price: 200.00 });
+        }
+        if (!appState.commodities.find(c => c.id === 5)) {
+            appState.commodities.push({ id: 5, name: 'Concrete', description: 'Ready-mix concrete', price: 150.00 });
+        }
+
+        // Add buildings array if it doesn't exist
+        if (!appState.buildings) {
+            appState.buildings = [];
+        }
+        if (!appState.constructionQueue) {
+            appState.constructionQueue = [];
+        }
+        if (!appState.nextBuildingId) {
+            appState.nextBuildingId = 1;
         }
 
         hasUnsavedChanges = false;
@@ -1678,11 +1720,22 @@ function renderMap() {
         for (let x = 0; x < appState.map.gridSize; x++) {
             const square = document.createElement('div');
             const owned = isSquareOwned(x, y);
+            const building = appState.buildings.find(b => b.x === x && b.y === y && b.status !== 'demolished');
 
             square.className = `map-square ${owned ? 'owned' : 'available'}`;
+            if (building) {
+                square.classList.add(building.status === 'under_construction' ? 'building-construction' : 'building-completed');
+            }
             square.dataset.x = x;
             square.dataset.y = y;
-            square.title = owned ? `Owned property (${x}, ${y})` : `Available (${x}, ${y}) - ${formatCurrency(appState.map.pricePerSquare)}`;
+
+            let title = owned ? `Owned property (${x}, ${y})` : `Available (${x}, ${y}) - ${formatCurrency(appState.map.pricePerSquare)}`;
+            if (building) {
+                const status = building.status === 'under_construction' ?
+                    `🏗 Under Construction (${building.completionDate})` : '🏢 Warehouse';
+                title += `\n${status}`;
+            }
+            square.title = title;
 
             if (!owned) {
                 square.addEventListener('click', () => {
@@ -1693,6 +1746,18 @@ function renderMap() {
                         }
                     }
                 });
+            } else {
+                square.addEventListener('click', () => {
+                    showBuildingManagement(x, y);
+                });
+            }
+
+            // Display building icon
+            if (building) {
+                const icon = document.createElement('div');
+                icon.className = 'building-icon';
+                icon.textContent = building.status === 'under_construction' ? '🏗' : '🏢';
+                square.appendChild(icon);
             }
 
             container.appendChild(square);
@@ -1711,6 +1776,104 @@ function showMapStatus(message, type) {
         statusEl.textContent = '';
         statusEl.className = 'status-message';
     }, 3000);
+}
+
+// Show building management dialog
+function showBuildingManagement(x, y) {
+    const building = appState.buildings.find(b => b.x === x && b.y === y && b.status !== 'demolished');
+    const buildingDef = building ? BUILDING_TYPES[building.type] : null;
+
+    let content = `<h3>Property Management (${x}, ${y})</h3>`;
+
+    if (building) {
+        const statusText = building.status === 'under_construction' ?
+            `🏗 Under Construction - Completes: ${building.completionDate}` :
+            `🏢 ${buildingDef.name} - Complete`;
+
+        content += `
+            <div class="building-info">
+                <p><strong>Status:</strong> ${statusText}</p>
+                <p><strong>Construction Cost:</strong> ${formatCurrency(building.cost)}</p>
+            </div>
+        `;
+
+        if (building.status === 'completed') {
+            content += `
+                <div class="building-actions">
+                    <button class="btn" onclick="showBuildingInterior(${building.id})">Manage Interior</button>
+                    <button class="btn btn-danger" onclick="if(demolishBuilding(${building.id})) { closeBuildingDialog(); render(); }">Demolish Building</button>
+                </div>
+            `;
+        }
+    } else {
+        // Show construction options
+        const materials = BUILDING_TYPES.WAREHOUSE.materials;
+        const portfolio = appState.portfolio;
+
+        const lumberQty = portfolio[3] && portfolio[3].lots ? portfolio[3].lots.reduce((s, l) => s + l.quantity, 0) : 0;
+        const steelQty = portfolio[4] && portfolio[4].lots ? portfolio[4].lots.reduce((s, l) => s + l.quantity, 0) : 0;
+        const concreteQty = portfolio[5] && portfolio[5].lots ? portfolio[5].lots.reduce((s, l) => s + l.quantity, 0) : 0;
+
+        content += `
+            <h4>Build Warehouse</h4>
+            <div class="construction-requirements">
+                <p><strong>Required Materials:</strong></p>
+                <ul>
+                    <li>Lumber: ${materials.lumber} (Have: ${lumberQty})</li>
+                    <li>Steel: ${materials.steel} (Have: ${steelQty})</li>
+                    <li>Concrete: ${materials.concrete} (Have: ${concreteQty})</li>
+                </ul>
+                <p><strong>Construction Time:</strong> ${BUILDING_TYPES.WAREHOUSE.constructionDays} days</p>
+                <button class="btn btn-primary" onclick="if(startConstruction(${x}, ${y}, 'WAREHOUSE')) { closeBuildingDialog(); render(); }">
+                    Start Construction
+                </button>
+            </div>
+        `;
+    }
+
+    content += `<button class="btn" onclick="closeBuildingDialog()">Close</button>`;
+
+    const dialog = document.createElement('div');
+    dialog.id = 'buildingDialog';
+    dialog.className = 'modal-overlay';
+    dialog.innerHTML = `<div class="modal-content">${content}</div>`;
+    document.body.appendChild(dialog);
+}
+
+function closeBuildingDialog() {
+    const dialog = document.getElementById('buildingDialog');
+    if (dialog) dialog.remove();
+
+    const interiorDialog = document.getElementById('interiorDialog');
+    if (interiorDialog) interiorDialog.remove();
+}
+
+function showBuildingInterior(buildingId) {
+    const building = appState.buildings.find(b => b.id === buildingId);
+    if (!building || !building.interior) return;
+
+    const gridSize = building.interior.grid.length;
+
+    let content = `<h3>🏢 Warehouse Interior</h3>`;
+    content += `<div class="interior-grid" style="display: grid; grid-template-columns: repeat(${gridSize}, 60px); gap: 5px;">`;
+
+    for (let y = 0; y < gridSize; y++) {
+        for (let x = 0; x < gridSize; x++) {
+            const item = building.interior.grid[y][x];
+            const cellContent = item || '';
+            content += `<div class="interior-cell" style="width: 60px; height: 60px; border: 1px solid #ccc; display: flex; align-items: center; justify-content: center;">${cellContent}</div>`;
+        }
+    }
+
+    content += `</div>`;
+    content += `<p class="help-text">Interior management coming soon. Equipment placement will be available in a future update.</p>`;
+    content += `<button class="btn" onclick="closeBuildingDialog()">Close</button>`;
+
+    const dialog = document.createElement('div');
+    dialog.id = 'interiorDialog';
+    dialog.className = 'modal-overlay';
+    dialog.innerHTML = `<div class="modal-content">${content}</div>`;
+    document.body.appendChild(dialog);
 }
 
 // ====================================
@@ -2004,6 +2167,240 @@ function getMonthsBetweenDates(date1, date2) {
     const month2 = parseInt(parts2[2]);
 
     return (year2 - year1) * 12 + (month2 - month1);
+}
+
+// ====================================
+// BUILDING CONSTRUCTION & MANAGEMENT
+// ====================================
+
+// Building type definitions
+const BUILDING_TYPES = {
+    WAREHOUSE: {
+        name: 'Single-Floor Warehouse',
+        materials: { lumber: 50, steel: 30, concrete: 40 },
+        constructionDays: 14,  // 14 simulation days
+        interiorSize: 4  // 4x4 grid
+    }
+};
+
+// Start construction of a building
+function startConstruction(x, y, buildingType) {
+    // Check if tile is owned
+    const ownedSquare = appState.map.ownedSquares.find(s => s.x === x && s.y === y);
+    if (!ownedSquare) {
+        alert('You must own this tile to build on it.');
+        return false;
+    }
+
+    // Check if there's already a building here
+    const existingBuilding = appState.buildings.find(b => b.x === x && b.y === y && b.status !== 'demolished');
+    if (existingBuilding) {
+        alert('There is already a building on this tile.');
+        return false;
+    }
+
+    const buildingDef = BUILDING_TYPES[buildingType];
+    if (!buildingDef) {
+        alert('Invalid building type.');
+        return false;
+    }
+
+    // Check if we have the materials in inventory
+    for (const [materialName, quantity] of Object.entries(buildingDef.materials)) {
+        const commodity = appState.commodities.find(c => c.name.toLowerCase() === materialName.toLowerCase());
+        if (!commodity) continue;
+
+        const portfolio = appState.portfolio[commodity.id];
+        const totalQuantity = portfolio ? portfolio.lots.reduce((sum, lot) => sum + lot.quantity, 0) : 0;
+
+        if (totalQuantity < quantity) {
+            alert(`Insufficient ${materialName}. Required: ${quantity}, Available: ${totalQuantity}`);
+            return false;
+        }
+    }
+
+    // Calculate total material cost (using FIFO cost basis)
+    let totalCost = 0;
+    const materialsUsed = [];
+
+    for (const [materialName, quantity] of Object.entries(buildingDef.materials)) {
+        const commodity = appState.commodities.find(c => c.name.toLowerCase() === materialName.toLowerCase());
+        if (!commodity) continue;
+
+        const { cost, lots } = consumeCommodityFIFO(commodity.id, quantity);
+        totalCost += cost;
+        materialsUsed.push({ commodityId: commodity.id, quantity, cost, lots });
+    }
+
+    // Create building
+    const building = {
+        id: appState.nextBuildingId++,
+        type: buildingType,
+        x,
+        y,
+        status: 'under_construction',
+        startDate: getTodayDate(),
+        completionDate: addDaysToDate(getTodayDate(), buildingDef.constructionDays),
+        cost: totalCost,
+        interior: {
+            grid: Array(buildingDef.interiorSize).fill(null).map(() => Array(buildingDef.interiorSize).fill(null))
+        }
+    };
+
+    appState.buildings.push(building);
+    appState.constructionQueue.push({ buildingId: building.id, completionDate: building.completionDate });
+
+    // Record transactions: consume inventory, add to construction-in-progress
+    const inventoryAccount = appState.accounts.find(a => a.number === '1200');
+    const buildingsAccount = appState.accounts.find(a => a.number === '1400');
+
+    const transaction = {
+        id: appState.nextTransactionId++,
+        date: getTodayDate(),
+        description: `Started construction: ${buildingDef.name} at (${x}, ${y})`,
+        debitAccount: buildingsAccount.id,
+        creditAccount: inventoryAccount.id,
+        amount: parseFloat(totalCost.toFixed(2))
+    };
+
+    appState.transactions.push(transaction);
+    hasUnsavedChanges = true;
+
+    return true;
+}
+
+// Helper: Consume commodity using FIFO and return cost + updated lots
+function consumeCommodityFIFO(commodityId, quantity) {
+    const portfolio = appState.portfolio[commodityId];
+    if (!portfolio || !portfolio.lots || portfolio.lots.length === 0) {
+        return { cost: 0, lots: [] };
+    }
+
+    let remaining = quantity;
+    let totalCost = 0;
+    const consumedLots = [];
+
+    while (remaining > 0 && portfolio.lots.length > 0) {
+        const lot = portfolio.lots[0];
+        const takeQuantity = Math.min(remaining, lot.quantity);
+
+        totalCost += takeQuantity * lot.costBasis;
+        consumedLots.push({ ...lot, quantity: takeQuantity });
+
+        lot.quantity -= takeQuantity;
+        remaining -= takeQuantity;
+
+        if (lot.quantity <= 0) {
+            portfolio.lots.shift();
+        }
+    }
+
+    return { cost: totalCost, lots: consumedLots };
+}
+
+// Add days to a date
+function addDaysToDate(dateString, days) {
+    const parts = dateString.match(/Y(\d+)-M(\d+)-D(\d+)/);
+    if (!parts) return dateString;
+
+    let year = parseInt(parts[1]);
+    let month = parseInt(parts[2]);
+    let day = parseInt(parts[3]);
+
+    day += days;
+
+    while (day > SIMULATION_CONFIG.DAYS_PER_MONTH) {
+        day -= SIMULATION_CONFIG.DAYS_PER_MONTH;
+        month++;
+        if (month > SIMULATION_CONFIG.MONTHS_PER_YEAR) {
+            month = 1;
+            year++;
+        }
+    }
+
+    return `Y${year}-M${month}-D${day}`;
+}
+
+// Check and complete buildings
+function checkConstructionProgress() {
+    const today = getTodayDate();
+
+    appState.constructionQueue = appState.constructionQueue.filter(item => {
+        if (compareDates(today, item.completionDate) >= 0) {
+            // Construction is complete
+            const building = appState.buildings.find(b => b.id === item.buildingId);
+            if (building) {
+                building.status = 'completed';
+            }
+            return false; // Remove from queue
+        }
+        return true; // Keep in queue
+    });
+}
+
+// Demolish a building
+function demolishBuilding(buildingId) {
+    const building = appState.buildings.find(b => b.id === buildingId);
+    if (!building) {
+        alert('Building not found.');
+        return false;
+    }
+
+    if (building.status === 'under_construction') {
+        alert('Cannot demolish a building that is still under construction.');
+        return false;
+    }
+
+    if (!confirm(`Demolish ${BUILDING_TYPES[building.type].name}? This will return materials to inventory.`)) {
+        return false;
+    }
+
+    const buildingDef = BUILDING_TYPES[building.type];
+
+    // Return materials to inventory (50% recovery rate)
+    const inventoryAccount = appState.accounts.find(a => a.number === '1200');
+    const buildingsAccount = appState.accounts.find(a => a.number === '1400');
+
+    let totalRecoveredValue = 0;
+
+    for (const [materialName, quantity] of Object.entries(buildingDef.materials)) {
+        const commodity = appState.commodities.find(c => c.name.toLowerCase() === materialName.toLowerCase());
+        if (!commodity) continue;
+
+        const recoveredQty = Math.floor(quantity * 0.5); // 50% recovery
+        const recoveredValue = recoveredQty * commodity.price;
+
+        // Add to portfolio
+        if (!appState.portfolio[commodity.id]) {
+            appState.portfolio[commodity.id] = { lots: [] };
+        }
+
+        appState.portfolio[commodity.id].lots.push({
+            quantity: recoveredQty,
+            costBasis: commodity.price,
+            purchaseDate: getTodayDate(),
+            purchaseId: `demolish-${buildingId}`
+        });
+
+        totalRecoveredValue += recoveredValue;
+    }
+
+    // Record transaction: debit inventory, credit buildings
+    const transaction = {
+        id: appState.nextTransactionId++,
+        date: getTodayDate(),
+        description: `Demolished ${buildingDef.name} at (${building.x}, ${building.y}) - Materials recovered`,
+        debitAccount: inventoryAccount.id,
+        creditAccount: buildingsAccount.id,
+        amount: parseFloat(totalRecoveredValue.toFixed(2))
+    };
+
+    appState.transactions.push(transaction);
+
+    building.status = 'demolished';
+    hasUnsavedChanges = true;
+
+    return true;
 }
 
 // ====================================
@@ -3139,6 +3536,9 @@ function updateSimulationClock() {
 
         // Auto-update financial statement end dates to current date
         updateStatementEndDates();
+
+        // Check construction progress
+        checkConstructionProgress();
     }
 }
 
