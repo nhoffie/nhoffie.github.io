@@ -3001,7 +3001,9 @@ function getPreviousDay(dateString) {
                 if (month < 1) {
                     year--;
                     if (year < 1) {
-                        year = 1;
+                        // Can't go before Y1-M1-D1, so return Y1-M0-D0
+                        // This sentinel value is before any real date
+                        return 'Y1-M0-D0';
                     }
                     month = SIMULATION_CONFIG.MONTHS_PER_YEAR;
                 }
