@@ -223,8 +223,9 @@ function restoreSessionKey() {
         // Calculate time elapsed since session was saved
         const realTimeElapsed = Date.now() - restoredState.simulation.lastSaveRealTime;
 
-        // Add elapsed time to simulation time (real-time progression)
-        restoredState.simulation.simulationTime += realTimeElapsed;
+        // Add elapsed time to simulation time (apply 60x time scale for offline progression)
+        const simulationTimeElapsed = realTimeElapsed * SIMULATION_CONFIG.TIME_SCALE;
+        restoredState.simulation.simulationTime += simulationTimeElapsed;
         restoredState.simulation.lastSaveRealTime = Date.now();
 
         appState = restoredState;
