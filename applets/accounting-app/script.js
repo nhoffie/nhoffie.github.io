@@ -1871,7 +1871,7 @@ function showBuildingManagement(x, y) {
                                     <span>Next Payment: ${nextPayment}</span>
                                 </div>
                             </div>
-                            <button class="btn btn-sm btn-danger" onclick="if(fireEmployee(${employee.id})) { closeBuildingDialog(); showBuildingManagement(${x}, ${y}); }">Fire</button>
+                            <button class="btn btn-sm btn-danger" onclick="if(fireEmployee(${employee.id})) { render(); closeBuildingDialog(); showBuildingManagement(${x}, ${y}); }">Fire</button>
                         </div>
                     `;
                 }
@@ -1885,7 +1885,7 @@ function showBuildingManagement(x, y) {
                         <label for="newEmployeeWage">Hire New Employee:</label>
                         <div class="hire-controls">
                             <input type="number" id="newEmployeeWage" min="10" step="10" value="100" placeholder="Wage per 24 hours">
-                            <button class="btn btn-primary" onclick="if(hireEmployee(${building.id}, parseFloat(document.getElementById('newEmployeeWage').value))) { closeBuildingDialog(); showBuildingManagement(${x}, ${y}); }">Hire</button>
+                            <button class="btn btn-primary" onclick="if(hireEmployee(${building.id}, parseFloat(document.getElementById('newEmployeeWage').value))) { render(); closeBuildingDialog(); showBuildingManagement(${x}, ${y}); }">Hire</button>
                         </div>
                         <p class="help-text">Suggested wages: $50-100 (Basic), $200-400 (Skilled), $800+ (Expert)</p>
                     </div>
