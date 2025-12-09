@@ -234,6 +234,38 @@
                     <button class="btn btn-danger" onclick="resetTime()">↺ Reset to Year 1</button>
                 </div>
 
+                <div class="time-jump-controls">
+                    <h4>Quick Time Adjustments</h4>
+                    <p class="help-text">Fast forward or revert time by common increments.</p>
+                    <div class="time-jump-buttons">
+                        <div class="time-jump-group">
+                            <label>1 Minute:</label>
+                            <button class="btn btn-sm" onclick="adjustTime(-60000)">⏪ Back</button>
+                            <button class="btn btn-sm" onclick="adjustTime(60000)">Forward ⏩</button>
+                        </div>
+                        <div class="time-jump-group">
+                            <label>1 Hour:</label>
+                            <button class="btn btn-sm" onclick="adjustTime(-3600000)">⏪ Back</button>
+                            <button class="btn btn-sm" onclick="adjustTime(3600000)">Forward ⏩</button>
+                        </div>
+                        <div class="time-jump-group">
+                            <label>1 Day:</label>
+                            <button class="btn btn-sm" onclick="adjustTime(-86400000)">⏪ Back</button>
+                            <button class="btn btn-sm" onclick="adjustTime(86400000)">Forward ⏩</button>
+                        </div>
+                        <div class="time-jump-group">
+                            <label>1 Week:</label>
+                            <button class="btn btn-sm" onclick="adjustTime(-604800000)">⏪ Back</button>
+                            <button class="btn btn-sm" onclick="adjustTime(604800000)">Forward ⏩</button>
+                        </div>
+                        <div class="time-jump-group">
+                            <label>1 Month:</label>
+                            <button class="btn btn-sm" onclick="adjustTime(-2419200000)">⏪ Back</button>
+                            <button class="btn btn-sm" onclick="adjustTime(2419200000)">Forward ⏩</button>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="time-set-form">
                     <h4>Set Specific Time</h4>
                     <div class="time-inputs">
@@ -414,7 +446,7 @@
         <section id="map" class="tab-content">
             <h2>Real Estate Map</h2>
             <span id="mapStatus" class="status-message"></span>
-            <p class="help-text">Click on available squares to purchase property. Your company starts with 4 squares in the top-left corner.</p>
+            <p class="help-text">Click on available squares to purchase property. Click on owned squares to manage buildings.</p>
 
             <div id="mapStats">
                 <!-- Map statistics will be rendered here -->

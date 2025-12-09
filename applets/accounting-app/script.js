@@ -8,10 +8,12 @@ let appState = {
         { id: 2, number: '1100', name: 'Accounts Receivable', type: 'Asset', openingBalance: 0 },
         { id: 3, number: '1200', name: 'Inventory', type: 'Asset', openingBalance: 0 },
         { id: 4, number: '1300', name: 'Real Estate', type: 'Asset', openingBalance: 0 },
+        { id: 22, number: '1400', name: 'Buildings', type: 'Asset', openingBalance: 0 },
         { id: 5, number: '1500', name: 'Equipment', type: 'Asset', openingBalance: 0 },
         { id: 6, number: '2000', name: 'Accounts Payable', type: 'Liability', openingBalance: 0 },
         { id: 7, number: '2100', name: 'Notes Payable', type: 'Liability', openingBalance: 0 },
-        { id: 19, number: '2200', name: 'Bank Loans Payable', type: 'Liability', openingBalance: 0 },
+        { id: 19, number: '2200', name: 'Bank Loans Payable - Principal', type: 'Liability', openingBalance: 0 },
+        { id: 21, number: '2210', name: 'Bank Loans Payable - Interest', type: 'Liability', openingBalance: 0 },
         { id: 8, number: '3000', name: 'Common Stock', type: 'Equity', openingBalance: 0 },
         { id: 9, number: '3100', name: 'Retained Earnings', type: 'Equity', openingBalance: 0 },
         { id: 10, number: '4000', name: 'Sales Revenue', type: 'Revenue', openingBalance: 0 },
@@ -109,8 +111,11 @@ let appState = {
         }
     ],
     commodities: [
-        { id: 1, name: 'Power', description: 'Electrical energy units', price: 50.00 },
-        { id: 2, name: 'Water', description: 'Fresh water units', price: 25.00 }
+        { id: 1, name: 'Power', description: 'Electrical energy units', price: 5.00 },
+        { id: 2, name: 'Water', description: 'Fresh water units', price: 2.50 },
+        { id: 3, name: 'Lumber', description: 'Construction-grade lumber', price: 10.00 },
+        { id: 4, name: 'Steel', description: 'Structural steel beams', price: 20.00 },
+        { id: 5, name: 'Concrete', description: 'Ready-mix concrete', price: 15.00 }
     ],
     portfolio: {
         // Structure: { commodityId: { lots: [{ quantity, costBasis, purchaseDate, purchaseId }] } }
@@ -133,16 +138,24 @@ let appState = {
         paused: false // Whether time progression is paused
     },
     loans: [],
-    // Structure: { id, principal, interestRate, termMonths, suggestedMonthlyPayment, remainingBalance, issueDate, maturityDate, lastInterestAccrualDate, status }
+    // Structure: { id, principal, interestRate, termMonths, suggestedMonthlyPayment, principalBalance, accruedInterestBalance, issueDate, maturityDate, lastInterestAccrualDate, status }
     shares: [],
     // Structure: { id, numberOfShares, pricePerShare, totalValue, issueDate, holder }
-    nextAccountId: 21,
+    buildings: [],
+    // Structure: { id, type, x, y, status, startDate, completionDate, cost, interior: { grid: 4x4 array } }
+    constructionQueue: [],
+    // Structure: { buildingId, completionDate }
+    employees: [],
+    // Structure: { id, name, wage, skillLevel, assignedBuildingId, hireDate, nextPaymentDate }
+    nextAccountId: 23,
     nextTransactionId: 1,
     nextTransactionTypeId: 11,
-    nextCommodityId: 3,
+    nextCommodityId: 6,
     nextTradeId: 1,
     nextLoanId: 1,
-    nextShareIssuanceId: 1
+    nextShareIssuanceId: 1,
+    nextBuildingId: 1,
+    nextEmployeeId: 1
 };
 
 let hasUnsavedChanges = false;
@@ -213,8 +226,9 @@ function restoreSessionKey() {
         // Calculate time elapsed since session was saved
         const realTimeElapsed = Date.now() - restoredState.simulation.lastSaveRealTime;
 
-        // Add elapsed time to simulation time (real-time progression)
-        restoredState.simulation.simulationTime += realTimeElapsed;
+        // Add elapsed time to simulation time (apply 60x time scale for offline progression)
+        const simulationTimeElapsed = realTimeElapsed * SIMULATION_CONFIG.TIME_SCALE;
+        restoredState.simulation.simulationTime += simulationTimeElapsed;
         restoredState.simulation.lastSaveRealTime = Date.now();
 
         appState = restoredState;
@@ -236,10 +250,73 @@ function restoreSessionKey() {
                 if (!loan.lastInterestAccrualDate && loan.issueDate) {
                     loan.lastInterestAccrualDate = loan.issueDate;
                 }
+                // Migrate from remainingBalance to principalBalance + accruedInterestBalance
+                if (loan.remainingBalance !== undefined && loan.principalBalance === undefined) {
+                    loan.principalBalance = loan.remainingBalance;
+                    loan.accruedInterestBalance = 0;
+                }
                 // Remove old properties
                 delete loan.monthlyPayment;
                 delete loan.nextPaymentDate;
+                delete loan.remainingBalance;
             });
+        }
+
+        // Ensure new account exists for interest payable
+        if (!appState.accounts.find(a => a.number === '2210')) {
+            appState.accounts.push({
+                id: 21,
+                number: '2210',
+                name: 'Bank Loans Payable - Interest',
+                type: 'Liability',
+                openingBalance: 0
+            });
+        }
+        // Update old "Bank Loans Payable" account name to "Bank Loans Payable - Principal"
+        const oldLoansAccount = appState.accounts.find(a => a.number === '2200');
+        if (oldLoansAccount && oldLoansAccount.name === 'Bank Loans Payable') {
+            oldLoansAccount.name = 'Bank Loans Payable - Principal';
+        }
+
+        // Add Buildings account if it doesn't exist
+        if (!appState.accounts.find(a => a.number === '1400')) {
+            appState.accounts.push({
+                id: 22,
+                number: '1400',
+                name: 'Buildings',
+                type: 'Asset',
+                openingBalance: 0
+            });
+        }
+
+        // Add construction commodities if they don't exist
+        if (!appState.commodities.find(c => c.id === 3)) {
+            appState.commodities.push({ id: 3, name: 'Lumber', description: 'Construction-grade lumber', price: 10.00 });
+        }
+        if (!appState.commodities.find(c => c.id === 4)) {
+            appState.commodities.push({ id: 4, name: 'Steel', description: 'Structural steel beams', price: 20.00 });
+        }
+        if (!appState.commodities.find(c => c.id === 5)) {
+            appState.commodities.push({ id: 5, name: 'Concrete', description: 'Ready-mix concrete', price: 15.00 });
+        }
+
+        // Add buildings array if it doesn't exist
+        if (!appState.buildings) {
+            appState.buildings = [];
+        }
+        if (!appState.constructionQueue) {
+            appState.constructionQueue = [];
+        }
+        if (!appState.nextBuildingId) {
+            appState.nextBuildingId = 1;
+        }
+
+        // Add employees array if it doesn't exist
+        if (!appState.employees) {
+            appState.employees = [];
+        }
+        if (!appState.nextEmployeeId) {
+            appState.nextEmployeeId = 1;
         }
 
         hasUnsavedChanges = false;
@@ -1290,24 +1367,68 @@ function renderCommoditiesMarket() {
     renderTradeHistory();
 }
 
+let selectedCommodityId = 1; // Default to first commodity
+
 function renderCommoditiesList() {
     const container = document.getElementById('commoditiesList');
     if (!container) return;
 
     const cashBalance = getCashBalance();
 
-    container.innerHTML = `
+    // Create commodity selector
+    let selectorHtml = `
         <div class="cash-balance">
             <strong>Available Cash:</strong> ${formatCurrency(cashBalance)}
         </div>
+        <div class="commodity-selector">
+            <label for="commoditySelect"><strong>Select Commodity:</strong></label>
+            <select id="commoditySelect" class="commodity-select">
     `;
 
     appState.commodities.forEach(commodity => {
-        const quantity = getTotalQuantity(commodity.id);
+        selectorHtml += `<option value="${commodity.id}" ${commodity.id === selectedCommodityId ? 'selected' : ''}>${commodity.name} - ${formatCurrency(commodity.price)}/unit</option>`;
+    });
 
-        const commodityCard = document.createElement('div');
-        commodityCard.className = 'commodity-card';
-        commodityCard.innerHTML = `
+    selectorHtml += `
+            </select>
+        </div>
+    `;
+
+    container.innerHTML = selectorHtml;
+
+    // Add change listener to selector
+    const selector = document.getElementById('commoditySelect');
+    if (selector) {
+        selector.addEventListener('change', (e) => {
+            selectedCommodityId = parseInt(e.target.value);
+            renderSelectedCommodity();
+        });
+    }
+
+    // Render the selected commodity details
+    renderSelectedCommodity();
+}
+
+function renderSelectedCommodity() {
+    const container = document.getElementById('commoditiesList');
+    if (!container) return;
+
+    const commodity = appState.commodities.find(c => c.id === selectedCommodityId);
+    if (!commodity) return;
+
+    const quantity = getTotalQuantity(commodity.id);
+
+    // Find or create the details container
+    let detailsContainer = document.getElementById('commodityDetails');
+    if (!detailsContainer) {
+        detailsContainer = document.createElement('div');
+        detailsContainer.id = 'commodityDetails';
+        detailsContainer.className = 'commodity-details';
+        container.appendChild(detailsContainer);
+    }
+
+    detailsContainer.innerHTML = `
+        <div class="commodity-card-single">
             <div class="commodity-header">
                 <h4>${escapeHtml(commodity.name)}</h4>
                 <div class="commodity-price">${formatCurrency(commodity.price)}<span class="price-unit">/unit</span></div>
@@ -1334,32 +1455,28 @@ function renderCommoditiesList() {
                     </div>
                 </div>
             </div>
-        `;
-
-        container.appendChild(commodityCard);
-    });
+        </div>
+    `;
 
     // Add event listeners for quantity inputs
-    appState.commodities.forEach(commodity => {
-        const buyInput = document.getElementById(`buy-quantity-${commodity.id}`);
-        const sellInput = document.getElementById(`sell-quantity-${commodity.id}`);
-        const buyTotal = document.getElementById(`buy-total-${commodity.id}`);
-        const sellTotal = document.getElementById(`sell-total-${commodity.id}`);
+    const buyInput = document.getElementById(`buy-quantity-${commodity.id}`);
+    const sellInput = document.getElementById(`sell-quantity-${commodity.id}`);
+    const buyTotal = document.getElementById(`buy-total-${commodity.id}`);
+    const sellTotal = document.getElementById(`sell-total-${commodity.id}`);
 
-        if (buyInput) {
-            buyInput.addEventListener('input', () => {
-                const quantity = parseFloat(buyInput.value) || 0;
-                buyTotal.textContent = formatCurrency(quantity * commodity.price);
-            });
-        }
+    if (buyInput) {
+        buyInput.addEventListener('input', () => {
+            const quantity = parseFloat(buyInput.value) || 0;
+            buyTotal.textContent = formatCurrency(quantity * commodity.price);
+        });
+    }
 
-        if (sellInput) {
-            sellInput.addEventListener('input', () => {
-                const quantity = parseFloat(sellInput.value) || 0;
-                sellTotal.textContent = formatCurrency(quantity * commodity.price);
-            });
-        }
-    });
+    if (sellInput) {
+        sellInput.addEventListener('input', () => {
+            const quantity = parseFloat(sellInput.value) || 0;
+            sellTotal.textContent = formatCurrency(quantity * commodity.price);
+        });
+    }
 }
 
 function renderPortfolio() {
@@ -1655,11 +1772,22 @@ function renderMap() {
         for (let x = 0; x < appState.map.gridSize; x++) {
             const square = document.createElement('div');
             const owned = isSquareOwned(x, y);
+            const building = appState.buildings.find(b => b.x === x && b.y === y && b.status !== 'demolished');
 
             square.className = `map-square ${owned ? 'owned' : 'available'}`;
+            if (building) {
+                square.classList.add(building.status === 'under_construction' ? 'building-construction' : 'building-completed');
+            }
             square.dataset.x = x;
             square.dataset.y = y;
-            square.title = owned ? `Owned property (${x}, ${y})` : `Available (${x}, ${y}) - ${formatCurrency(appState.map.pricePerSquare)}`;
+
+            let title = owned ? `Owned property (${x}, ${y})` : `Available (${x}, ${y}) - ${formatCurrency(appState.map.pricePerSquare)}`;
+            if (building) {
+                const status = building.status === 'under_construction' ?
+                    `🏗 Under Construction (${building.completionDate})` : '🏢 Warehouse';
+                title += `\n${status}`;
+            }
+            square.title = title;
 
             if (!owned) {
                 square.addEventListener('click', () => {
@@ -1670,6 +1798,18 @@ function renderMap() {
                         }
                     }
                 });
+            } else {
+                square.addEventListener('click', () => {
+                    showBuildingManagement(x, y);
+                });
+            }
+
+            // Display building icon
+            if (building) {
+                const icon = document.createElement('div');
+                icon.className = 'building-icon';
+                icon.textContent = building.status === 'under_construction' ? '🏗' : '🏢';
+                square.appendChild(icon);
             }
 
             container.appendChild(square);
@@ -1688,6 +1828,146 @@ function showMapStatus(message, type) {
         statusEl.textContent = '';
         statusEl.className = 'status-message';
     }, 3000);
+}
+
+// Show building management dialog
+function showBuildingManagement(x, y) {
+    const building = appState.buildings.find(b => b.x === x && b.y === y && b.status !== 'demolished');
+    const buildingDef = building ? BUILDING_TYPES[building.type] : null;
+
+    let content = `<h3>Property Management (${x}, ${y})</h3>`;
+
+    if (building) {
+        const statusText = building.status === 'under_construction' ?
+            `🏗 Under Construction - Completes: ${building.completionDate}` :
+            `🏢 ${buildingDef.name} - Complete`;
+
+        content += `
+            <div class="building-info">
+                <p><strong>Status:</strong> ${statusText}</p>
+                <p><strong>Construction Cost:</strong> ${formatCurrency(building.cost)}</p>
+            </div>
+        `;
+
+        if (building.status === 'completed') {
+            // Show employees
+            const employees = getEmployeesByBuilding(building.id);
+            content += `
+                <div class="employee-section">
+                    <h4>👥 Employees (${employees.length})</h4>
+            `;
+
+            if (employees.length > 0) {
+                content += `<div class="employee-list">`;
+                for (const employee of employees) {
+                    const nextPayment = formatSimulationTime(employee.nextPaymentDate);
+                    content += `
+                        <div class="employee-card">
+                            <div class="employee-info">
+                                <strong>${escapeHtml(employee.name)}</strong>
+                                <div class="employee-details">
+                                    <span>Wage: ${formatCurrency(employee.wage)}/24hrs</span>
+                                    <span>Skill: ${employee.skillLevel}/10</span>
+                                    <span>Next Payment: ${nextPayment}</span>
+                                </div>
+                            </div>
+                            <button class="btn btn-sm btn-danger" onclick="if(fireEmployee(${employee.id})) { closeBuildingDialog(); showBuildingManagement(${x}, ${y}); }">Fire</button>
+                        </div>
+                    `;
+                }
+                content += `</div>`;
+            } else {
+                content += `<p class="help-text">No employees currently assigned to this building.</p>`;
+            }
+
+            content += `
+                    <div class="hire-section">
+                        <label for="newEmployeeWage">Hire New Employee:</label>
+                        <div class="hire-controls">
+                            <input type="number" id="newEmployeeWage" min="10" step="10" value="100" placeholder="Wage per 24 hours">
+                            <button class="btn btn-primary" onclick="if(hireEmployee(${building.id}, parseFloat(document.getElementById('newEmployeeWage').value))) { closeBuildingDialog(); showBuildingManagement(${x}, ${y}); }">Hire</button>
+                        </div>
+                        <p class="help-text">Suggested wages: $50-100 (Basic), $200-400 (Skilled), $800+ (Expert)</p>
+                    </div>
+                </div>
+            `;
+
+            content += `
+                <div class="building-actions">
+                    <button class="btn" onclick="showBuildingInterior(${building.id})">Manage Interior</button>
+                    <button class="btn btn-danger" onclick="if(demolishBuilding(${building.id})) { closeBuildingDialog(); render(); }">Demolish Building</button>
+                </div>
+            `;
+        }
+    } else {
+        // Show construction options
+        const materials = BUILDING_TYPES.WAREHOUSE.materials;
+        const portfolio = appState.portfolio;
+
+        const lumberQty = portfolio[3] && portfolio[3].lots ? portfolio[3].lots.reduce((s, l) => s + l.quantity, 0) : 0;
+        const steelQty = portfolio[4] && portfolio[4].lots ? portfolio[4].lots.reduce((s, l) => s + l.quantity, 0) : 0;
+        const concreteQty = portfolio[5] && portfolio[5].lots ? portfolio[5].lots.reduce((s, l) => s + l.quantity, 0) : 0;
+
+        content += `
+            <h4>Build Warehouse</h4>
+            <div class="construction-requirements">
+                <p><strong>Required Materials:</strong></p>
+                <ul>
+                    <li>Lumber: ${materials.lumber} (Have: ${lumberQty})</li>
+                    <li>Steel: ${materials.steel} (Have: ${steelQty})</li>
+                    <li>Concrete: ${materials.concrete} (Have: ${concreteQty})</li>
+                </ul>
+                <p><strong>Construction Time:</strong> ${BUILDING_TYPES.WAREHOUSE.constructionDays} days</p>
+                <button class="btn btn-primary" onclick="if(startConstruction(${x}, ${y}, 'WAREHOUSE')) { closeBuildingDialog(); render(); }">
+                    Start Construction
+                </button>
+            </div>
+        `;
+    }
+
+    content += `<button class="btn" onclick="closeBuildingDialog()">Close</button>`;
+
+    const dialog = document.createElement('div');
+    dialog.id = 'buildingDialog';
+    dialog.className = 'modal-overlay';
+    dialog.innerHTML = `<div class="modal-content">${content}</div>`;
+    document.body.appendChild(dialog);
+}
+
+function closeBuildingDialog() {
+    const dialog = document.getElementById('buildingDialog');
+    if (dialog) dialog.remove();
+
+    const interiorDialog = document.getElementById('interiorDialog');
+    if (interiorDialog) interiorDialog.remove();
+}
+
+function showBuildingInterior(buildingId) {
+    const building = appState.buildings.find(b => b.id === buildingId);
+    if (!building || !building.interior) return;
+
+    const gridSize = building.interior.grid.length;
+
+    let content = `<h3>🏢 Warehouse Interior</h3>`;
+    content += `<div class="interior-grid" style="display: grid; grid-template-columns: repeat(${gridSize}, 60px); gap: 5px;">`;
+
+    for (let y = 0; y < gridSize; y++) {
+        for (let x = 0; x < gridSize; x++) {
+            const item = building.interior.grid[y][x];
+            const cellContent = item || '';
+            content += `<div class="interior-cell" style="width: 60px; height: 60px; border: 1px solid #ccc; display: flex; align-items: center; justify-content: center;">${cellContent}</div>`;
+        }
+    }
+
+    content += `</div>`;
+    content += `<p class="help-text">Interior management coming soon. Equipment placement will be available in a future update.</p>`;
+    content += `<button class="btn" onclick="closeBuildingDialog()">Close</button>`;
+
+    const dialog = document.createElement('div');
+    dialog.id = 'interiorDialog';
+    dialog.className = 'modal-overlay';
+    dialog.innerHTML = `<div class="modal-content">${content}</div>`;
+    document.body.appendChild(dialog);
 }
 
 // ====================================
@@ -1721,7 +2001,9 @@ function calculateCreditworthiness() {
     const totalCurrentAssets = (balances[1] || 0) + (balances[2] || 0) + (balances[3] || 0); // Cash + AR + Inventory
     const totalCurrentLiabilities = (balances[6] || 0) + (balances[7] || 0); // AP + Notes Payable
     const realEstateValue = balances[4] || 0; // Real Estate
-    const totalLoans = balances[19] || 0; // Bank Loans Payable
+    const loansPrincipal = balances[19] || 0; // Bank Loans Payable - Principal
+    const loansInterest = balances[21] || 0; // Bank Loans Payable - Interest
+    const totalLoans = loansPrincipal + loansInterest;
 
     // Calculate total assets and total liabilities
     const totalAssets = totalCurrentAssets + realEstateValue;
@@ -1808,7 +2090,8 @@ function applyForLoan(principal, termMonths) {
         interestRate: creditInfo.interestRate,
         termMonths,
         suggestedMonthlyPayment: parseFloat(suggestedMonthlyPayment.toFixed(2)),
-        remainingBalance: principal,
+        principalBalance: principal,
+        accruedInterestBalance: 0,
         issueDate,
         maturityDate: addMonthsToDate(issueDate, termMonths),
         lastInterestAccrualDate: issueDate,
@@ -1852,28 +2135,31 @@ function accrueInterestOnLoan(loanId) {
         return false;
     }
 
-    const loansPayableAccount = appState.accounts.find(a => a.number === '2200');
+    const loansPrincipalAccount = appState.accounts.find(a => a.number === '2200');
+    const loansInterestAccount = appState.accounts.find(a => a.number === '2210');
     const interestExpenseAccount = appState.accounts.find(a => a.number === '5600');
 
     // Accrue interest for each month
     for (let i = 0; i < monthsElapsed; i++) {
-        const interestAmount = loan.remainingBalance * monthlyRate;
+        // Interest compounds on the total outstanding balance (principal + accrued interest)
+        const outstandingBalance = loan.principalBalance + loan.accruedInterestBalance;
+        const interestAmount = outstandingBalance * monthlyRate;
         const accrualDate = addMonthsToDate(lastAccrual, i + 1);
 
-        // Record transaction: Debit Interest Expense, Credit Bank Loans Payable
+        // Record transaction: Debit Interest Expense, Credit Bank Loans Payable - Interest
         const transaction = {
             id: appState.nextTransactionId++,
             date: accrualDate,
             description: `Loan #${loanId} - Interest accrued for month`,
             debitAccount: interestExpenseAccount.id,
-            creditAccount: loansPayableAccount.id,
+            creditAccount: loansInterestAccount.id,
             amount: parseFloat(interestAmount.toFixed(2))
         };
 
         appState.transactions.push(transaction);
 
-        // Add interest to remaining balance (compound)
-        loan.remainingBalance += interestAmount;
+        // Add interest to accrued interest balance (compound)
+        loan.accruedInterestBalance += interestAmount;
     }
 
     // Update last accrual date
@@ -1905,30 +2191,56 @@ function makeLoanPayment(loanId, paymentAmount) {
     accrueInterestOnLoan(loanId);
 
     const cashAccount = getCashAccount();
-    const loansPayableAccount = appState.accounts.find(a => a.number === '2200');
+    const loansPrincipalAccount = appState.accounts.find(a => a.number === '2200');
+    const loansInterestAccount = appState.accounts.find(a => a.number === '2210');
 
     const paymentDate = getTodayDate();
+    const totalBalance = loan.principalBalance + loan.accruedInterestBalance;
+    const actualPayment = Math.min(paymentAmount, totalBalance);
 
-    // Payment goes entirely toward principal
-    const actualPayment = Math.min(paymentAmount, loan.remainingBalance);
+    let remainingPayment = actualPayment;
 
-    // Record transaction: Debit Bank Loans Payable, Credit Cash
-    const transaction = {
-        id: appState.nextTransactionId++,
-        date: paymentDate,
-        description: `Loan #${loanId} payment - Principal reduction`,
-        debitAccount: loansPayableAccount.id,
-        creditAccount: cashAccount.id,
-        amount: parseFloat(actualPayment.toFixed(2))
-    };
+    // First, pay down accrued interest
+    if (loan.accruedInterestBalance > 0 && remainingPayment > 0) {
+        const interestPayment = Math.min(remainingPayment, loan.accruedInterestBalance);
 
-    appState.transactions.push(transaction);
+        // Record transaction: Debit Bank Loans Payable - Interest, Credit Cash
+        const interestTransaction = {
+            id: appState.nextTransactionId++,
+            date: paymentDate,
+            description: `Loan #${loanId} payment - Interest paid`,
+            debitAccount: loansInterestAccount.id,
+            creditAccount: cashAccount.id,
+            amount: parseFloat(interestPayment.toFixed(2))
+        };
 
-    // Reduce loan balance
-    loan.remainingBalance -= actualPayment;
+        appState.transactions.push(interestTransaction);
+        loan.accruedInterestBalance -= interestPayment;
+        remainingPayment -= interestPayment;
+    }
 
-    if (loan.remainingBalance <= 0.01) {
-        loan.remainingBalance = 0;
+    // Then, pay down principal
+    if (loan.principalBalance > 0 && remainingPayment > 0) {
+        const principalPayment = Math.min(remainingPayment, loan.principalBalance);
+
+        // Record transaction: Debit Bank Loans Payable - Principal, Credit Cash
+        const principalTransaction = {
+            id: appState.nextTransactionId++,
+            date: paymentDate,
+            description: `Loan #${loanId} payment - Principal reduction`,
+            debitAccount: loansPrincipalAccount.id,
+            creditAccount: cashAccount.id,
+            amount: parseFloat(principalPayment.toFixed(2))
+        };
+
+        appState.transactions.push(principalTransaction);
+        loan.principalBalance -= principalPayment;
+    }
+
+    // Mark loan as paid if both balances are near zero
+    if (loan.principalBalance <= 0.01 && loan.accruedInterestBalance <= 0.01) {
+        loan.principalBalance = 0;
+        loan.accruedInterestBalance = 0;
         loan.status = 'paid';
     }
 
@@ -1949,6 +2261,415 @@ function getMonthsBetweenDates(date1, date2) {
     const month2 = parseInt(parts2[2]);
 
     return (year2 - year1) * 12 + (month2 - month1);
+}
+
+// ====================================
+// BUILDING CONSTRUCTION & MANAGEMENT
+// ====================================
+
+// Building type definitions
+const BUILDING_TYPES = {
+    WAREHOUSE: {
+        name: 'Single-Floor Warehouse',
+        materials: { lumber: 50, steel: 30, concrete: 40 },
+        constructionDays: 14,  // 14 simulation days
+        interiorSize: 4  // 4x4 grid
+    }
+};
+
+// Start construction of a building
+function startConstruction(x, y, buildingType) {
+    // Check if tile is owned
+    const ownedSquare = appState.map.ownedSquares.find(s => s.x === x && s.y === y);
+    if (!ownedSquare) {
+        alert('You must own this tile to build on it.');
+        return false;
+    }
+
+    // Check if there's already a building here
+    const existingBuilding = appState.buildings.find(b => b.x === x && b.y === y && b.status !== 'demolished');
+    if (existingBuilding) {
+        alert('There is already a building on this tile.');
+        return false;
+    }
+
+    const buildingDef = BUILDING_TYPES[buildingType];
+    if (!buildingDef) {
+        alert('Invalid building type.');
+        return false;
+    }
+
+    // Check if we have the materials in inventory
+    for (const [materialName, quantity] of Object.entries(buildingDef.materials)) {
+        const commodity = appState.commodities.find(c => c.name.toLowerCase() === materialName.toLowerCase());
+        if (!commodity) continue;
+
+        const portfolio = appState.portfolio[commodity.id];
+        const totalQuantity = portfolio ? portfolio.lots.reduce((sum, lot) => sum + lot.quantity, 0) : 0;
+
+        if (totalQuantity < quantity) {
+            alert(`Insufficient ${materialName}. Required: ${quantity}, Available: ${totalQuantity}`);
+            return false;
+        }
+    }
+
+    // Calculate total material cost (using FIFO cost basis)
+    let totalCost = 0;
+    const materialsUsed = [];
+
+    for (const [materialName, quantity] of Object.entries(buildingDef.materials)) {
+        const commodity = appState.commodities.find(c => c.name.toLowerCase() === materialName.toLowerCase());
+        if (!commodity) continue;
+
+        const { cost, lots } = consumeCommodityFIFO(commodity.id, quantity);
+        totalCost += cost;
+        materialsUsed.push({ commodityId: commodity.id, quantity, cost, lots });
+    }
+
+    // Create building
+    const building = {
+        id: appState.nextBuildingId++,
+        type: buildingType,
+        x,
+        y,
+        status: 'under_construction',
+        startDate: getTodayDate(),
+        completionDate: addDaysToDate(getTodayDate(), buildingDef.constructionDays),
+        cost: totalCost,
+        interior: {
+            grid: Array(buildingDef.interiorSize).fill(null).map(() => Array(buildingDef.interiorSize).fill(null))
+        }
+    };
+
+    appState.buildings.push(building);
+    appState.constructionQueue.push({ buildingId: building.id, completionDate: building.completionDate });
+
+    // Record transactions: consume inventory, add to construction-in-progress
+    const inventoryAccount = appState.accounts.find(a => a.number === '1200');
+    const buildingsAccount = appState.accounts.find(a => a.number === '1400');
+
+    const transaction = {
+        id: appState.nextTransactionId++,
+        date: getTodayDate(),
+        description: `Started construction: ${buildingDef.name} at (${x}, ${y})`,
+        debitAccount: buildingsAccount.id,
+        creditAccount: inventoryAccount.id,
+        amount: parseFloat(totalCost.toFixed(2))
+    };
+
+    appState.transactions.push(transaction);
+    hasUnsavedChanges = true;
+
+    return true;
+}
+
+// Helper: Consume commodity using FIFO and return cost + updated lots
+function consumeCommodityFIFO(commodityId, quantity) {
+    const portfolio = appState.portfolio[commodityId];
+    if (!portfolio || !portfolio.lots || portfolio.lots.length === 0) {
+        return { cost: 0, lots: [] };
+    }
+
+    let remaining = quantity;
+    let totalCost = 0;
+    const consumedLots = [];
+
+    while (remaining > 0 && portfolio.lots.length > 0) {
+        const lot = portfolio.lots[0];
+        const takeQuantity = Math.min(remaining, lot.quantity);
+
+        totalCost += takeQuantity * lot.costBasis;
+        consumedLots.push({ ...lot, quantity: takeQuantity });
+
+        lot.quantity -= takeQuantity;
+        remaining -= takeQuantity;
+
+        if (lot.quantity <= 0) {
+            portfolio.lots.shift();
+        }
+    }
+
+    return { cost: totalCost, lots: consumedLots };
+}
+
+// Add days to a date
+function addDaysToDate(dateString, days) {
+    const parts = dateString.match(/Y(\d+)-M(\d+)-D(\d+)/);
+    if (!parts) return dateString;
+
+    let year = parseInt(parts[1]);
+    let month = parseInt(parts[2]);
+    let day = parseInt(parts[3]);
+
+    day += days;
+
+    while (day > SIMULATION_CONFIG.DAYS_PER_MONTH) {
+        day -= SIMULATION_CONFIG.DAYS_PER_MONTH;
+        month++;
+        if (month > SIMULATION_CONFIG.MONTHS_PER_YEAR) {
+            month = 1;
+            year++;
+        }
+    }
+
+    return `Y${year}-M${month}-D${day}`;
+}
+
+// Check and complete buildings
+function checkConstructionProgress() {
+    const today = getTodayDate();
+
+    appState.constructionQueue = appState.constructionQueue.filter(item => {
+        if (compareDates(today, item.completionDate) >= 0) {
+            // Construction is complete
+            const building = appState.buildings.find(b => b.id === item.buildingId);
+            if (building) {
+                building.status = 'completed';
+            }
+            return false; // Remove from queue
+        }
+        return true; // Keep in queue
+    });
+}
+
+// Demolish a building
+function demolishBuilding(buildingId) {
+    const building = appState.buildings.find(b => b.id === buildingId);
+    if (!building) {
+        alert('Building not found.');
+        return false;
+    }
+
+    if (building.status === 'under_construction') {
+        alert('Cannot demolish a building that is still under construction.');
+        return false;
+    }
+
+    if (!confirm(`Demolish ${BUILDING_TYPES[building.type].name}? This will return materials to inventory.`)) {
+        return false;
+    }
+
+    const buildingDef = BUILDING_TYPES[building.type];
+
+    // Return materials to inventory (50% recovery rate)
+    const inventoryAccount = appState.accounts.find(a => a.number === '1200');
+    const buildingsAccount = appState.accounts.find(a => a.number === '1400');
+
+    let totalRecoveredValue = 0;
+
+    for (const [materialName, quantity] of Object.entries(buildingDef.materials)) {
+        const commodity = appState.commodities.find(c => c.name.toLowerCase() === materialName.toLowerCase());
+        if (!commodity) continue;
+
+        const recoveredQty = Math.floor(quantity * 0.5); // 50% recovery
+        const recoveredValue = recoveredQty * commodity.price;
+
+        // Add to portfolio
+        if (!appState.portfolio[commodity.id]) {
+            appState.portfolio[commodity.id] = { lots: [] };
+        }
+
+        appState.portfolio[commodity.id].lots.push({
+            quantity: recoveredQty,
+            costBasis: commodity.price,
+            purchaseDate: getTodayDate(),
+            purchaseId: `demolish-${buildingId}`
+        });
+
+        totalRecoveredValue += recoveredValue;
+    }
+
+    // Record transaction: debit inventory, credit buildings
+    const transaction = {
+        id: appState.nextTransactionId++,
+        date: getTodayDate(),
+        description: `Demolished ${buildingDef.name} at (${building.x}, ${building.y}) - Materials recovered`,
+        debitAccount: inventoryAccount.id,
+        creditAccount: buildingsAccount.id,
+        amount: parseFloat(totalRecoveredValue.toFixed(2))
+    };
+
+    appState.transactions.push(transaction);
+
+    // Remove all employees from the demolished building
+    appState.employees = appState.employees.filter(e => e.assignedBuildingId !== buildingId);
+
+    building.status = 'demolished';
+    hasUnsavedChanges = true;
+
+    return true;
+}
+
+// ====================================
+// EMPLOYEE MANAGEMENT
+// ====================================
+
+// Generate a random employee name
+function generateEmployeeName() {
+    const firstNames = [
+        'James', 'Mary', 'John', 'Patricia', 'Robert', 'Jennifer', 'Michael', 'Linda',
+        'William', 'Barbara', 'David', 'Elizabeth', 'Richard', 'Susan', 'Joseph', 'Jessica',
+        'Thomas', 'Sarah', 'Charles', 'Karen', 'Christopher', 'Nancy', 'Daniel', 'Lisa',
+        'Matthew', 'Betty', 'Anthony', 'Margaret', 'Mark', 'Sandra', 'Donald', 'Ashley',
+        'Steven', 'Kimberly', 'Paul', 'Emily', 'Andrew', 'Donna', 'Joshua', 'Michelle',
+        'Kenneth', 'Dorothy', 'Kevin', 'Carol', 'Brian', 'Amanda', 'George', 'Melissa',
+        'Edward', 'Deborah', 'Ronald', 'Stephanie', 'Timothy', 'Rebecca', 'Jason', 'Sharon',
+        'Jeffrey', 'Laura', 'Ryan', 'Cynthia', 'Jacob', 'Kathleen', 'Gary', 'Amy',
+        'Nicholas', 'Shirley', 'Eric', 'Angela', 'Jonathan', 'Helen', 'Stephen', 'Anna'
+    ];
+
+    const lastNames = [
+        'Smith', 'Johnson', 'Williams', 'Brown', 'Jones', 'Garcia', 'Miller', 'Davis',
+        'Rodriguez', 'Martinez', 'Hernandez', 'Lopez', 'Gonzalez', 'Wilson', 'Anderson', 'Thomas',
+        'Taylor', 'Moore', 'Jackson', 'Martin', 'Lee', 'Perez', 'Thompson', 'White',
+        'Harris', 'Sanchez', 'Clark', 'Ramirez', 'Lewis', 'Robinson', 'Walker', 'Young',
+        'Allen', 'King', 'Wright', 'Scott', 'Torres', 'Nguyen', 'Hill', 'Flores',
+        'Green', 'Adams', 'Nelson', 'Baker', 'Hall', 'Rivera', 'Campbell', 'Mitchell',
+        'Carter', 'Roberts', 'Gomez', 'Phillips', 'Evans', 'Turner', 'Diaz', 'Parker',
+        'Cruz', 'Edwards', 'Collins', 'Reyes', 'Stewart', 'Morris', 'Morales', 'Murphy'
+    ];
+
+    const firstName = firstNames[Math.floor(Math.random() * firstNames.length)];
+    const lastName = lastNames[Math.floor(Math.random() * lastNames.length)];
+
+    return `${firstName} ${lastName}`;
+}
+
+// Calculate skill level based on wage (1-10 scale)
+// Wage ranges: $50-100 = skill 1-2, $100-200 = 3-4, $200-400 = 5-6, $400-800 = 7-8, $800+ = 9-10
+function calculateSkillLevel(wage) {
+    if (wage < 50) return 1;
+    if (wage < 100) return Math.floor((wage - 50) / 25) + 1; // 1-2
+    if (wage < 200) return Math.floor((wage - 100) / 50) + 3; // 3-4
+    if (wage < 400) return Math.floor((wage - 200) / 100) + 5; // 5-6
+    if (wage < 800) return Math.floor((wage - 400) / 200) + 7; // 7-8
+    return Math.min(10, Math.floor((wage - 800) / 400) + 9); // 9-10
+}
+
+// Hire an employee at a building
+function hireEmployee(buildingId, wage) {
+    const building = appState.buildings.find(b => b.id === buildingId);
+    if (!building) {
+        alert('Building not found.');
+        return false;
+    }
+
+    if (building.status !== 'completed') {
+        alert('Can only hire employees at completed buildings.');
+        return false;
+    }
+
+    if (wage < 10) {
+        alert('Wage must be at least $10 per 24 hours.');
+        return false;
+    }
+
+    const cashBalance = getCashBalance();
+    if (cashBalance < wage) {
+        alert(`Insufficient cash to pay first wage. Need ${formatCurrency(wage)}, have ${formatCurrency(cashBalance)}.`);
+        return false;
+    }
+
+    // Create employee
+    const employee = {
+        id: appState.nextEmployeeId++,
+        name: generateEmployeeName(),
+        wage: parseFloat(wage),
+        skillLevel: calculateSkillLevel(wage),
+        assignedBuildingId: buildingId,
+        hireDate: getTodayDate(),
+        nextPaymentDate: addTime(getCurrentSimulationTime(), 24 * 60 * 60 * 1000) // 24 hours from now
+    };
+
+    appState.employees.push(employee);
+
+    // Pay first wage immediately
+    const cashAccount = appState.accounts.find(a => a.number === '1000');
+    const salariesAccount = appState.accounts.find(a => a.number === '5300');
+
+    const transaction = {
+        id: appState.nextTransactionId++,
+        date: getTodayDate(),
+        description: `Hired ${employee.name} - First wage payment (${formatCurrency(wage)}/24hrs, Skill ${employee.skillLevel})`,
+        debitAccount: salariesAccount.id,
+        creditAccount: cashAccount.id,
+        amount: wage
+    };
+
+    appState.transactions.push(transaction);
+    hasUnsavedChanges = true;
+
+    return true;
+}
+
+// Fire an employee
+function fireEmployee(employeeId) {
+    const employeeIndex = appState.employees.findIndex(e => e.id === employeeId);
+    if (employeeIndex === -1) {
+        alert('Employee not found.');
+        return false;
+    }
+
+    const employee = appState.employees[employeeIndex];
+
+    if (!confirm(`Fire ${employee.name}? They will stop working immediately.`)) {
+        return false;
+    }
+
+    appState.employees.splice(employeeIndex, 1);
+    hasUnsavedChanges = true;
+
+    return true;
+}
+
+// Get employees assigned to a building
+function getEmployeesByBuilding(buildingId) {
+    return appState.employees.filter(e => e.assignedBuildingId === buildingId);
+}
+
+// Process wage payments for all employees
+function processWagePayments() {
+    const currentTime = getCurrentSimulationTime();
+    const cashAccount = appState.accounts.find(a => a.number === '1000');
+    const salariesAccount = appState.accounts.find(a => a.number === '5300');
+
+    for (const employee of appState.employees) {
+        // Check if payment is due
+        if (currentTime >= employee.nextPaymentDate) {
+            const cashBalance = getCashBalance();
+
+            if (cashBalance >= employee.wage) {
+                // Pay the employee
+                const transaction = {
+                    id: appState.nextTransactionId++,
+                    date: getTodayDate(),
+                    description: `Wage payment - ${employee.name} (${formatCurrency(employee.wage)}/24hrs)`,
+                    debitAccount: salariesAccount.id,
+                    creditAccount: cashAccount.id,
+                    amount: employee.wage
+                };
+
+                appState.transactions.push(transaction);
+
+                // Schedule next payment (24 hours later)
+                employee.nextPaymentDate = addTime(employee.nextPaymentDate, 24 * 60 * 60 * 1000);
+                hasUnsavedChanges = true;
+            } else {
+                // Not enough cash - employee quits
+                console.log(`${employee.name} quit due to non-payment!`);
+                const employeeIndex = appState.employees.findIndex(e => e.id === employee.id);
+                if (employeeIndex !== -1) {
+                    appState.employees.splice(employeeIndex, 1);
+                    hasUnsavedChanges = true;
+                }
+            }
+        }
+    }
+}
+
+// Helper to add time to a timestamp
+function addTime(timestamp, milliseconds) {
+    return timestamp + milliseconds;
 }
 
 // ====================================
@@ -2017,6 +2738,34 @@ function getSharesSummary() {
     };
 }
 
+// Calculate suggested payment based on current balance and remaining term
+function calculateCurrentSuggestedPayment(loan) {
+    const today = getTodayDate();
+    const remainingMonths = getMonthsBetweenDates(today, loan.maturityDate);
+    const totalBalance = loan.principalBalance + loan.accruedInterestBalance;
+
+    // If loan is past maturity or has very few months left, suggest paying full balance
+    if (remainingMonths <= 0) {
+        return totalBalance;
+    }
+
+    // Calculate amortized payment based on current balance and remaining term
+    const monthlyRate = (loan.interestRate / 100) / 12;
+
+    // If interest rate is 0, just divide evenly
+    if (monthlyRate === 0) {
+        return totalBalance / remainingMonths;
+    }
+
+    // Standard amortization formula: P * [r(1+r)^n] / [(1+r)^n - 1]
+    // where P = current balance, r = monthly rate, n = remaining months
+    const suggestedPayment = totalBalance *
+        (monthlyRate * Math.pow(1 + monthlyRate, remainingMonths)) /
+        (Math.pow(1 + monthlyRate, remainingMonths) - 1);
+
+    return parseFloat(suggestedPayment.toFixed(2));
+}
+
 // Render financial management section
 function renderFinancialManagement() {
     const container = document.getElementById('financeContent');
@@ -2056,6 +2805,13 @@ function renderLoanManagement() {
     const container = document.getElementById('loanManagementContent');
     if (!container) return;
 
+    // Auto-accrue interest on all active loans if needed
+    appState.loans
+        .filter(loan => loan.status === 'active')
+        .forEach(loan => {
+            accrueInterestOnLoan(loan.id);
+        });
+
     const creditInfo = calculateCreditworthiness();
 
     // Loans section
@@ -2063,21 +2819,29 @@ function renderLoanManagement() {
         .filter(loan => loan.status === 'active')
         .map(loan => {
             const monthsSinceAccrual = getMonthsBetweenDates(loan.lastInterestAccrualDate, getTodayDate());
+            const suggestedPayment = calculateCurrentSuggestedPayment(loan);
+            const totalBalance = loan.principalBalance + loan.accruedInterestBalance;
             return `
             <tr>
                 <td>#${loan.id}</td>
                 <td>${formatCurrency(loan.principal)}</td>
                 <td>${loan.interestRate}%</td>
                 <td>${loan.termMonths} mo.</td>
-                <td>${formatCurrency(loan.remainingBalance)}</td>
+                <td>
+                    <div class="balance-breakdown">
+                        <div>Principal: ${formatCurrency(loan.principalBalance)}</div>
+                        <div>Interest: ${formatCurrency(loan.accruedInterestBalance)}</div>
+                        <div><strong>Total: ${formatCurrency(totalBalance)}</strong></div>
+                    </div>
+                </td>
                 <td>${loan.lastInterestAccrualDate}</td>
                 <td>${monthsSinceAccrual} mo.</td>
                 <td>
                     <div class="payment-input-group">
-                        <input type="number" id="paymentAmount_${loan.id}" min="0.01" step="0.01" placeholder="${formatCurrency(loan.suggestedMonthlyPayment)}" class="payment-input">
+                        <input type="number" id="paymentAmount_${loan.id}" min="0.01" step="0.01" placeholder="${formatCurrency(suggestedPayment)}" class="payment-input">
                         <button class="btn btn-sm" onclick="const amt = parseFloat(document.getElementById('paymentAmount_${loan.id}').value); if(amt && makeLoanPayment(${loan.id}, amt)) { render(); }">Pay</button>
                     </div>
-                    <small class="suggested-payment">Suggested: ${formatCurrency(loan.suggestedMonthlyPayment)}</small>
+                    <small class="suggested-payment">Suggested: ${formatCurrency(suggestedPayment)}</small>
                 </td>
             </tr>
             `;
@@ -2181,7 +2945,7 @@ function renderLoanManagement() {
             <h4>Outstanding Loans</h4>
             <div class="loan-info-box">
                 <strong>How Loan Interest Works:</strong>
-                <p>Interest accrues monthly and compounds (adds to your loan balance). When you make a payment, any accrued interest is first added to the balance, then your payment reduces the principal. You can pay any amount you want - the "Suggested" payment is the amortized amount that would pay off the loan in the original term.</p>
+                <p>Interest automatically accrues monthly and compounds on your total outstanding balance (principal + accrued interest). The principal and interest are tracked separately in different liability accounts. When you make a payment, it first pays down any accrued interest, then reduces the principal. The "Suggested" payment is dynamically calculated based on your current total balance and remaining time to pay off the loan by its maturity date.</p>
             </div>
             <table class="data-table">
                 <thead>
@@ -2333,7 +3097,7 @@ function calculateAccountBalances(asOfDate = null) {
 
     // Filter transactions by date if specified
     const relevantTransactions = asOfDate
-        ? appState.transactions.filter(t => t.date <= asOfDate)
+        ? appState.transactions.filter(t => compareDates(t.date, asOfDate) <= 0)
         : appState.transactions;
 
     // Apply transactions
@@ -2601,6 +3365,75 @@ function renderCashFlowStatement() {
 
     const operatingCash = netIncome - arChange + apChange;
 
+    // Get financing activities from transactions in the period
+    const periodTransactions = appState.transactions.filter(t => {
+        return isDateInRange(t.date, startDate, endDate);
+    });
+
+    // Categorize financing activities
+    const loanProceeds = periodTransactions.filter(t =>
+        t.description.includes('Bank loan received')
+    );
+    const loanPrincipalPayments = periodTransactions.filter(t =>
+        t.description.includes('payment - Principal reduction')
+    );
+    const loanInterestPayments = periodTransactions.filter(t =>
+        t.description.includes('payment - Interest paid')
+    );
+    const stockIssuances = periodTransactions.filter(t =>
+        t.description.includes('Issued') && t.description.includes('shares')
+    );
+
+    const totalLoanProceeds = loanProceeds.reduce((sum, t) => sum + t.amount, 0);
+    const totalLoanPrincipalPayments = loanPrincipalPayments.reduce((sum, t) => sum + t.amount, 0);
+    const totalLoanInterestPayments = loanInterestPayments.reduce((sum, t) => sum + t.amount, 0);
+    const totalStockIssuances = stockIssuances.reduce((sum, t) => sum + t.amount, 0);
+
+    const netFinancingCash = totalLoanProceeds + totalStockIssuances - totalLoanPrincipalPayments - totalLoanInterestPayments;
+
+    // Build financing activities HTML
+    let financingActivitiesHtml = '';
+
+    if (loanProceeds.length > 0) {
+        financingActivitiesHtml += `
+            <div class="statement-item">
+                <span>Loan Proceeds</span>
+                <span>${formatCurrency(totalLoanProceeds)}</span>
+            </div>`;
+    }
+
+    if (stockIssuances.length > 0) {
+        financingActivitiesHtml += `
+            <div class="statement-item">
+                <span>Stock Issuances</span>
+                <span>${formatCurrency(totalStockIssuances)}</span>
+            </div>`;
+    }
+
+    if (loanPrincipalPayments.length > 0) {
+        financingActivitiesHtml += `
+            <div class="statement-item">
+                <span>Loan Principal Payments</span>
+                <span>(${formatCurrency(totalLoanPrincipalPayments)})</span>
+            </div>`;
+    }
+
+    if (loanInterestPayments.length > 0) {
+        financingActivitiesHtml += `
+            <div class="statement-item">
+                <span>Loan Interest Payments</span>
+                <span>(${formatCurrency(totalLoanInterestPayments)})</span>
+            </div>`;
+    }
+
+    if (financingActivitiesHtml === '') {
+        financingActivitiesHtml = `
+            <div class="statement-item">
+                <span>No financing activities recorded</span>
+                <span>${formatCurrency(0)}</span>
+            </div>`;
+    }
+
     const content = document.getElementById('cashFlowContent');
     content.innerHTML = `
         <div class="statement-section">
@@ -2642,13 +3475,10 @@ function renderCashFlowStatement() {
 
         <div class="statement-section">
             <div class="statement-category">FINANCING ACTIVITIES</div>
-            <div class="statement-item">
-                <span>No financing activities recorded</span>
-                <span>${formatCurrency(0)}</span>
-            </div>
+            ${financingActivitiesHtml}
             <div class="statement-subtotal">
                 <span>Net Cash from Financing Activities</span>
-                <span>${formatCurrency(0)}</span>
+                <span>${formatCurrency(netFinancingCash)}</span>
             </div>
         </div>
 
@@ -2685,7 +3515,7 @@ function formatCurrency(amount) {
 // SIMULATION TIME SYSTEM
 // ====================================
 // Custom calendar: Years × 12 months × 28 days × 24 hours
-// Time progresses in real-time (1 real second = 1 simulation second)
+// Time progresses at 60x speed (1 real second = 1 simulation minute)
 
 const SIMULATION_CONFIG = {
     DAYS_PER_MONTH: 28,
@@ -2693,7 +3523,8 @@ const SIMULATION_CONFIG = {
     HOURS_PER_DAY: 24,
     MINUTES_PER_HOUR: 60,
     SECONDS_PER_MINUTE: 60,
-    MS_PER_SECOND: 1000
+    MS_PER_SECOND: 1000,
+    TIME_SCALE: 60  // 1 real second = 60 simulation seconds (1 simulation minute)
 };
 
 // Calculate derived constants
@@ -2758,7 +3589,8 @@ function getCurrentSimulationTime() {
     }
 
     const realTimeElapsed = Date.now() - appState.simulation.lastSaveRealTime;
-    return appState.simulation.simulationTime + realTimeElapsed;
+    const simulationTimeElapsed = realTimeElapsed * SIMULATION_CONFIG.TIME_SCALE;
+    return appState.simulation.simulationTime + simulationTimeElapsed;
 }
 
 // Format simulation time as string
@@ -2837,7 +3669,9 @@ function getPreviousDay(dateString) {
                 if (month < 1) {
                     year--;
                     if (year < 1) {
-                        year = 1;
+                        // Can't go before Y1-M1-D1, so return Y1-M0-D0
+                        // This sentinel value is before any real date
+                        return 'Y1-M0-D0';
                     }
                     month = SIMULATION_CONFIG.MONTHS_PER_YEAR;
                 }
@@ -2872,6 +3706,92 @@ function getPreviousDay(dateString) {
     return date.toISOString().split('T')[0];
 }
 
+// Check if a date is within a range (inclusive)
+function isDateInRange(dateString, startDate, endDate) {
+    // Parse dates in Y#-M#-D# format
+    const parseSimDate = (ds) => {
+        const parts = ds.match(/Y(\d+)-M(\d+)-D(\d+)/);
+        if (!parts) return null;
+        return {
+            year: parseInt(parts[1]),
+            month: parseInt(parts[2]),
+            day: parseInt(parts[3])
+        };
+    };
+
+    const date = parseSimDate(dateString);
+    const start = parseSimDate(startDate);
+    const end = parseSimDate(endDate);
+
+    if (!date || !start || !end) return false;
+
+    // Compare years first
+    if (date.year < start.year || date.year > end.year) return false;
+    if (date.year > start.year && date.year < end.year) return true;
+
+    // Same year as start or end - need to compare months/days
+    if (date.year === start.year && date.year === end.year) {
+        // All in same year
+        if (date.month < start.month || date.month > end.month) return false;
+        if (date.month > start.month && date.month < end.month) return true;
+
+        // Need to check days
+        if (date.month === start.month && date.month === end.month) {
+            return date.day >= start.day && date.day <= end.day;
+        }
+        if (date.month === start.month) {
+            return date.day >= start.day;
+        }
+        if (date.month === end.month) {
+            return date.day <= end.day;
+        }
+    } else if (date.year === start.year) {
+        // Date is in start year
+        if (date.month < start.month) return false;
+        if (date.month > start.month) return true;
+        return date.day >= start.day;
+    } else if (date.year === end.year) {
+        // Date is in end year
+        if (date.month > end.month) return false;
+        if (date.month < end.month) return true;
+        return date.day <= end.day;
+    }
+
+    return true;
+}
+
+// Compare two simulation dates (-1 if date1 < date2, 0 if equal, 1 if date1 > date2)
+function compareDates(date1, date2) {
+    const parseSimDate = (ds) => {
+        const parts = ds.match(/Y(\d+)-M(\d+)-D(\d+)/);
+        if (!parts) return null;
+        return {
+            year: parseInt(parts[1]),
+            month: parseInt(parts[2]),
+            day: parseInt(parts[3])
+        };
+    };
+
+    const d1 = parseSimDate(date1);
+    const d2 = parseSimDate(date2);
+
+    if (!d1 || !d2) return 0;
+
+    // Compare years
+    if (d1.year < d2.year) return -1;
+    if (d1.year > d2.year) return 1;
+
+    // Same year, compare months
+    if (d1.month < d2.month) return -1;
+    if (d1.month > d2.month) return 1;
+
+    // Same month, compare days
+    if (d1.day < d2.day) return -1;
+    if (d1.day > d2.day) return 1;
+
+    return 0;
+}
+
 // Update simulation clock (called every second)
 function updateSimulationClock() {
     const clockElement = document.getElementById('simulationClock');
@@ -2884,6 +3804,15 @@ function updateSimulationClock() {
         if (pauseBtn) {
             pauseBtn.textContent = appState.simulation.paused ? '▶ Resume Time' : '⏸ Pause Time';
         }
+
+        // Auto-update financial statement end dates to current date
+        updateStatementEndDates();
+
+        // Check construction progress
+        checkConstructionProgress();
+
+        // Process wage payments
+        processWagePayments();
     }
 }
 
@@ -2927,7 +3856,32 @@ function resetTime() {
         appState.simulation.startRealTime = Date.now();
         hasUnsavedChanges = true;
         updateSimulationClock();
+        render();
     }
+}
+
+// Adjust time by a specific number of milliseconds (positive = forward, negative = backward)
+function adjustTime(milliseconds) {
+    // Get current simulation time
+    const currentTime = getCurrentSimulationTime();
+
+    // Calculate new time
+    let newTime = currentTime + milliseconds;
+
+    // Prevent going before Year 1
+    if (newTime < 0) {
+        newTime = 0;
+        alert('Cannot go before Year 1, Month 1, Day 1, 00:00:00');
+    }
+
+    // Update simulation time
+    appState.simulation.simulationTime = newTime;
+    appState.simulation.lastSaveRealTime = Date.now();
+    hasUnsavedChanges = true;
+
+    // Update display
+    updateSimulationClock();
+    render();
 }
 
 // Set specific time (admin mode)
@@ -2970,6 +3924,7 @@ function setSimulationTime() {
     appState.simulation.lastSaveRealTime = Date.now();
     hasUnsavedChanges = true;
     updateSimulationClock();
+    render();
 
     showStatus('timeControlStatus', 'Time updated successfully!', 'success');
 }
@@ -2997,6 +3952,26 @@ function setDefaultStatementDates() {
     document.getElementById('incomeEndDate').value = getTodayDate();
     document.getElementById('cashFlowStartDate').value = getFirstDayOfMonth();
     document.getElementById('cashFlowEndDate').value = getTodayDate();
+}
+
+// Update end dates for financial statements to current date (preserves user's start dates)
+function updateStatementEndDates() {
+    const currentDate = getTodayDate();
+
+    // Update balance sheet date (always current date)
+    document.getElementById('balanceSheetDate').value = currentDate;
+
+    // Update end dates only (preserve user's start date inputs)
+    document.getElementById('incomeEndDate').value = currentDate;
+    document.getElementById('cashFlowEndDate').value = currentDate;
+
+    // If start dates are empty, set them to first day of current month
+    if (!document.getElementById('incomeStartDate').value) {
+        document.getElementById('incomeStartDate').value = getFirstDayOfMonth();
+    }
+    if (!document.getElementById('cashFlowStartDate').value) {
+        document.getElementById('cashFlowStartDate').value = getFirstDayOfMonth();
+    }
 }
 
 function escapeHtml(text) {
