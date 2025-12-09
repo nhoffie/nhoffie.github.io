@@ -111,11 +111,11 @@ let appState = {
         }
     ],
     commodities: [
-        { id: 1, name: 'Power', description: 'Electrical energy units', price: 50.00 },
-        { id: 2, name: 'Water', description: 'Fresh water units', price: 25.00 },
-        { id: 3, name: 'Lumber', description: 'Construction-grade lumber', price: 100.00 },
-        { id: 4, name: 'Steel', description: 'Structural steel beams', price: 200.00 },
-        { id: 5, name: 'Concrete', description: 'Ready-mix concrete', price: 150.00 }
+        { id: 1, name: 'Power', description: 'Electrical energy units', price: 5.00 },
+        { id: 2, name: 'Water', description: 'Fresh water units', price: 2.50 },
+        { id: 3, name: 'Lumber', description: 'Construction-grade lumber', price: 10.00 },
+        { id: 4, name: 'Steel', description: 'Structural steel beams', price: 20.00 },
+        { id: 5, name: 'Concrete', description: 'Ready-mix concrete', price: 15.00 }
     ],
     portfolio: {
         // Structure: { commodityId: { lots: [{ quantity, costBasis, purchaseDate, purchaseId }] } }
@@ -288,13 +288,13 @@ function restoreSessionKey() {
 
         // Add construction commodities if they don't exist
         if (!appState.commodities.find(c => c.id === 3)) {
-            appState.commodities.push({ id: 3, name: 'Lumber', description: 'Construction-grade lumber', price: 100.00 });
+            appState.commodities.push({ id: 3, name: 'Lumber', description: 'Construction-grade lumber', price: 10.00 });
         }
         if (!appState.commodities.find(c => c.id === 4)) {
-            appState.commodities.push({ id: 4, name: 'Steel', description: 'Structural steel beams', price: 200.00 });
+            appState.commodities.push({ id: 4, name: 'Steel', description: 'Structural steel beams', price: 20.00 });
         }
         if (!appState.commodities.find(c => c.id === 5)) {
-            appState.commodities.push({ id: 5, name: 'Concrete', description: 'Ready-mix concrete', price: 150.00 });
+            appState.commodities.push({ id: 5, name: 'Concrete', description: 'Ready-mix concrete', price: 15.00 });
         }
 
         // Add buildings array if it doesn't exist
@@ -1356,24 +1356,68 @@ function renderCommoditiesMarket() {
     renderTradeHistory();
 }
 
+let selectedCommodityId = 1; // Default to first commodity
+
 function renderCommoditiesList() {
     const container = document.getElementById('commoditiesList');
     if (!container) return;
 
     const cashBalance = getCashBalance();
 
-    container.innerHTML = `
+    // Create commodity selector
+    let selectorHtml = `
         <div class="cash-balance">
             <strong>Available Cash:</strong> ${formatCurrency(cashBalance)}
         </div>
+        <div class="commodity-selector">
+            <label for="commoditySelect"><strong>Select Commodity:</strong></label>
+            <select id="commoditySelect" class="commodity-select">
     `;
 
     appState.commodities.forEach(commodity => {
-        const quantity = getTotalQuantity(commodity.id);
+        selectorHtml += `<option value="${commodity.id}" ${commodity.id === selectedCommodityId ? 'selected' : ''}>${commodity.name} - ${formatCurrency(commodity.price)}/unit</option>`;
+    });
 
-        const commodityCard = document.createElement('div');
-        commodityCard.className = 'commodity-card';
-        commodityCard.innerHTML = `
+    selectorHtml += `
+            </select>
+        </div>
+    `;
+
+    container.innerHTML = selectorHtml;
+
+    // Add change listener to selector
+    const selector = document.getElementById('commoditySelect');
+    if (selector) {
+        selector.addEventListener('change', (e) => {
+            selectedCommodityId = parseInt(e.target.value);
+            renderSelectedCommodity();
+        });
+    }
+
+    // Render the selected commodity details
+    renderSelectedCommodity();
+}
+
+function renderSelectedCommodity() {
+    const container = document.getElementById('commoditiesList');
+    if (!container) return;
+
+    const commodity = appState.commodities.find(c => c.id === selectedCommodityId);
+    if (!commodity) return;
+
+    const quantity = getTotalQuantity(commodity.id);
+
+    // Find or create the details container
+    let detailsContainer = document.getElementById('commodityDetails');
+    if (!detailsContainer) {
+        detailsContainer = document.createElement('div');
+        detailsContainer.id = 'commodityDetails';
+        detailsContainer.className = 'commodity-details';
+        container.appendChild(detailsContainer);
+    }
+
+    detailsContainer.innerHTML = `
+        <div class="commodity-card-single">
             <div class="commodity-header">
                 <h4>${escapeHtml(commodity.name)}</h4>
                 <div class="commodity-price">${formatCurrency(commodity.price)}<span class="price-unit">/unit</span></div>
@@ -1400,32 +1444,28 @@ function renderCommoditiesList() {
                     </div>
                 </div>
             </div>
-        `;
-
-        container.appendChild(commodityCard);
-    });
+        </div>
+    `;
 
     // Add event listeners for quantity inputs
-    appState.commodities.forEach(commodity => {
-        const buyInput = document.getElementById(`buy-quantity-${commodity.id}`);
-        const sellInput = document.getElementById(`sell-quantity-${commodity.id}`);
-        const buyTotal = document.getElementById(`buy-total-${commodity.id}`);
-        const sellTotal = document.getElementById(`sell-total-${commodity.id}`);
+    const buyInput = document.getElementById(`buy-quantity-${commodity.id}`);
+    const sellInput = document.getElementById(`sell-quantity-${commodity.id}`);
+    const buyTotal = document.getElementById(`buy-total-${commodity.id}`);
+    const sellTotal = document.getElementById(`sell-total-${commodity.id}`);
 
-        if (buyInput) {
-            buyInput.addEventListener('input', () => {
-                const quantity = parseFloat(buyInput.value) || 0;
-                buyTotal.textContent = formatCurrency(quantity * commodity.price);
-            });
-        }
+    if (buyInput) {
+        buyInput.addEventListener('input', () => {
+            const quantity = parseFloat(buyInput.value) || 0;
+            buyTotal.textContent = formatCurrency(quantity * commodity.price);
+        });
+    }
 
-        if (sellInput) {
-            sellInput.addEventListener('input', () => {
-                const quantity = parseFloat(sellInput.value) || 0;
-                sellTotal.textContent = formatCurrency(quantity * commodity.price);
-            });
-        }
-    });
+    if (sellInput) {
+        sellInput.addEventListener('input', () => {
+            const quantity = parseFloat(sellInput.value) || 0;
+            sellTotal.textContent = formatCurrency(quantity * commodity.price);
+        });
+    }
 }
 
 function renderPortfolio() {

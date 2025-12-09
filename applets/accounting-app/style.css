@@ -971,12 +971,54 @@ footer a:hover {
     text-align: center;
 }
 
+/* Commodity Selector */
+.commodity-selector {
+    margin: 1.5rem 0;
+    padding: 1rem;
+    background: var(--header-bg);
+    border-radius: 4px;
+}
+
+.commodity-selector label {
+    display: block;
+    margin-bottom: 0.5rem;
+    color: var(--text-color);
+}
+
+.commodity-select {
+    width: 100%;
+    padding: 0.75rem;
+    font-size: 1rem;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: white;
+    cursor: pointer;
+}
+
+.commodity-select:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.commodity-details {
+    margin-top: 1.5rem;
+}
+
 .commodity-card {
     background: var(--header-bg);
     border: 1px solid var(--border-color);
     border-radius: 4px;
     padding: 1rem;
     margin-bottom: 1rem;
+}
+
+.commodity-card-single {
+    background: white;
+    border: 2px solid var(--primary-color);
+    border-radius: 8px;
+    padding: 1.5rem;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
 .commodity-header {
