@@ -145,6 +145,8 @@ let appState = {
     // Structure: { id, type, x, y, status, startDate, completionDate, cost, interior: { grid: 4x4 array } }
     constructionQueue: [],
     // Structure: { buildingId, completionDate }
+    employees: [],
+    // Structure: { id, name, wage, skillLevel, assignedBuildingId, hireDate, nextPaymentDate }
     nextAccountId: 23,
     nextTransactionId: 1,
     nextTransactionTypeId: 11,
@@ -152,7 +154,8 @@ let appState = {
     nextTradeId: 1,
     nextLoanId: 1,
     nextShareIssuanceId: 1,
-    nextBuildingId: 1
+    nextBuildingId: 1,
+    nextEmployeeId: 1
 };
 
 let hasUnsavedChanges = false;
@@ -306,6 +309,14 @@ function restoreSessionKey() {
         }
         if (!appState.nextBuildingId) {
             appState.nextBuildingId = 1;
+        }
+
+        // Add employees array if it doesn't exist
+        if (!appState.employees) {
+            appState.employees = [];
+        }
+        if (!appState.nextEmployeeId) {
+            appState.nextEmployeeId = 1;
         }
 
         hasUnsavedChanges = false;
@@ -1839,6 +1850,48 @@ function showBuildingManagement(x, y) {
         `;
 
         if (building.status === 'completed') {
+            // Show employees
+            const employees = getEmployeesByBuilding(building.id);
+            content += `
+                <div class="employee-section">
+                    <h4>👥 Employees (${employees.length})</h4>
+            `;
+
+            if (employees.length > 0) {
+                content += `<div class="employee-list">`;
+                for (const employee of employees) {
+                    const nextPayment = formatSimulationTime(employee.nextPaymentDate);
+                    content += `
+                        <div class="employee-card">
+                            <div class="employee-info">
+                                <strong>${escapeHtml(employee.name)}</strong>
+                                <div class="employee-details">
+                                    <span>Wage: ${formatCurrency(employee.wage)}/24hrs</span>
+                                    <span>Skill: ${employee.skillLevel}/10</span>
+                                    <span>Next Payment: ${nextPayment}</span>
+                                </div>
+                            </div>
+                            <button class="btn btn-sm btn-danger" onclick="if(fireEmployee(${employee.id})) { closeBuildingDialog(); showBuildingManagement(${x}, ${y}); }">Fire</button>
+                        </div>
+                    `;
+                }
+                content += `</div>`;
+            } else {
+                content += `<p class="help-text">No employees currently assigned to this building.</p>`;
+            }
+
+            content += `
+                    <div class="hire-section">
+                        <label for="newEmployeeWage">Hire New Employee:</label>
+                        <div class="hire-controls">
+                            <input type="number" id="newEmployeeWage" min="10" step="10" value="100" placeholder="Wage per 24 hours">
+                            <button class="btn btn-primary" onclick="if(hireEmployee(${building.id}, parseFloat(document.getElementById('newEmployeeWage').value))) { closeBuildingDialog(); showBuildingManagement(${x}, ${y}); }">Hire</button>
+                        </div>
+                        <p class="help-text">Suggested wages: $50-100 (Basic), $200-400 (Skilled), $800+ (Expert)</p>
+                    </div>
+                </div>
+            `;
+
             content += `
                 <div class="building-actions">
                     <button class="btn" onclick="showBuildingInterior(${building.id})">Manage Interior</button>
@@ -2438,10 +2491,185 @@ function demolishBuilding(buildingId) {
 
     appState.transactions.push(transaction);
 
+    // Remove all employees from the demolished building
+    appState.employees = appState.employees.filter(e => e.assignedBuildingId !== buildingId);
+
     building.status = 'demolished';
     hasUnsavedChanges = true;
 
     return true;
+}
+
+// ====================================
+// EMPLOYEE MANAGEMENT
+// ====================================
+
+// Generate a random employee name
+function generateEmployeeName() {
+    const firstNames = [
+        'James', 'Mary', 'John', 'Patricia', 'Robert', 'Jennifer', 'Michael', 'Linda',
+        'William', 'Barbara', 'David', 'Elizabeth', 'Richard', 'Susan', 'Joseph', 'Jessica',
+        'Thomas', 'Sarah', 'Charles', 'Karen', 'Christopher', 'Nancy', 'Daniel', 'Lisa',
+        'Matthew', 'Betty', 'Anthony', 'Margaret', 'Mark', 'Sandra', 'Donald', 'Ashley',
+        'Steven', 'Kimberly', 'Paul', 'Emily', 'Andrew', 'Donna', 'Joshua', 'Michelle',
+        'Kenneth', 'Dorothy', 'Kevin', 'Carol', 'Brian', 'Amanda', 'George', 'Melissa',
+        'Edward', 'Deborah', 'Ronald', 'Stephanie', 'Timothy', 'Rebecca', 'Jason', 'Sharon',
+        'Jeffrey', 'Laura', 'Ryan', 'Cynthia', 'Jacob', 'Kathleen', 'Gary', 'Amy',
+        'Nicholas', 'Shirley', 'Eric', 'Angela', 'Jonathan', 'Helen', 'Stephen', 'Anna'
+    ];
+
+    const lastNames = [
+        'Smith', 'Johnson', 'Williams', 'Brown', 'Jones', 'Garcia', 'Miller', 'Davis',
+        'Rodriguez', 'Martinez', 'Hernandez', 'Lopez', 'Gonzalez', 'Wilson', 'Anderson', 'Thomas',
+        'Taylor', 'Moore', 'Jackson', 'Martin', 'Lee', 'Perez', 'Thompson', 'White',
+        'Harris', 'Sanchez', 'Clark', 'Ramirez', 'Lewis', 'Robinson', 'Walker', 'Young',
+        'Allen', 'King', 'Wright', 'Scott', 'Torres', 'Nguyen', 'Hill', 'Flores',
+        'Green', 'Adams', 'Nelson', 'Baker', 'Hall', 'Rivera', 'Campbell', 'Mitchell',
+        'Carter', 'Roberts', 'Gomez', 'Phillips', 'Evans', 'Turner', 'Diaz', 'Parker',
+        'Cruz', 'Edwards', 'Collins', 'Reyes', 'Stewart', 'Morris', 'Morales', 'Murphy'
+    ];
+
+    const firstName = firstNames[Math.floor(Math.random() * firstNames.length)];
+    const lastName = lastNames[Math.floor(Math.random() * lastNames.length)];
+
+    return `${firstName} ${lastName}`;
+}
+
+// Calculate skill level based on wage (1-10 scale)
+// Wage ranges: $50-100 = skill 1-2, $100-200 = 3-4, $200-400 = 5-6, $400-800 = 7-8, $800+ = 9-10
+function calculateSkillLevel(wage) {
+    if (wage < 50) return 1;
+    if (wage < 100) return Math.floor((wage - 50) / 25) + 1; // 1-2
+    if (wage < 200) return Math.floor((wage - 100) / 50) + 3; // 3-4
+    if (wage < 400) return Math.floor((wage - 200) / 100) + 5; // 5-6
+    if (wage < 800) return Math.floor((wage - 400) / 200) + 7; // 7-8
+    return Math.min(10, Math.floor((wage - 800) / 400) + 9); // 9-10
+}
+
+// Hire an employee at a building
+function hireEmployee(buildingId, wage) {
+    const building = appState.buildings.find(b => b.id === buildingId);
+    if (!building) {
+        alert('Building not found.');
+        return false;
+    }
+
+    if (building.status !== 'completed') {
+        alert('Can only hire employees at completed buildings.');
+        return false;
+    }
+
+    if (wage < 10) {
+        alert('Wage must be at least $10 per 24 hours.');
+        return false;
+    }
+
+    const cashBalance = getCashBalance();
+    if (cashBalance < wage) {
+        alert(`Insufficient cash to pay first wage. Need ${formatCurrency(wage)}, have ${formatCurrency(cashBalance)}.`);
+        return false;
+    }
+
+    // Create employee
+    const employee = {
+        id: appState.nextEmployeeId++,
+        name: generateEmployeeName(),
+        wage: parseFloat(wage),
+        skillLevel: calculateSkillLevel(wage),
+        assignedBuildingId: buildingId,
+        hireDate: getTodayDate(),
+        nextPaymentDate: addTime(getCurrentSimulationTime(), 24 * 60 * 60 * 1000) // 24 hours from now
+    };
+
+    appState.employees.push(employee);
+
+    // Pay first wage immediately
+    const cashAccount = appState.accounts.find(a => a.number === '1000');
+    const salariesAccount = appState.accounts.find(a => a.number === '5300');
+
+    const transaction = {
+        id: appState.nextTransactionId++,
+        date: getTodayDate(),
+        description: `Hired ${employee.name} - First wage payment (${formatCurrency(wage)}/24hrs, Skill ${employee.skillLevel})`,
+        debitAccount: salariesAccount.id,
+        creditAccount: cashAccount.id,
+        amount: wage
+    };
+
+    appState.transactions.push(transaction);
+    hasUnsavedChanges = true;
+
+    return true;
+}
+
+// Fire an employee
+function fireEmployee(employeeId) {
+    const employeeIndex = appState.employees.findIndex(e => e.id === employeeId);
+    if (employeeIndex === -1) {
+        alert('Employee not found.');
+        return false;
+    }
+
+    const employee = appState.employees[employeeIndex];
+
+    if (!confirm(`Fire ${employee.name}? They will stop working immediately.`)) {
+        return false;
+    }
+
+    appState.employees.splice(employeeIndex, 1);
+    hasUnsavedChanges = true;
+
+    return true;
+}
+
+// Get employees assigned to a building
+function getEmployeesByBuilding(buildingId) {
+    return appState.employees.filter(e => e.assignedBuildingId === buildingId);
+}
+
+// Process wage payments for all employees
+function processWagePayments() {
+    const currentTime = getCurrentSimulationTime();
+    const cashAccount = appState.accounts.find(a => a.number === '1000');
+    const salariesAccount = appState.accounts.find(a => a.number === '5300');
+
+    for (const employee of appState.employees) {
+        // Check if payment is due
+        if (currentTime >= employee.nextPaymentDate) {
+            const cashBalance = getCashBalance();
+
+            if (cashBalance >= employee.wage) {
+                // Pay the employee
+                const transaction = {
+                    id: appState.nextTransactionId++,
+                    date: getTodayDate(),
+                    description: `Wage payment - ${employee.name} (${formatCurrency(employee.wage)}/24hrs)`,
+                    debitAccount: salariesAccount.id,
+                    creditAccount: cashAccount.id,
+                    amount: employee.wage
+                };
+
+                appState.transactions.push(transaction);
+
+                // Schedule next payment (24 hours later)
+                employee.nextPaymentDate = addTime(employee.nextPaymentDate, 24 * 60 * 60 * 1000);
+                hasUnsavedChanges = true;
+            } else {
+                // Not enough cash - employee quits
+                console.log(`${employee.name} quit due to non-payment!`);
+                const employeeIndex = appState.employees.findIndex(e => e.id === employee.id);
+                if (employeeIndex !== -1) {
+                    appState.employees.splice(employeeIndex, 1);
+                    hasUnsavedChanges = true;
+                }
+            }
+        }
+    }
+}
+
+// Helper to add time to a timestamp
+function addTime(timestamp, milliseconds) {
+    return timestamp + milliseconds;
 }
 
 // ====================================
@@ -3582,6 +3810,9 @@ function updateSimulationClock() {
 
         // Check construction progress
         checkConstructionProgress();
+
+        // Process wage payments
+        processWagePayments();
     }
 }
 
