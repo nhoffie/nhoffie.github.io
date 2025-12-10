@@ -3379,6 +3379,9 @@ function renderCashFlowStatement() {
     const apAccounts = appState.accounts.filter(a =>
         a.name.toLowerCase().includes('payable')
     );
+    const inventoryAccounts = appState.accounts.filter(a =>
+        a.name.toLowerCase().includes('inventory')
+    );
 
     const arChange = arAccounts.reduce((sum, a) =>
         sum + ((endBalances[a.id] || 0) - (startBalances[a.id] || 0)), 0
@@ -3386,8 +3389,11 @@ function renderCashFlowStatement() {
     const apChange = apAccounts.reduce((sum, a) =>
         sum + ((endBalances[a.id] || 0) - (startBalances[a.id] || 0)), 0
     );
+    const inventoryChange = inventoryAccounts.reduce((sum, a) =>
+        sum + ((endBalances[a.id] || 0) - (startBalances[a.id] || 0)), 0
+    );
 
-    const operatingCash = netIncome - arChange + apChange;
+    const operatingCash = netIncome - arChange + apChange - inventoryChange;
 
     // Get financing activities from transactions in the period
     const periodTransactions = appState.transactions.filter(t => {
@@ -3414,6 +3420,46 @@ function renderCashFlowStatement() {
     const totalStockIssuances = stockIssuances.reduce((sum, t) => sum + t.amount, 0);
 
     const netFinancingCash = totalLoanProceeds + totalStockIssuances - totalLoanPrincipalPayments - totalLoanInterestPayments;
+
+    // Categorize investing activities
+    const propertyPurchases = periodTransactions.filter(t =>
+        t.description.includes('Purchase property at')
+    );
+    const buildingDemolitions = periodTransactions.filter(t =>
+        t.description.includes('Demolished') && t.description.includes('Materials recovered')
+    );
+
+    const totalPropertyPurchases = propertyPurchases.reduce((sum, t) => sum + t.amount, 0);
+    const totalBuildingDemolitions = buildingDemolitions.reduce((sum, t) => sum + t.amount, 0);
+
+    const netInvestingCash = -totalPropertyPurchases + totalBuildingDemolitions;
+
+    // Build investing activities HTML
+    let investingActivitiesHtml = '';
+
+    if (propertyPurchases.length > 0) {
+        investingActivitiesHtml += `
+            <div class="statement-item">
+                <span>Property Purchases</span>
+                <span>(${formatCurrency(totalPropertyPurchases)})</span>
+            </div>`;
+    }
+
+    if (buildingDemolitions.length > 0) {
+        investingActivitiesHtml += `
+            <div class="statement-item">
+                <span>Building Demolitions (Materials Recovered)</span>
+                <span>${formatCurrency(totalBuildingDemolitions)}</span>
+            </div>`;
+    }
+
+    if (investingActivitiesHtml === '') {
+        investingActivitiesHtml = `
+            <div class="statement-item">
+                <span>No investing activities recorded</span>
+                <span>${formatCurrency(0)}</span>
+            </div>`;
+    }
 
     // Build financing activities HTML
     let financingActivitiesHtml = '';
@@ -3476,6 +3522,10 @@ function renderCashFlowStatement() {
                 <span>${formatCurrency(-arChange)}</span>
             </div>
             <div class="statement-item">
+                <span>Changes in Inventory</span>
+                <span>${formatCurrency(-inventoryChange)}</span>
+            </div>
+            <div class="statement-item">
                 <span>Changes in Accounts Payable</span>
                 <span>${formatCurrency(apChange)}</span>
             </div>
@@ -3487,13 +3537,10 @@ function renderCashFlowStatement() {
 
         <div class="statement-section">
             <div class="statement-category">INVESTING ACTIVITIES</div>
-            <div class="statement-item">
-                <span>No investing activities recorded</span>
-                <span>${formatCurrency(0)}</span>
-            </div>
+            ${investingActivitiesHtml}
             <div class="statement-subtotal">
                 <span>Net Cash from Investing Activities</span>
-                <span>${formatCurrency(0)}</span>
+                <span>${formatCurrency(netInvestingCash)}</span>
             </div>
         </div>
 
