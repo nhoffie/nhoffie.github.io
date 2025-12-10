@@ -395,10 +395,13 @@ function setupTabNavigation() {
 
             // Trigger rendering for the specific tab
             if (targetTab === 'balance-sheet') {
+                updateStatementEndDates();
                 renderBalanceSheet();
             } else if (targetTab === 'income-statement') {
+                updateStatementEndDates();
                 renderIncomeStatement();
             } else if (targetTab === 'cash-flow') {
+                updateStatementEndDates();
                 renderCashFlowStatement();
             } else if (targetTab === 'commodities') {
                 renderCommoditiesMarket();
@@ -3825,9 +3828,6 @@ function updateSimulationClock() {
         if (pauseBtn) {
             pauseBtn.textContent = appState.simulation.paused ? '▶ Resume Time' : '⏸ Pause Time';
         }
-
-        // Auto-update financial statement end dates to current date
-        updateStatementEndDates();
 
         // Check construction progress
         checkConstructionProgress();
