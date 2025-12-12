@@ -2078,6 +2078,85 @@ function showBuildingInterior(buildingId) {
 
     content += `</div>`;
 
+    // Equipment catalog section (for equipment that requires other equipment)
+    content += `<h4>Equipment Catalog</h4>`;
+    content += `<div style="padding: 10px; background: #f5f5f5; border-radius: 5px; max-height: 400px; overflow-y: auto;">`;
+
+    if (employees.length === 0) {
+        content += `<p style="color: #666;">Hire employees to start producing equipment.</p>`;
+    } else {
+        const hasWorkbench = equipment.some(e => e.type === 'workbench');
+
+        // Get all equipment types except workbench
+        const availableEquipmentTypes = Object.values(EQUIPMENT_TYPES).filter(e => !e.canCraftWithoutEquipment);
+
+        availableEquipmentTypes.forEach(equipDef => {
+            const meetsPrereqs = hasRequiredEquipment(buildingId, equipDef.requiresEquipment);
+            const hasMaterials = hasRequiredMaterials(equipDef.materials);
+            const availableProducers = equipDef.requiresEquipment.length > 0
+                ? getAvailableEquipmentByType(buildingId, equipDef.requiresEquipment[0])
+                : [];
+
+            const canProduce = meetsPrereqs && hasMaterials && availableProducers.length > 0;
+
+            // Build material list display
+            const materialsDisplay = Object.entries(equipDef.materials)
+                .map(([mat, qty]) => {
+                    const commodityId = getCommodityIdByName(mat);
+                    const have = commodityId ? getTotalQuantity(commodityId) : 0;
+                    const hasEnough = have >= qty;
+                    const color = hasEnough ? '#28a745' : '#dc3545';
+                    return `<span style="color: ${color};">${mat}: ${have}/${qty}</span>`;
+                })
+                .join(', ');
+
+            // Build prerequisites display
+            const prereqDisplay = equipDef.requiresEquipment
+                .map(req => {
+                    const reqDef = getEquipmentDefinition(req);
+                    const hasIt = equipment.some(e => e.type === req);
+                    const icon = hasIt ? '✓' : '✗';
+                    const color = hasIt ? '#28a745' : '#dc3545';
+                    return `<span style="color: ${color};">${icon} ${reqDef.name}</span>`;
+                })
+                .join(', ');
+
+            const bgColor = canProduce ? 'white' : '#f9f9f9';
+            const borderColor = canProduce ? '#28a745' : '#ccc';
+
+            content += `<div style="padding: 10px; background: ${bgColor}; border-left: 4px solid ${borderColor}; margin-bottom: 10px; border-radius: 3px;">`;
+            content += `<div style="display: flex; justify-content: space-between; align-items: center;">`;
+            content += `<div style="flex: 1;">`;
+            content += `<strong>🔧 ${equipDef.name}</strong><br/>`;
+            content += `<span style="font-size: 11px; color: #666;">${equipDef.description}</span><br/>`;
+            content += `<span style="font-size: 11px;">Materials: ${materialsDisplay}</span><br/>`;
+            content += `<span style="font-size: 11px;">Requires: ${prereqDisplay}</span><br/>`;
+            content += `<span style="font-size: 11px; color: #666;">Base time: ${(equipDef.productionTime / (60 * 60 * 1000)).toFixed(1)} hours</span>`;
+
+            if (!meetsPrereqs) {
+                content += `<br/><span style="font-size: 11px; color: #dc3545;">⚠️ Missing prerequisites</span>`;
+            } else if (availableProducers.length === 0) {
+                const reqDef = getEquipmentDefinition(equipDef.requiresEquipment[0]);
+                content += `<br/><span style="font-size: 11px; color: #ffc107;">⚠️ ${reqDef.name} is busy</span>`;
+            }
+
+            content += `</div>`;
+            content += `<div>`;
+
+            if (canProduce) {
+                content += `<button class="btn" onclick="handleCraftEquipment(${buildingId}, '${equipDef.id}')" style="background: #28a745; color: white; font-size: 12px;">Craft</button>`;
+            } else {
+                content += `<button class="btn" disabled style="background: #ccc; font-size: 12px;">Cannot Craft</button>`;
+            }
+
+            content += `</div>`;
+            content += `</div>`;
+            content += `</div>`;
+        });
+    }
+
+    content += `</div>`;
+
     content += `<button class="btn" onclick="closeBuildingDialog()" style="margin-top: 15px;">Close</button>`;
 
     const dialog = document.createElement('div');
@@ -2093,6 +2172,20 @@ function handleCraftWorkbench(buildingId) {
 
     if (result.success) {
         alert(`Workbench crafting started! Estimated completion: ${result.estimatedCompletion}`);
+        closeBuildingDialog();
+        render(); // Refresh display
+    } else {
+        alert(`Error: ${result.error}`);
+    }
+}
+
+// Handle craft equipment button click
+function handleCraftEquipment(buildingId, equipmentType) {
+    const result = startEquipmentProduction(buildingId, equipmentType);
+
+    if (result.success) {
+        const equipDef = getEquipmentDefinition(equipmentType);
+        alert(`${equipDef.name} production started! Estimated completion: ${result.estimatedCompletion}`);
         closeBuildingDialog();
         render(); // Refresh display
     } else {
@@ -2856,6 +2949,121 @@ function startWorkbenchCraft(buildingId) {
     };
 }
 
+// Start equipment production (requires existing equipment)
+function startEquipmentProduction(buildingId, equipmentType) {
+    const building = appState.buildings.find(b => b.id === buildingId);
+    if (!building) {
+        return { success: false, error: 'Building not found' };
+    }
+
+    if (building.status !== 'completed') {
+        return { success: false, error: 'Building is not completed yet' };
+    }
+
+    const employees = getEmployeesByBuilding(buildingId);
+    if (employees.length === 0) {
+        return { success: false, error: 'No employees assigned to this warehouse' };
+    }
+
+    const equipmentDef = getEquipmentDefinition(equipmentType);
+    if (!equipmentDef) {
+        return { success: false, error: 'Invalid equipment type' };
+    }
+
+    // Check if equipment can be crafted without other equipment
+    if (equipmentDef.canCraftWithoutEquipment) {
+        return { success: false, error: 'Use startWorkbenchCraft() for workbench production' };
+    }
+
+    // Validate prerequisites
+    if (!hasRequiredEquipment(buildingId, equipmentDef.requiresEquipment)) {
+        const missing = equipmentDef.requiresEquipment.join(', ');
+        return { success: false, error: `Missing required equipment: ${missing}` };
+    }
+
+    // Find available equipment of the required type
+    const requiredEquipmentType = equipmentDef.requiresEquipment[0]; // Use first required type
+    const availableEquipment = getAvailableEquipmentByType(buildingId, requiredEquipmentType);
+
+    if (availableEquipment.length === 0) {
+        const equipDef = getEquipmentDefinition(requiredEquipmentType);
+        return { success: false, error: `No available ${equipDef.name} (all are busy)` };
+    }
+
+    // Check materials
+    if (!hasRequiredMaterials(equipmentDef.materials)) {
+        const materialsNeeded = Object.entries(equipmentDef.materials)
+            .map(([mat, qty]) => `${qty} ${mat}`)
+            .join(', ');
+        return { success: false, error: `Insufficient materials (need ${materialsNeeded})` };
+    }
+
+    // Consume materials
+    const consumed = consumeMaterials(equipmentDef.materials);
+
+    // Calculate production time
+    const avgSkill = calculateAverageSkill(employees);
+    const productionTime = calculateProductionTime(
+        equipmentDef.productionTime,
+        employees.length,
+        avgSkill
+    );
+
+    const currentTime = getCurrentSimulationTime();
+    const selectedEquipment = availableEquipment[0]; // Use first available equipment
+
+    // Create production job
+    const productionJob = {
+        id: appState.nextProductionId++,
+        buildingId: buildingId,
+        equipmentId: selectedEquipment.id,
+        productType: 'equipment',
+        productId: equipmentDef.id,
+        recipeId: null,
+        quantity: 1,
+        startTime: currentTime,
+        estimatedCompletionTime: currentTime + productionTime,
+        actualCompletionTime: null,
+        status: 'in_progress',
+        materialsConsumed: consumed.materials,
+        materialsCost: consumed.totalCost,
+        outputs: { [equipmentDef.id]: 1 },
+        assignedEmployees: employees.map(e => e.id),
+        continuous: false,
+        transactionId: null
+    };
+
+    // Mark equipment as busy
+    selectedEquipment.status = 'producing';
+    selectedEquipment.currentProduction = productionJob.id;
+
+    // Record accounting transaction (debit Equipment, credit Inventory)
+    const equipmentAccount = appState.accounts.find(a => a.number === '1500');
+    const inventoryAccount = appState.accounts.find(a => a.number === '1200');
+
+    const transaction = {
+        id: appState.nextTransactionId++,
+        date: getTodayDate(),
+        description: `Started crafting ${equipmentDef.name} at ${building.type} (${building.x}, ${building.y})`,
+        debitAccount: equipmentAccount.id,
+        creditAccount: inventoryAccount.id,
+        amount: parseFloat(consumed.totalCost.toFixed(2))
+    };
+
+    appState.transactions.push(transaction);
+    productionJob.transactionId = transaction.id;
+
+    appState.productionQueue.push(productionJob);
+    hasUnsavedChanges = true;
+
+    return {
+        success: true,
+        productionId: productionJob.id,
+        estimatedCompletion: formatSimulationTime(productionJob.estimatedCompletionTime),
+        usingEquipment: selectedEquipment.id
+    };
+}
+
 // Check production progress and complete finished jobs
 function checkProductionProgress() {
     const currentTime = getCurrentSimulationTime();
@@ -2871,6 +3079,15 @@ function checkProductionProgress() {
 function completeProduction(productionJob) {
     productionJob.status = 'completed';
     productionJob.actualCompletionTime = getCurrentSimulationTime();
+
+    // Mark equipment as idle if it was being used
+    if (productionJob.equipmentId) {
+        const equipment = getEquipmentById(productionJob.buildingId, productionJob.equipmentId);
+        if (equipment) {
+            equipment.status = 'idle';
+            equipment.currentProduction = null;
+        }
+    }
 
     // Handle equipment production
     if (productionJob.productType === 'equipment') {
@@ -2939,6 +3156,15 @@ function cancelProduction(productionId) {
     };
 
     appState.transactions.push(transaction);
+
+    // Mark equipment as idle if it was being used
+    if (job.equipmentId) {
+        const equipment = getEquipmentById(job.buildingId, job.equipmentId);
+        if (equipment) {
+            equipment.status = 'idle';
+            equipment.currentProduction = null;
+        }
+    }
 
     job.status = 'cancelled';
     hasUnsavedChanges = true;
