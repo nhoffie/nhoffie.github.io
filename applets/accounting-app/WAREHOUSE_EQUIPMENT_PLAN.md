@@ -771,9 +771,9 @@ For questions or issues during implementation:
 
 ---
 
-**Document Version**: 1.3
+**Document Version**: 1.4
 **Last Updated**: 2025-12-12
-**Status**: ✅ Phase 1, 2 & 3 Complete - Phase 4 Ready to Implement
+**Status**: ✅ Phase 1, 2, 3 & 4 Complete - Phase 5 Ready to Implement
 
 ### Phase 1 Completion Notes (2025-12-12)
 
@@ -896,3 +896,83 @@ For questions or issues during implementation:
 - Equipment produces commodities (lumber, steel, concrete, etc.)
 - Production recipes with multiple inputs
 - Continuous production mode
+
+### Phase 4 Completion Notes (2025-12-12)
+
+**Completed Items:**
+- ✅ 7 production recipes defined (lumber, steel, concrete, power×3, water)
+- ✅ Commodity production using equipment (lumber mill → lumber, etc.)
+- ✅ Multi-input recipes (steel requires iron ore + coal)
+- ✅ No-input recipes (water pump produces water from nothing)
+- ✅ Continuous production mode with auto-restart
+- ✅ Cost basis tracking for self-produced commodities
+- ✅ Equipment busy/idle management for commodity production
+- ✅ Commodity production UI organized by equipment type
+- ✅ Start/Continuous buttons for production modes
+- ✅ Real-time material availability display
+- ✅ Integration with existing portfolio system
+
+**New Functions (2 total):**
+- startCommodityProduction() - Produce commodities using equipment
+- handleStartCommodityProduction() - UI event handler
+
+**Updated Functions:**
+- completeProduction() - Now handles commodity outputs & continuous mode
+  * Adds produced commodities to inventory
+  * Auto-restarts continuous productions
+  * Stops continuous mode when materials run out
+
+**Production Recipes:**
+- Lumber: 2 Raw Logs → 1 Lumber (2 hours, Lumber Mill)
+- Steel: 3 Iron Ore + 1 Coal → 1 Steel (4 hours, Foundry)
+- Concrete: 2 Sand + 2 Gravel + 1 Water → 1 Concrete (1 hour, Concrete Mixer)
+- Power (Coal): 1 Coal → 10 Power (30 min, Power Generator)
+- Power (Oil): 1 Oil → 15 Power (30 min, Power Generator)
+- Power (Gas): 1 Natural Gas → 12 Power (30 min, Power Generator)
+- Water: No inputs → 5 Water (1 hour, Water Pump)
+
+**Continuous Production Mode:**
+- Equipment auto-restarts production when job completes
+- Runs indefinitely until materials exhausted
+- Equipment freed automatically when stopped
+- Visual indication in UI (green "Continuous" button)
+- Console logging for state changes
+
+**UI Features:**
+- Commodity production section below equipment catalog
+- Organized by equipment type (e.g., "🏭 Lumber Mill")
+- Shows each equipment instance with status
+- Color-coded borders: green (idle), orange (busy)
+- Recipe cards with:
+  * Input materials (color-coded availability)
+  * Output quantities
+  * Base production time
+  * Start/Continuous buttons
+- Disabled states when materials insufficient
+- "Currently producing..." message when busy
+
+**Code Changes:**
+- script.js: +374 lines, -8 lines
+- All functions tested for syntax validity
+- Zero breaking changes to existing features
+
+**User Experience:**
+- Produce commodities from raw materials
+- Continuous production for automation
+- Clear visual feedback on material availability
+- Equipment capacity tracking
+- Self-produced goods integrate with market
+- Can sell self-produced commodities
+
+**Economic System:**
+- Buy raw materials (Raw Logs @ $8)
+- Produce refined goods (Lumber @ $10 cost basis)
+- Sell on market (Lumber market price $10)
+- Profit from production efficiency
+- Cost basis tracked for tax purposes
+
+**Next Steps:**
+- Phase 5: Employee Management & UI Polish
+- Production dashboard across warehouses
+- Material warnings system
+- Production history & analytics
