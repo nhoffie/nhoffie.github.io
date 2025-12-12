@@ -395,10 +395,13 @@ function setupTabNavigation() {
 
             // Trigger rendering for the specific tab
             if (targetTab === 'balance-sheet') {
+                updateStatementEndDates();
                 renderBalanceSheet();
             } else if (targetTab === 'income-statement') {
+                updateStatementEndDates();
                 renderIncomeStatement();
             } else if (targetTab === 'cash-flow') {
+                updateStatementEndDates();
                 renderCashFlowStatement();
             } else if (targetTab === 'commodities') {
                 renderCommoditiesMarket();
@@ -1882,12 +1885,27 @@ function showBuildingManagement(x, y) {
 
             content += `
                     <div class="hire-section">
-                        <label for="newEmployeeWage">Hire New Employee:</label>
-                        <div class="hire-controls">
-                            <input type="number" id="newEmployeeWage" min="10" step="10" value="100" placeholder="Wage per 24 hours">
-                            <button class="btn btn-primary" onclick="if(hireEmployee(${building.id}, parseFloat(document.getElementById('newEmployeeWage').value))) { render(); closeBuildingDialog(); showBuildingManagement(${x}, ${y}); }">Hire</button>
+                        <h4>Hire New Employee</h4>
+                        <p class="help-text">Select a skill level to hire an employee:</p>
+                        <div class="skill-level-options">
+            `;
+
+            // Generate skill level cards
+            for (const skill of SKILL_LEVELS) {
+                content += `
+                    <div class="skill-level-card" onclick="if(hireEmployee(${building.id}, ${skill.level})) { render(); closeBuildingDialog(); showBuildingManagement(${x}, ${y}); }">
+                        <div class="skill-level-header">
+                            <span class="skill-level-name">${skill.name}</span>
+                            <span class="skill-level-number">Level ${skill.level}</span>
                         </div>
-                        <p class="help-text">Suggested wages: $50-100 (Basic), $200-400 (Skilled), $800+ (Expert)</p>
+                        <div class="skill-level-wage">${formatCurrency(skill.wage)}/24hrs</div>
+                        <div class="skill-level-description">${skill.description}</div>
+                    </div>
+                `;
+            }
+
+            content += `
+                        </div>
                     </div>
                 </div>
             `;
@@ -2535,19 +2553,27 @@ function generateEmployeeName() {
     return `${firstName} ${lastName}`;
 }
 
-// Calculate skill level based on wage (1-10 scale)
-// Wage ranges: $50-100 = skill 1-2, $100-200 = 3-4, $200-400 = 5-6, $400-800 = 7-8, $800+ = 9-10
-function calculateSkillLevel(wage) {
-    if (wage < 50) return 1;
-    if (wage < 100) return Math.floor((wage - 50) / 25) + 1; // 1-2
-    if (wage < 200) return Math.floor((wage - 100) / 50) + 3; // 3-4
-    if (wage < 400) return Math.floor((wage - 200) / 100) + 5; // 5-6
-    if (wage < 800) return Math.floor((wage - 400) / 200) + 7; // 7-8
-    return Math.min(10, Math.floor((wage - 800) / 400) + 9); // 9-10
+// Define available skill levels and their corresponding wages
+const SKILL_LEVELS = [
+    { level: 1, name: 'Novice', wage: 50, description: 'Entry-level, minimal experience' },
+    { level: 2, name: 'Beginner', wage: 75, description: 'Basic skills, learning' },
+    { level: 3, name: 'Junior', wage: 125, description: 'Developing competence' },
+    { level: 4, name: 'Competent', wage: 175, description: 'Reliable and capable' },
+    { level: 5, name: 'Skilled', wage: 250, description: 'Proficient in their role' },
+    { level: 6, name: 'Advanced', wage: 350, description: 'Advanced expertise' },
+    { level: 7, name: 'Senior', wage: 500, description: 'Highly experienced' },
+    { level: 8, name: 'Expert', wage: 700, description: 'Top-tier professional' },
+    { level: 9, name: 'Master', wage: 1000, description: 'Industry leader' },
+    { level: 10, name: 'Elite', wage: 1500, description: 'Best of the best' }
+];
+
+// Get skill level info by level number
+function getSkillLevelInfo(level) {
+    return SKILL_LEVELS.find(s => s.level === level) || SKILL_LEVELS[0];
 }
 
 // Hire an employee at a building
-function hireEmployee(buildingId, wage) {
+function hireEmployee(buildingId, skillLevel) {
     const building = appState.buildings.find(b => b.id === buildingId);
     if (!building) {
         alert('Building not found.');
@@ -2559,10 +2585,8 @@ function hireEmployee(buildingId, wage) {
         return false;
     }
 
-    if (wage < 10) {
-        alert('Wage must be at least $10 per 24 hours.');
-        return false;
-    }
+    const skillInfo = getSkillLevelInfo(skillLevel);
+    const wage = skillInfo.wage;
 
     const cashBalance = getCashBalance();
     if (cashBalance < wage) {
@@ -2575,7 +2599,7 @@ function hireEmployee(buildingId, wage) {
         id: appState.nextEmployeeId++,
         name: generateEmployeeName(),
         wage: parseFloat(wage),
-        skillLevel: calculateSkillLevel(wage),
+        skillLevel: skillLevel,
         assignedBuildingId: buildingId,
         hireDate: getTodayDate(),
         nextPaymentDate: addTime(getCurrentSimulationTime(), 24 * 60 * 60 * 1000) // 24 hours from now
@@ -2590,7 +2614,7 @@ function hireEmployee(buildingId, wage) {
     const transaction = {
         id: appState.nextTransactionId++,
         date: getTodayDate(),
-        description: `Hired ${employee.name} - First wage payment (${formatCurrency(wage)}/24hrs, Skill ${employee.skillLevel})`,
+        description: `Hired ${employee.name} - First wage payment (${skillInfo.name}, ${formatCurrency(wage)}/24hrs, Skill ${employee.skillLevel})`,
         debitAccount: salariesAccount.id,
         creditAccount: cashAccount.id,
         amount: wage
@@ -3355,6 +3379,9 @@ function renderCashFlowStatement() {
     const apAccounts = appState.accounts.filter(a =>
         a.name.toLowerCase().includes('payable')
     );
+    const inventoryAccounts = appState.accounts.filter(a =>
+        a.name.toLowerCase().includes('inventory')
+    );
 
     const arChange = arAccounts.reduce((sum, a) =>
         sum + ((endBalances[a.id] || 0) - (startBalances[a.id] || 0)), 0
@@ -3362,8 +3389,11 @@ function renderCashFlowStatement() {
     const apChange = apAccounts.reduce((sum, a) =>
         sum + ((endBalances[a.id] || 0) - (startBalances[a.id] || 0)), 0
     );
+    const inventoryChange = inventoryAccounts.reduce((sum, a) =>
+        sum + ((endBalances[a.id] || 0) - (startBalances[a.id] || 0)), 0
+    );
 
-    const operatingCash = netIncome - arChange + apChange;
+    const operatingCash = netIncome - arChange + apChange - inventoryChange;
 
     // Get financing activities from transactions in the period
     const periodTransactions = appState.transactions.filter(t => {
@@ -3390,6 +3420,46 @@ function renderCashFlowStatement() {
     const totalStockIssuances = stockIssuances.reduce((sum, t) => sum + t.amount, 0);
 
     const netFinancingCash = totalLoanProceeds + totalStockIssuances - totalLoanPrincipalPayments - totalLoanInterestPayments;
+
+    // Categorize investing activities
+    const propertyPurchases = periodTransactions.filter(t =>
+        t.description.includes('Purchase property at')
+    );
+    const buildingDemolitions = periodTransactions.filter(t =>
+        t.description.includes('Demolished') && t.description.includes('Materials recovered')
+    );
+
+    const totalPropertyPurchases = propertyPurchases.reduce((sum, t) => sum + t.amount, 0);
+    const totalBuildingDemolitions = buildingDemolitions.reduce((sum, t) => sum + t.amount, 0);
+
+    const netInvestingCash = -totalPropertyPurchases + totalBuildingDemolitions;
+
+    // Build investing activities HTML
+    let investingActivitiesHtml = '';
+
+    if (propertyPurchases.length > 0) {
+        investingActivitiesHtml += `
+            <div class="statement-item">
+                <span>Property Purchases</span>
+                <span>(${formatCurrency(totalPropertyPurchases)})</span>
+            </div>`;
+    }
+
+    if (buildingDemolitions.length > 0) {
+        investingActivitiesHtml += `
+            <div class="statement-item">
+                <span>Building Demolitions (Materials Recovered)</span>
+                <span>${formatCurrency(totalBuildingDemolitions)}</span>
+            </div>`;
+    }
+
+    if (investingActivitiesHtml === '') {
+        investingActivitiesHtml = `
+            <div class="statement-item">
+                <span>No investing activities recorded</span>
+                <span>${formatCurrency(0)}</span>
+            </div>`;
+    }
 
     // Build financing activities HTML
     let financingActivitiesHtml = '';
@@ -3452,6 +3522,10 @@ function renderCashFlowStatement() {
                 <span>${formatCurrency(-arChange)}</span>
             </div>
             <div class="statement-item">
+                <span>Changes in Inventory</span>
+                <span>${formatCurrency(-inventoryChange)}</span>
+            </div>
+            <div class="statement-item">
                 <span>Changes in Accounts Payable</span>
                 <span>${formatCurrency(apChange)}</span>
             </div>
@@ -3463,13 +3537,10 @@ function renderCashFlowStatement() {
 
         <div class="statement-section">
             <div class="statement-category">INVESTING ACTIVITIES</div>
-            <div class="statement-item">
-                <span>No investing activities recorded</span>
-                <span>${formatCurrency(0)}</span>
-            </div>
+            ${investingActivitiesHtml}
             <div class="statement-subtotal">
                 <span>Net Cash from Investing Activities</span>
-                <span>${formatCurrency(0)}</span>
+                <span>${formatCurrency(netInvestingCash)}</span>
             </div>
         </div>
 
@@ -3804,9 +3875,6 @@ function updateSimulationClock() {
         if (pauseBtn) {
             pauseBtn.textContent = appState.simulation.paused ? '▶ Resume Time' : '⏸ Pause Time';
         }
-
-        // Auto-update financial statement end dates to current date
-        updateStatementEndDates();
 
         // Check construction progress
         checkConstructionProgress();
