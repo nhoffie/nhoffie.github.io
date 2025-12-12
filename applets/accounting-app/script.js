@@ -1976,27 +1976,145 @@ function showBuildingInterior(buildingId) {
     if (!building || !building.interior) return;
 
     const gridSize = building.interior.grid.length;
+    const employees = getEmployeesByBuilding(buildingId);
+    const equipment = getWarehouseEquipment(buildingId);
+    const activeProductions = getActiveProductions(buildingId);
 
-    let content = `<h3>🏢 Warehouse Interior</h3>`;
-    content += `<div class="interior-grid" style="display: grid; grid-template-columns: repeat(${gridSize}, 60px); gap: 5px;">`;
+    let content = `<h3>🏢 Warehouse Interior - Building #${buildingId}</h3>`;
+
+    // Building info
+    content += `<div style="margin-bottom: 15px;">`;
+    content += `<p><strong>Location:</strong> (${building.x}, ${building.y}) | `;
+    content += `<strong>Employees:</strong> ${employees.length} | `;
+    content += `<strong>Equipment:</strong> ${equipment.length}/${gridSize * gridSize}</p>`;
+    content += `</div>`;
+
+    // Equipment grid
+    content += `<h4>Equipment Grid</h4>`;
+    content += `<div class="interior-grid" style="display: grid; grid-template-columns: repeat(${gridSize}, 70px); gap: 5px; margin-bottom: 20px;">`;
 
     for (let y = 0; y < gridSize; y++) {
         for (let x = 0; x < gridSize; x++) {
-            const item = building.interior.grid[y][x];
-            const cellContent = item || '';
-            content += `<div class="interior-cell" style="width: 60px; height: 60px; border: 1px solid #ccc; display: flex; align-items: center; justify-content: center;">${cellContent}</div>`;
+            const equipmentId = building.interior.grid[y][x];
+            let cellContent = '';
+            let cellStyle = 'width: 70px; height: 70px; border: 2px solid #ccc; display: flex; align-items: center; justify-content: center; font-size: 11px; text-align: center; background: #f9f9f9;';
+
+            if (equipmentId) {
+                const equip = equipment.find(e => e.id === equipmentId);
+                if (equip) {
+                    const equipDef = getEquipmentDefinition(equip.type);
+                    const statusColor = equip.status === 'producing' ? '#ffe6cc' : '#e6f3ff';
+                    cellStyle = `width: 70px; height: 70px; border: 2px solid #007bff; display: flex; align-items: center; justify-content: center; font-size: 11px; text-align: center; background: ${statusColor}; cursor: pointer;`;
+                    cellContent = `<div title="${equipDef.name} - ${equip.status}">${equipDef.name.substring(0, 8)}<br/>${equip.status === 'producing' ? '⚙️' : '✓'}</div>`;
+                }
+            }
+
+            content += `<div class="interior-cell" style="${cellStyle}">${cellContent}</div>`;
         }
     }
 
     content += `</div>`;
-    content += `<p class="help-text">Interior management coming soon. Equipment placement will be available in a future update.</p>`;
-    content += `<button class="btn" onclick="closeBuildingDialog()">Close</button>`;
+
+    // Production section
+    content += `<h4>Production</h4>`;
+    content += `<div style="margin-bottom: 15px; padding: 10px; background: #f5f5f5; border-radius: 5px;">`;
+
+    if (activeProductions.length > 0) {
+        content += `<p><strong>Active Productions (${activeProductions.length}):</strong></p>`;
+        activeProductions.forEach(prod => {
+            const currentTime = getCurrentSimulationTime();
+            const progress = ((currentTime - prod.startTime) / (prod.estimatedCompletionTime - prod.startTime)) * 100;
+            const progressClamped = Math.min(Math.max(progress, 0), 100);
+
+            content += `<div style="margin: 10px 0; padding: 8px; background: white; border-left: 4px solid #007bff;">`;
+            content += `<div style="display: flex; justify-content: space-between; margin-bottom: 5px;">`;
+            content += `<strong>${prod.productType === 'equipment' ? '🔧 ' : '📦 '}${prod.productId}</strong>`;
+            content += `<span style="font-size: 12px; color: #666;">${progressClamped.toFixed(1)}%</span>`;
+            content += `</div>`;
+            content += `<div style="width: 100%; height: 20px; background: #e0e0e0; border-radius: 10px; overflow: hidden;">`;
+            content += `<div style="width: ${progressClamped}%; height: 100%; background: linear-gradient(90deg, #007bff, #00aaff); transition: width 0.3s;"></div>`;
+            content += `</div>`;
+            content += `<div style="display: flex; justify-content: space-between; margin-top: 5px; font-size: 12px; color: #666;">`;
+            content += `<span>Est. completion: ${formatSimulationTime(prod.estimatedCompletionTime)}</span>`;
+            content += `<button class="btn btn-sm" onclick="handleCancelProduction(${prod.id})" style="font-size: 11px; padding: 2px 8px;">Cancel (50% refund)</button>`;
+            content += `</div>`;
+            content += `</div>`;
+        });
+    } else {
+        content += `<p style="color: #666;">No active productions</p>`;
+    }
+
+    content += `</div>`;
+
+    // Crafting section
+    content += `<h4>Craft Equipment</h4>`;
+    content += `<div style="padding: 10px; background: #f5f5f5; border-radius: 5px;">`;
+
+    if (employees.length === 0) {
+        content += `<p style="color: #d9534f;">⚠️ No employees assigned to this warehouse. Hire employees to start crafting.</p>`;
+    } else {
+        const lumberQty = getTotalQuantity(getCommodityIdByName('lumber'));
+        const hasLumber = lumberQty >= 10;
+
+        content += `<div style="padding: 10px; background: white; border-radius: 5px; margin-bottom: 10px;">`;
+        content += `<div style="display: flex; justify-content: space-between; align-items: center;">`;
+        content += `<div>`;
+        content += `<strong>🔨 Workbench</strong><br/>`;
+        content += `<span style="font-size: 12px; color: #666;">Materials: 10 Lumber (You have: ${lumberQty})</span><br/>`;
+        content += `<span style="font-size: 12px; color: #666;">Base time: 4 hours | Employees: ${employees.length} (avg skill: ${calculateAverageSkill(employees).toFixed(1)})</span>`;
+        content += `</div>`;
+        content += `<div>`;
+        if (hasLumber) {
+            content += `<button class="btn" onclick="handleCraftWorkbench(${buildingId})" style="background: #28a745; color: white;">Craft Workbench</button>`;
+        } else {
+            content += `<button class="btn" disabled style="background: #ccc;">Need More Lumber</button>`;
+        }
+        content += `</div>`;
+        content += `</div>`;
+        content += `</div>`;
+
+        content += `<p style="font-size: 12px; color: #666; margin-top: 10px;">💡 Tip: The workbench is required to craft other equipment types.</p>`;
+    }
+
+    content += `</div>`;
+
+    content += `<button class="btn" onclick="closeBuildingDialog()" style="margin-top: 15px;">Close</button>`;
 
     const dialog = document.createElement('div');
     dialog.id = 'interiorDialog';
     dialog.className = 'modal-overlay';
-    dialog.innerHTML = `<div class="modal-content">${content}</div>`;
+    dialog.innerHTML = `<div class="modal-content" style="max-width: 800px;">${content}</div>`;
     document.body.appendChild(dialog);
+}
+
+// Handle craft workbench button click
+function handleCraftWorkbench(buildingId) {
+    const result = startWorkbenchCraft(buildingId);
+
+    if (result.success) {
+        alert(`Workbench crafting started! Estimated completion: ${result.estimatedCompletion}`);
+        closeBuildingDialog();
+        render(); // Refresh display
+    } else {
+        alert(`Error: ${result.error}`);
+    }
+}
+
+// Handle cancel production button click
+function handleCancelProduction(productionId) {
+    if (!confirm('Cancel this production? You will receive 50% of materials back.')) {
+        return;
+    }
+
+    const result = cancelProduction(productionId);
+
+    if (result.success) {
+        alert(`Production cancelled. Refunded $${result.refundAmount.toFixed(2)} worth of materials.`);
+        closeBuildingDialog();
+        render(); // Refresh display
+    } else {
+        alert(`Error: ${result.error}`);
+    }
 }
 
 // ====================================
@@ -2570,6 +2688,274 @@ function autoPlaceEquipment(buildingId, equipmentType) {
     }
 
     return { success: false, error: 'No available grid space' };
+}
+
+// ====================================
+// PRODUCTION SYSTEM
+// ====================================
+
+// Calculate average skill level of employees
+function calculateAverageSkill(employees) {
+    if (!employees || employees.length === 0) return 1;
+    const totalSkill = employees.reduce((sum, emp) => sum + emp.skillLevel, 0);
+    return totalSkill / employees.length;
+}
+
+// Calculate production time based on employees and skills
+function calculateProductionTime(baseTime, employeeCount, avgSkillLevel) {
+    if (employeeCount === 0) return baseTime * 5; // Much slower with no employees
+
+    // Skill multiplier: 0.7 at level 1, up to 2.5 at level 10
+    const skillMultiplier = 0.7 + (avgSkillLevel * 0.18);
+
+    // Employee count has diminishing returns (square root)
+    const employeeMultiplier = Math.sqrt(employeeCount);
+
+    // Combined multiplier
+    const totalMultiplier = employeeMultiplier * skillMultiplier;
+
+    // Minimum time is 20% of base time (even with many skilled workers)
+    const calculatedTime = baseTime / totalMultiplier;
+    return Math.max(calculatedTime, baseTime * 0.2);
+}
+
+// Check if required materials are available in inventory
+function hasRequiredMaterials(materialsDict) {
+    for (const [materialName, quantity] of Object.entries(materialsDict)) {
+        const commodityId = getCommodityIdByName(materialName);
+        if (!commodityId) return false;
+
+        const totalQty = getTotalQuantity(commodityId);
+        if (totalQty < quantity) return false;
+    }
+    return true;
+}
+
+// Consume materials from inventory using FIFO
+function consumeMaterials(materialsDict) {
+    const consumedMaterials = {};
+    let totalCost = 0;
+
+    for (const [materialName, quantity] of Object.entries(materialsDict)) {
+        const commodityId = getCommodityIdByName(materialName);
+        if (!commodityId) {
+            console.error(`Commodity not found: ${materialName}`);
+            continue;
+        }
+
+        const portfolio = appState.portfolio[commodityId];
+        if (!portfolio || !portfolio.lots) {
+            console.error(`No inventory for commodity: ${materialName}`);
+            continue;
+        }
+
+        let remaining = quantity;
+        let costBasis = 0;
+
+        // Consume using FIFO
+        while (remaining > 0 && portfolio.lots.length > 0) {
+            const lot = portfolio.lots[0];
+            const toConsume = Math.min(remaining, lot.quantity);
+
+            costBasis += toConsume * lot.costBasis;
+            lot.quantity -= toConsume;
+            remaining -= toConsume;
+
+            if (lot.quantity <= 0) {
+                portfolio.lots.shift(); // Remove empty lot
+            }
+        }
+
+        consumedMaterials[materialName] = quantity;
+        totalCost += costBasis;
+    }
+
+    return { materials: consumedMaterials, totalCost: totalCost };
+}
+
+// Start workbench crafting (can be done without equipment)
+function startWorkbenchCraft(buildingId) {
+    const building = appState.buildings.find(b => b.id === buildingId);
+    if (!building) {
+        return { success: false, error: 'Building not found' };
+    }
+
+    if (building.status !== 'completed') {
+        return { success: false, error: 'Building is not completed yet' };
+    }
+
+    const employees = getEmployeesByBuilding(buildingId);
+    if (employees.length === 0) {
+        return { success: false, error: 'No employees assigned to this warehouse' };
+    }
+
+    const equipmentDef = EQUIPMENT_TYPES.WORKBENCH;
+
+    // Check materials
+    if (!hasRequiredMaterials(equipmentDef.materials)) {
+        return { success: false, error: 'Insufficient materials (need 10 Lumber)' };
+    }
+
+    // Consume materials
+    const consumed = consumeMaterials(equipmentDef.materials);
+
+    // Calculate production time
+    const avgSkill = calculateAverageSkill(employees);
+    const productionTime = calculateProductionTime(
+        equipmentDef.productionTime,
+        employees.length,
+        avgSkill
+    );
+
+    const currentTime = getCurrentSimulationTime();
+
+    // Create production job
+    const productionJob = {
+        id: appState.nextProductionId++,
+        buildingId: buildingId,
+        equipmentId: null, // null for workbench crafting
+        productType: 'equipment',
+        productId: 'workbench',
+        recipeId: null,
+        quantity: 1,
+        startTime: currentTime,
+        estimatedCompletionTime: currentTime + productionTime,
+        actualCompletionTime: null,
+        status: 'in_progress',
+        materialsConsumed: consumed.materials,
+        materialsCost: consumed.totalCost,
+        outputs: { workbench: 1 },
+        assignedEmployees: employees.map(e => e.id),
+        continuous: false,
+        transactionId: null
+    };
+
+    // Record accounting transaction (debit Equipment, credit Inventory)
+    const equipmentAccount = appState.accounts.find(a => a.number === '1500');
+    const inventoryAccount = appState.accounts.find(a => a.number === '1200');
+
+    const transaction = {
+        id: appState.nextTransactionId++,
+        date: getTodayDate(),
+        description: `Started crafting Workbench at ${building.type} (${building.x}, ${building.y})`,
+        debitAccount: equipmentAccount.id,
+        creditAccount: inventoryAccount.id,
+        amount: parseFloat(consumed.totalCost.toFixed(2))
+    };
+
+    appState.transactions.push(transaction);
+    productionJob.transactionId = transaction.id;
+
+    appState.productionQueue.push(productionJob);
+    hasUnsavedChanges = true;
+
+    return {
+        success: true,
+        productionId: productionJob.id,
+        estimatedCompletion: formatSimulationTime(productionJob.estimatedCompletionTime)
+    };
+}
+
+// Check production progress and complete finished jobs
+function checkProductionProgress() {
+    const currentTime = getCurrentSimulationTime();
+
+    appState.productionQueue.forEach(job => {
+        if (job.status === 'in_progress' && currentTime >= job.estimatedCompletionTime) {
+            completeProduction(job);
+        }
+    });
+}
+
+// Complete a production job
+function completeProduction(productionJob) {
+    productionJob.status = 'completed';
+    productionJob.actualCompletionTime = getCurrentSimulationTime();
+
+    // Handle equipment production
+    if (productionJob.productType === 'equipment') {
+        const equipmentType = productionJob.productId;
+
+        // Auto-place equipment in warehouse
+        const result = autoPlaceEquipment(productionJob.buildingId, equipmentType);
+
+        if (result.success) {
+            console.log(`Equipment ${equipmentType} completed and placed in warehouse`);
+        } else {
+            console.warn(`Equipment ${equipmentType} completed but could not be placed: ${result.error}`);
+            // Equipment is still completed, just not placed yet
+        }
+    }
+
+    hasUnsavedChanges = true;
+}
+
+// Cancel a production job
+function cancelProduction(productionId) {
+    const jobIndex = appState.productionQueue.findIndex(p => p.id === productionId);
+    if (jobIndex === -1) {
+        return { success: false, error: 'Production job not found' };
+    }
+
+    const job = appState.productionQueue[jobIndex];
+
+    if (job.status !== 'in_progress') {
+        return { success: false, error: 'Can only cancel in-progress jobs' };
+    }
+
+    // Refund 50% of materials
+    const inventoryAccount = appState.accounts.find(a => a.number === '1200');
+    const equipmentAccount = appState.accounts.find(a => a.number === '1500');
+
+    const refundAmount = job.materialsCost * 0.5;
+
+    for (const [materialName, quantity] of Object.entries(job.materialsConsumed)) {
+        const commodityId = getCommodityIdByName(materialName);
+        if (!commodityId) continue;
+
+        const refundQty = Math.floor(quantity * 0.5);
+        const commodity = appState.commodities.find(c => c.id === commodityId);
+
+        if (!appState.portfolio[commodityId]) {
+            appState.portfolio[commodityId] = { lots: [] };
+        }
+
+        appState.portfolio[commodityId].lots.push({
+            quantity: refundQty,
+            costBasis: commodity.price,
+            purchaseDate: getTodayDate(),
+            purchaseId: `cancel-${productionId}`
+        });
+    }
+
+    // Record refund transaction
+    const transaction = {
+        id: appState.nextTransactionId++,
+        date: getTodayDate(),
+        description: `Cancelled production: ${job.productType} ${job.productId} - 50% materials refunded`,
+        debitAccount: inventoryAccount.id,
+        creditAccount: equipmentAccount.id,
+        amount: parseFloat(refundAmount.toFixed(2))
+    };
+
+    appState.transactions.push(transaction);
+
+    job.status = 'cancelled';
+    hasUnsavedChanges = true;
+
+    return { success: true, refundAmount: refundAmount };
+}
+
+// Get active production jobs for a building
+function getActiveProductions(buildingId) {
+    return appState.productionQueue.filter(p =>
+        p.buildingId === buildingId && p.status === 'in_progress'
+    );
+}
+
+// Get all production jobs for a building (including completed)
+function getAllProductions(buildingId) {
+    return appState.productionQueue.filter(p => p.buildingId === buildingId);
 }
 
 // Start construction of a building
@@ -4171,6 +4557,9 @@ function updateSimulationClock() {
 
         // Check construction progress
         checkConstructionProgress();
+
+        // Check production progress
+        checkProductionProgress();
 
         // Process wage payments
         processWagePayments();
