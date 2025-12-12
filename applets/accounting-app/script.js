@@ -115,7 +115,14 @@ let appState = {
         { id: 2, name: 'Water', description: 'Fresh water units', price: 2.50 },
         { id: 3, name: 'Lumber', description: 'Construction-grade lumber', price: 10.00 },
         { id: 4, name: 'Steel', description: 'Structural steel beams', price: 20.00 },
-        { id: 5, name: 'Concrete', description: 'Ready-mix concrete', price: 15.00 }
+        { id: 5, name: 'Concrete', description: 'Ready-mix concrete', price: 15.00 },
+        { id: 6, name: 'Raw Logs', description: 'Unprocessed timber logs', price: 8.00 },
+        { id: 7, name: 'Iron Ore', description: 'Raw iron ore for smelting', price: 12.00 },
+        { id: 8, name: 'Sand', description: 'Construction-grade sand', price: 3.00 },
+        { id: 9, name: 'Gravel', description: 'Construction-grade gravel', price: 4.00 },
+        { id: 10, name: 'Coal', description: 'Fuel for power generation and smelting', price: 7.00 },
+        { id: 11, name: 'Oil', description: 'Petroleum fuel for power generation', price: 15.00 },
+        { id: 12, name: 'Natural Gas', description: 'Clean-burning fuel for power', price: 10.00 }
     ],
     portfolio: {
         // Structure: { commodityId: { lots: [{ quantity, costBasis, purchaseDate, purchaseId }] } }
@@ -147,15 +154,19 @@ let appState = {
     // Structure: { buildingId, completionDate }
     employees: [],
     // Structure: { id, name, wage, skillLevel, assignedBuildingId, hireDate, nextPaymentDate }
+    productionQueue: [],
+    // Structure: { id, buildingId, equipmentId, productType, productId, recipeId, quantity, startTime, estimatedCompletionTime, actualCompletionTime, status, materialsConsumed, outputs, assignedEmployees, continuous, transactionId }
     nextAccountId: 23,
     nextTransactionId: 1,
     nextTransactionTypeId: 11,
-    nextCommodityId: 6,
+    nextCommodityId: 13,
     nextTradeId: 1,
     nextLoanId: 1,
     nextShareIssuanceId: 1,
     nextBuildingId: 1,
-    nextEmployeeId: 1
+    nextEmployeeId: 1,
+    nextProductionId: 1,
+    nextEquipmentId: 1
 };
 
 let hasUnsavedChanges = false;
@@ -2295,6 +2306,272 @@ const BUILDING_TYPES = {
     }
 };
 
+// Equipment type definitions
+const EQUIPMENT_TYPES = {
+    WORKBENCH: {
+        id: 'workbench',
+        name: 'Workbench',
+        description: 'Basic crafting station for producing equipment',
+        materials: { lumber: 10 },
+        productionTime: 4 * 60 * 60 * 1000,  // 4 simulation hours base time
+        canCraftWithoutEquipment: true,
+        requiresEquipment: [],
+        gridSize: 1,
+        category: 'crafting',
+        produces: ['equipment']
+    },
+    LUMBER_MILL: {
+        id: 'lumber_mill',
+        name: 'Lumber Mill',
+        description: 'Processes raw logs into lumber',
+        materials: { lumber: 20, steel: 5 },
+        productionTime: 8 * 60 * 60 * 1000,  // 8 hours
+        canCraftWithoutEquipment: false,
+        requiresEquipment: ['workbench'],
+        gridSize: 1,
+        category: 'production',
+        produces: ['lumber']
+    },
+    FOUNDRY: {
+        id: 'foundry',
+        name: 'Foundry',
+        description: 'Smelts ore into steel',
+        materials: { lumber: 15, steel: 10, concrete: 5 },
+        productionTime: 12 * 60 * 60 * 1000,  // 12 hours
+        canCraftWithoutEquipment: false,
+        requiresEquipment: ['workbench'],
+        gridSize: 1,
+        category: 'production',
+        produces: ['steel']
+    },
+    CONCRETE_MIXER: {
+        id: 'concrete_mixer',
+        name: 'Concrete Mixer',
+        description: 'Mixes sand, gravel, and water into concrete',
+        materials: { lumber: 10, steel: 15 },
+        productionTime: 10 * 60 * 60 * 1000,  // 10 hours
+        canCraftWithoutEquipment: false,
+        requiresEquipment: ['workbench'],
+        gridSize: 1,
+        category: 'production',
+        produces: ['concrete']
+    },
+    POWER_GENERATOR: {
+        id: 'power_generator',
+        name: 'Power Generator',
+        description: 'Generates electrical power from fuel',
+        materials: { lumber: 20, steel: 30, concrete: 10 },
+        productionTime: 16 * 60 * 60 * 1000,  // 16 hours
+        canCraftWithoutEquipment: false,
+        requiresEquipment: ['workbench', 'foundry'],
+        gridSize: 1,
+        category: 'utility',
+        produces: ['power']
+    },
+    WATER_PUMP: {
+        id: 'water_pump',
+        name: 'Water Pump',
+        description: 'Pumps and purifies water',
+        materials: { lumber: 10, steel: 20 },
+        productionTime: 8 * 60 * 60 * 1000,  // 8 hours
+        canCraftWithoutEquipment: false,
+        requiresEquipment: ['workbench'],
+        gridSize: 1,
+        category: 'utility',
+        produces: ['water']
+    },
+    STORAGE_RACK: {
+        id: 'storage_rack',
+        name: 'Storage Rack',
+        description: 'Provides organized storage space',
+        materials: { lumber: 15, steel: 5 },
+        productionTime: 6 * 60 * 60 * 1000,  // 6 hours
+        canCraftWithoutEquipment: false,
+        requiresEquipment: ['workbench'],
+        gridSize: 1,
+        category: 'utility',
+        produces: []
+    },
+    ASSEMBLY_LINE: {
+        id: 'assembly_line',
+        name: 'Assembly Line',
+        description: 'Automated production line for complex manufacturing',
+        materials: { lumber: 25, steel: 40, concrete: 15 },
+        productionTime: 20 * 60 * 60 * 1000,  // 20 hours
+        canCraftWithoutEquipment: false,
+        requiresEquipment: ['workbench', 'foundry'],
+        gridSize: 1,
+        category: 'production',
+        produces: ['complex_products']
+    },
+    FORGE: {
+        id: 'forge',
+        name: 'Forge',
+        description: 'Crafts tools and metal equipment',
+        materials: { lumber: 12, steel: 15, concrete: 8 },
+        productionTime: 10 * 60 * 60 * 1000,  // 10 hours
+        canCraftWithoutEquipment: false,
+        requiresEquipment: ['workbench'],
+        gridSize: 1,
+        category: 'crafting',
+        produces: ['tools', 'equipment']
+    }
+};
+
+// ====================================
+// EQUIPMENT MANAGEMENT FUNCTIONS
+// ====================================
+
+// Get equipment definition by type
+function getEquipmentDefinition(equipmentType) {
+    const typeKey = equipmentType.toUpperCase();
+    return EQUIPMENT_TYPES[typeKey] || null;
+}
+
+// Get commodity ID by name (case-insensitive)
+function getCommodityIdByName(commodityName) {
+    const commodity = appState.commodities.find(c => c.name.toLowerCase() === commodityName.toLowerCase());
+    return commodity ? commodity.id : null;
+}
+
+// Check if equipment can be placed at grid location
+function canPlaceEquipment(buildingId, gridX, gridY, equipmentType) {
+    const building = appState.buildings.find(b => b.id === buildingId);
+    if (!building) return { success: false, error: 'Building not found' };
+
+    if (building.status !== 'completed') {
+        return { success: false, error: 'Building is not completed' };
+    }
+
+    const equipmentDef = getEquipmentDefinition(equipmentType);
+    if (!equipmentDef) return { success: false, error: 'Invalid equipment type' };
+
+    // Check grid bounds
+    const gridSize = building.interior.grid.length;
+    if (gridX < 0 || gridX >= gridSize || gridY < 0 || gridY >= gridSize) {
+        return { success: false, error: 'Grid position out of bounds' };
+    }
+
+    // Check if grid cell is occupied
+    if (building.interior.grid[gridY][gridX] !== null) {
+        return { success: false, error: 'Grid position is occupied' };
+    }
+
+    return { success: true };
+}
+
+// Place equipment in warehouse grid
+function placeEquipment(buildingId, gridX, gridY, equipmentType) {
+    const canPlace = canPlaceEquipment(buildingId, gridX, gridY, equipmentType);
+    if (!canPlace.success) return canPlace;
+
+    const building = appState.buildings.find(b => b.id === buildingId);
+    const equipmentDef = getEquipmentDefinition(equipmentType);
+
+    const equipment = {
+        id: appState.nextEquipmentId++,
+        type: equipmentDef.id,
+        gridX: gridX,
+        gridY: gridY,
+        installDate: getTodayDate(),
+        status: 'idle',  // idle, producing, broken
+        currentProduction: null
+    };
+
+    building.interior.equipment.push(equipment);
+    building.interior.grid[gridY][gridX] = equipment.id;
+
+    hasUnsavedChanges = true;
+    return { success: true, equipment: equipment };
+}
+
+// Remove equipment from warehouse
+function removeEquipment(buildingId, equipmentId) {
+    const building = appState.buildings.find(b => b.id === buildingId);
+    if (!building) return { success: false, error: 'Building not found' };
+
+    const equipmentIndex = building.interior.equipment.findIndex(e => e.id === equipmentId);
+    if (equipmentIndex === -1) return { success: false, error: 'Equipment not found' };
+
+    const equipment = building.interior.equipment[equipmentIndex];
+
+    // Check if equipment is currently producing
+    if (equipment.status === 'producing') {
+        return { success: false, error: 'Cannot remove equipment while producing' };
+    }
+
+    // Remove from grid
+    building.interior.grid[equipment.gridY][equipment.gridX] = null;
+
+    // Remove from equipment array
+    building.interior.equipment.splice(equipmentIndex, 1);
+
+    hasUnsavedChanges = true;
+    return { success: true };
+}
+
+// Get all equipment in a warehouse
+function getWarehouseEquipment(buildingId) {
+    const building = appState.buildings.find(b => b.id === buildingId);
+    if (!building) return [];
+
+    // Initialize equipment array if it doesn't exist (backward compatibility)
+    if (!building.interior.equipment) {
+        building.interior.equipment = [];
+    }
+
+    return building.interior.equipment;
+}
+
+// Get available (idle) equipment of a specific type in a building
+function getAvailableEquipmentByType(buildingId, equipmentType) {
+    const equipment = getWarehouseEquipment(buildingId);
+    return equipment.filter(e => e.type === equipmentType && e.status === 'idle');
+}
+
+// Get all available (idle) equipment in a building
+function getAvailableEquipment(buildingId) {
+    const equipment = getWarehouseEquipment(buildingId);
+    return equipment.filter(e => e.status === 'idle');
+}
+
+// Check if building has required equipment types
+function hasRequiredEquipment(buildingId, requiredTypes) {
+    if (!requiredTypes || requiredTypes.length === 0) return true;
+
+    const equipment = getWarehouseEquipment(buildingId);
+    const equipmentTypes = new Set(equipment.map(e => e.type));
+
+    return requiredTypes.every(type => equipmentTypes.has(type));
+}
+
+// Get equipment by ID across all buildings
+function getEquipmentById(buildingId, equipmentId) {
+    const building = appState.buildings.find(b => b.id === buildingId);
+    if (!building) return null;
+
+    return building.interior.equipment.find(e => e.id === equipmentId) || null;
+}
+
+// Auto-place equipment in first available grid spot
+function autoPlaceEquipment(buildingId, equipmentType) {
+    const building = appState.buildings.find(b => b.id === buildingId);
+    if (!building) return { success: false, error: 'Building not found' };
+
+    const gridSize = building.interior.grid.length;
+
+    // Find first empty grid cell
+    for (let y = 0; y < gridSize; y++) {
+        for (let x = 0; x < gridSize; x++) {
+            if (building.interior.grid[y][x] === null) {
+                return placeEquipment(buildingId, x, y, equipmentType);
+            }
+        }
+    }
+
+    return { success: false, error: 'No available grid space' };
+}
+
 // Start construction of a building
 function startConstruction(x, y, buildingType) {
     // Check if tile is owned
@@ -2355,7 +2632,8 @@ function startConstruction(x, y, buildingType) {
         completionDate: addDaysToDate(getTodayDate(), buildingDef.constructionDays),
         cost: totalCost,
         interior: {
-            grid: Array(buildingDef.interiorSize).fill(null).map(() => Array(buildingDef.interiorSize).fill(null))
+            grid: Array(buildingDef.interiorSize).fill(null).map(() => Array(buildingDef.interiorSize).fill(null)),
+            equipment: []
         }
     };
 
@@ -2511,6 +2789,21 @@ function demolishBuilding(buildingId) {
 
     // Remove all employees from the demolished building
     appState.employees = appState.employees.filter(e => e.assignedBuildingId !== buildingId);
+
+    // Remove all equipment from the demolished building
+    if (building.interior && building.interior.equipment) {
+        building.interior.equipment = [];
+        // Clear grid references
+        const gridSize = building.interior.grid.length;
+        for (let y = 0; y < gridSize; y++) {
+            for (let x = 0; x < gridSize; x++) {
+                building.interior.grid[y][x] = null;
+            }
+        }
+    }
+
+    // Cancel any active production jobs for this building
+    appState.productionQueue = appState.productionQueue.filter(p => p.buildingId !== buildingId);
 
     building.status = 'demolished';
     hasUnsavedChanges = true;
