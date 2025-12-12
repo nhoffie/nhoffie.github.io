@@ -2157,6 +2157,101 @@ function showBuildingInterior(buildingId) {
 
     content += `</div>`;
 
+    // Commodity production section
+    content += `<h4>Commodity Production</h4>`;
+    content += `<div style="padding: 10px; background: #f5f5f5; border-radius: 5px; max-height: 400px; overflow-y: auto;">`;
+
+    if (employees.length === 0) {
+        content += `<p style="color: #666;">Hire employees to start producing commodities.</p>`;
+    } else {
+        // Group recipes by equipment type
+        const recipesByEquipment = {};
+        Object.values(PRODUCTION_RECIPES).forEach(recipe => {
+            if (!recipesByEquipment[recipe.equipmentRequired]) {
+                recipesByEquipment[recipe.equipmentRequired] = [];
+            }
+            recipesByEquipment[recipe.equipmentRequired].push(recipe);
+        });
+
+        // Show recipes for each equipment type the player has
+        let hasAnyProducingEquipment = false;
+        Object.entries(recipesByEquipment).forEach(([equipType, recipes]) => {
+            const playerEquipment = equipment.filter(e => e.type === equipType);
+
+            if (playerEquipment.length > 0) {
+                hasAnyProducingEquipment = true;
+                const equipDef = getEquipmentDefinition(equipType);
+
+                content += `<div style="margin-bottom: 15px;">`;
+                content += `<h5 style="margin-bottom: 8px;">🏭 ${equipDef.name}</h5>`;
+
+                playerEquipment.forEach(equip => {
+                    const isIdle = equip.status === 'idle';
+                    const statusColor = isIdle ? '#28a745' : '#ffc107';
+                    const statusText = isIdle ? 'Idle' : 'Busy';
+
+                    content += `<div style="padding: 8px; background: white; border-left: 3px solid ${statusColor}; margin-bottom: 8px;">`;
+                    content += `<div style="font-weight: bold; font-size: 12px; margin-bottom: 5px;">Equipment #${equip.id} - ${statusText}</div>`;
+
+                    if (isIdle) {
+                        recipes.forEach(recipe => {
+                            const hasMaterials = Object.keys(recipe.inputs).length === 0 || hasRequiredMaterials(recipe.inputs);
+
+                            // Build material display
+                            const inputsDisplay = Object.keys(recipe.inputs).length > 0
+                                ? Object.entries(recipe.inputs)
+                                    .map(([mat, qty]) => {
+                                        const commodityId = getCommodityIdByName(mat);
+                                        const have = commodityId ? getTotalQuantity(commodityId) : 0;
+                                        const color = have >= qty ? '#28a745' : '#dc3545';
+                                        return `<span style="color: ${color};">${mat}: ${have}/${qty}</span>`;
+                                    })
+                                    .join(', ')
+                                : 'None';
+
+                            const outputsDisplay = Object.entries(recipe.outputs)
+                                .map(([com, qty]) => `${qty} ${com}`)
+                                .join(', ');
+
+                            content += `<div style="margin: 5px 0; padding: 5px; background: #f9f9f9; border-radius: 3px; font-size: 11px;">`;
+                            content += `<div style="display: flex; justify-content: space-between; align-items: center;">`;
+                            content += `<div style="flex: 1;">`;
+                            content += `<strong>${recipe.name}</strong><br/>`;
+                            content += `Inputs: ${inputsDisplay}<br/>`;
+                            content += `Outputs: ${outputsDisplay}<br/>`;
+                            content += `Time: ${(recipe.baseProductionTime / (60 * 60 * 1000)).toFixed(1)} hours`;
+                            content += `</div>`;
+                            content += `<div style="display: flex; gap: 5px;">`;
+
+                            if (hasMaterials) {
+                                content += `<button class="btn" onclick="handleStartCommodityProduction(${buildingId}, ${equip.id}, '${recipe.id}', false)" style="background: #007bff; color: white; font-size: 10px; padding: 4px 8px;">Start</button>`;
+                                content += `<button class="btn" onclick="handleStartCommodityProduction(${buildingId}, ${equip.id}, '${recipe.id}', true)" style="background: #28a745; color: white; font-size: 10px; padding: 4px 8px;">Continuous</button>`;
+                            } else {
+                                content += `<button class="btn" disabled style="background: #ccc; font-size: 10px; padding: 4px 8px;">Need Materials</button>`;
+                            }
+
+                            content += `</div>`;
+                            content += `</div>`;
+                            content += `</div>`;
+                        });
+                    } else {
+                        content += `<div style="font-size: 11px; color: #666; margin-top: 5px;">Currently producing...</div>`;
+                    }
+
+                    content += `</div>`;
+                });
+
+                content += `</div>`;
+            }
+        });
+
+        if (!hasAnyProducingEquipment) {
+            content += `<p style="color: #666;">No production equipment installed. Craft equipment from the catalog above.</p>`;
+        }
+    }
+
+    content += `</div>`;
+
     content += `<button class="btn" onclick="closeBuildingDialog()" style="margin-top: 15px;">Close</button>`;
 
     const dialog = document.createElement('div');
@@ -2186,6 +2281,21 @@ function handleCraftEquipment(buildingId, equipmentType) {
     if (result.success) {
         const equipDef = getEquipmentDefinition(equipmentType);
         alert(`${equipDef.name} production started! Estimated completion: ${result.estimatedCompletion}`);
+        closeBuildingDialog();
+        render(); // Refresh display
+    } else {
+        alert(`Error: ${result.error}`);
+    }
+}
+
+// Handle start commodity production button click
+function handleStartCommodityProduction(buildingId, equipmentId, recipeId, continuous) {
+    const result = startCommodityProduction(buildingId, equipmentId, recipeId, continuous);
+
+    if (result.success) {
+        const recipe = Object.values(PRODUCTION_RECIPES).find(r => r.id === recipeId);
+        const mode = continuous ? ' (Continuous Mode)' : '';
+        alert(`${recipe.name} started${mode}! Estimated completion: ${result.estimatedCompletion}`);
         closeBuildingDialog();
         render(); // Refresh display
     } else {
@@ -2629,6 +2739,80 @@ const EQUIPMENT_TYPES = {
     }
 };
 
+// Production recipes for commodities
+const PRODUCTION_RECIPES = {
+    LUMBER: {
+        id: 'lumber',
+        name: 'Lumber Production',
+        description: 'Process raw logs into construction-grade lumber',
+        equipmentRequired: 'lumber_mill',
+        inputs: { 'raw logs': 2 },
+        outputs: { lumber: 1 },
+        baseProductionTime: 2 * 60 * 60 * 1000,  // 2 hours per batch
+        batchSize: 1
+    },
+    STEEL: {
+        id: 'steel',
+        name: 'Steel Production',
+        description: 'Smelt iron ore with coal into steel',
+        equipmentRequired: 'foundry',
+        inputs: { 'iron ore': 3, coal: 1 },
+        outputs: { steel: 1 },
+        baseProductionTime: 4 * 60 * 60 * 1000,  // 4 hours
+        batchSize: 1
+    },
+    CONCRETE: {
+        id: 'concrete',
+        name: 'Concrete Production',
+        description: 'Mix sand, gravel, and water into concrete',
+        equipmentRequired: 'concrete_mixer',
+        inputs: { sand: 2, gravel: 2, water: 1 },
+        outputs: { concrete: 1 },
+        baseProductionTime: 1 * 60 * 60 * 1000,  // 1 hour
+        batchSize: 1
+    },
+    POWER: {
+        id: 'power',
+        name: 'Power Generation',
+        description: 'Generate electrical power from coal',
+        equipmentRequired: 'power_generator',
+        inputs: { coal: 1 },
+        outputs: { power: 10 },
+        baseProductionTime: 30 * 60 * 1000,  // 30 minutes
+        batchSize: 1
+    },
+    POWER_OIL: {
+        id: 'power_oil',
+        name: 'Power Generation (Oil)',
+        description: 'Generate electrical power from oil',
+        equipmentRequired: 'power_generator',
+        inputs: { oil: 1 },
+        outputs: { power: 15 },
+        baseProductionTime: 30 * 60 * 1000,  // 30 minutes
+        batchSize: 1
+    },
+    POWER_GAS: {
+        id: 'power_gas',
+        name: 'Power Generation (Natural Gas)',
+        description: 'Generate electrical power from natural gas',
+        equipmentRequired: 'power_generator',
+        inputs: { 'natural gas': 1 },
+        outputs: { power: 12 },
+        baseProductionTime: 30 * 60 * 1000,  // 30 minutes
+        batchSize: 1
+    },
+    WATER: {
+        id: 'water',
+        name: 'Water Production',
+        description: 'Pump and purify water',
+        equipmentRequired: 'water_pump',
+        inputs: {},  // No inputs required
+        outputs: { water: 5 },
+        baseProductionTime: 1 * 60 * 60 * 1000,  // 1 hour
+        batchSize: 1
+    }
+};
+
 // ====================================
 // EQUIPMENT MANAGEMENT FUNCTIONS
 // ====================================
@@ -3064,6 +3248,125 @@ function startEquipmentProduction(buildingId, equipmentType) {
     };
 }
 
+// Start commodity production (equipment produces commodities)
+function startCommodityProduction(buildingId, equipmentId, recipeId, continuous = false) {
+    const building = appState.buildings.find(b => b.id === buildingId);
+    if (!building) {
+        return { success: false, error: 'Building not found' };
+    }
+
+    if (building.status !== 'completed') {
+        return { success: false, error: 'Building is not completed yet' };
+    }
+
+    const employees = getEmployeesByBuilding(buildingId);
+    if (employees.length === 0) {
+        return { success: false, error: 'No employees assigned to this warehouse' };
+    }
+
+    const recipe = Object.values(PRODUCTION_RECIPES).find(r => r.id === recipeId);
+    if (!recipe) {
+        return { success: false, error: 'Invalid recipe' };
+    }
+
+    const equipment = getEquipmentById(buildingId, equipmentId);
+    if (!equipment) {
+        return { success: false, error: 'Equipment not found' };
+    }
+
+    // Validate equipment type matches recipe
+    if (equipment.type !== recipe.equipmentRequired) {
+        return { success: false, error: 'Wrong equipment type for this recipe' };
+    }
+
+    // Check if equipment is available
+    if (equipment.status !== 'idle') {
+        return { success: false, error: 'Equipment is currently busy' };
+    }
+
+    // Check input materials (if any)
+    if (Object.keys(recipe.inputs).length > 0) {
+        if (!hasRequiredMaterials(recipe.inputs)) {
+            const materialsNeeded = Object.entries(recipe.inputs)
+                .map(([mat, qty]) => `${qty} ${mat}`)
+                .join(', ');
+            return { success: false, error: `Insufficient materials (need ${materialsNeeded})` };
+        }
+    }
+
+    // Consume input materials
+    let materialsCost = 0;
+    let consumedMaterials = {};
+    if (Object.keys(recipe.inputs).length > 0) {
+        const consumed = consumeMaterials(recipe.inputs);
+        materialsCost = consumed.totalCost;
+        consumedMaterials = consumed.materials;
+    }
+
+    // Calculate production time
+    const avgSkill = calculateAverageSkill(employees);
+    const productionTime = calculateProductionTime(
+        recipe.baseProductionTime,
+        employees.length,
+        avgSkill
+    );
+
+    const currentTime = getCurrentSimulationTime();
+
+    // Create production job
+    const productionJob = {
+        id: appState.nextProductionId++,
+        buildingId: buildingId,
+        equipmentId: equipment.id,
+        productType: 'commodity',
+        productId: null,
+        recipeId: recipe.id,
+        quantity: 1,
+        startTime: currentTime,
+        estimatedCompletionTime: currentTime + productionTime,
+        actualCompletionTime: null,
+        status: 'in_progress',
+        materialsConsumed: consumedMaterials,
+        materialsCost: materialsCost,
+        outputs: recipe.outputs,
+        assignedEmployees: employees.map(e => e.id),
+        continuous: continuous,
+        transactionId: null
+    };
+
+    // Mark equipment as busy
+    equipment.status = 'producing';
+    equipment.currentProduction = productionJob.id;
+
+    // Record accounting transaction (debit Inventory for inputs if any)
+    if (materialsCost > 0) {
+        const inventoryAccount = appState.accounts.find(a => a.number === '1200');
+
+        const transaction = {
+            id: appState.nextTransactionId++,
+            date: getTodayDate(),
+            description: `Started ${recipe.name} at ${building.type} (${building.x}, ${building.y})`,
+            debitAccount: inventoryAccount.id,
+            creditAccount: inventoryAccount.id,  // Net zero for now, will adjust on completion
+            amount: 0  // Cost basis tracked internally
+        };
+
+        appState.transactions.push(transaction);
+        productionJob.transactionId = transaction.id;
+    }
+
+    appState.productionQueue.push(productionJob);
+    hasUnsavedChanges = true;
+
+    return {
+        success: true,
+        productionId: productionJob.id,
+        estimatedCompletion: formatSimulationTime(productionJob.estimatedCompletionTime),
+        usingEquipment: equipment.id,
+        continuous: continuous
+    };
+}
+
 // Check production progress and complete finished jobs
 function checkProductionProgress() {
     const currentTime = getCurrentSimulationTime();
@@ -3080,14 +3383,7 @@ function completeProduction(productionJob) {
     productionJob.status = 'completed';
     productionJob.actualCompletionTime = getCurrentSimulationTime();
 
-    // Mark equipment as idle if it was being used
-    if (productionJob.equipmentId) {
-        const equipment = getEquipmentById(productionJob.buildingId, productionJob.equipmentId);
-        if (equipment) {
-            equipment.status = 'idle';
-            equipment.currentProduction = null;
-        }
-    }
+    const equipment = productionJob.equipmentId ? getEquipmentById(productionJob.buildingId, productionJob.equipmentId) : null;
 
     // Handle equipment production
     if (productionJob.productType === 'equipment') {
@@ -3101,6 +3397,76 @@ function completeProduction(productionJob) {
         } else {
             console.warn(`Equipment ${equipmentType} completed but could not be placed: ${result.error}`);
             // Equipment is still completed, just not placed yet
+        }
+
+        // Mark equipment as idle
+        if (equipment) {
+            equipment.status = 'idle';
+            equipment.currentProduction = null;
+        }
+    }
+
+    // Handle commodity production
+    if (productionJob.productType === 'commodity') {
+        // Add outputs to inventory with cost basis = input material costs
+        for (const [commodityName, quantity] of Object.entries(productionJob.outputs)) {
+            const commodityId = getCommodityIdByName(commodityName);
+            if (!commodityId) {
+                console.error(`Commodity not found: ${commodityName}`);
+                continue;
+            }
+
+            // Cost basis = material cost / output quantity
+            const costBasis = productionJob.materialsCost / quantity;
+
+            if (!appState.portfolio[commodityId]) {
+                appState.portfolio[commodityId] = { lots: [] };
+            }
+
+            appState.portfolio[commodityId].lots.push({
+                quantity: quantity,
+                costBasis: costBasis,
+                purchaseDate: getTodayDate(),
+                purchaseId: `production-${productionJob.id}`
+            });
+        }
+
+        // Check for continuous production
+        if (productionJob.continuous && equipment) {
+            const recipe = Object.values(PRODUCTION_RECIPES).find(r => r.id === productionJob.recipeId);
+
+            // Check if we still have materials
+            const hasMaterials = Object.keys(recipe.inputs).length === 0 || hasRequiredMaterials(recipe.inputs);
+
+            if (hasMaterials) {
+                // Auto-restart production
+                const result = startCommodityProduction(
+                    productionJob.buildingId,
+                    equipment.id,
+                    productionJob.recipeId,
+                    true  // Keep continuous mode
+                );
+
+                if (result.success) {
+                    console.log(`Continuous production: restarted ${recipe.name}`);
+                } else {
+                    // Stop continuous production if restart failed
+                    equipment.status = 'idle';
+                    equipment.currentProduction = null;
+                    console.warn(`Continuous production stopped: ${result.error}`);
+                }
+            } else {
+                // Not enough materials, stop continuous production
+                equipment.status = 'idle';
+                equipment.currentProduction = null;
+                console.log(`Continuous production stopped: insufficient materials`);
+            }
+        } else {
+            // Mark equipment as idle (non-continuous or no equipment)
+            if (equipment) {
+                equipment.status = 'idle';
+                equipment.currentProduction = null;
+            }
         }
     }
 
