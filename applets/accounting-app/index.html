@@ -52,6 +52,9 @@
             <button class="tab-btn" data-tab="balance-sheet">Balance Sheet</button>
             <button class="tab-btn" data-tab="income-statement">Income Statement</button>
             <button class="tab-btn" data-tab="cash-flow">Cash Flow Statement</button>
+            <button class="tab-btn" data-tab="trial-balance">Trial Balance</button>
+            <button class="tab-btn" data-tab="general-ledger">General Ledger</button>
+            <button class="tab-btn" data-tab="transaction-journal">Transaction Journal</button>
         </nav>
 
         <!-- Chart of Accounts Section -->
@@ -528,6 +531,51 @@
                 </div>
             </div>
             <div id="cashFlowContent" class="financial-statement">
+            </div>
+        </section>
+
+        <!-- Trial Balance Section -->
+        <section id="trial-balance" class="tab-content">
+            <h2>Trial Balance</h2>
+            <div class="form-group">
+                <label for="trialBalanceDate">As of Date (Y#-M#-D#):</label>
+                <input type="text" id="trialBalanceDate" placeholder="Y1-M12-D28">
+            </div>
+            <div id="trialBalanceContent" class="financial-statement">
+            </div>
+        </section>
+
+        <!-- General Ledger Section -->
+        <section id="general-ledger" class="tab-content">
+            <h2>General Ledger</h2>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="generalLedgerStartDate">From (Y#-M#-D#):</label>
+                    <input type="text" id="generalLedgerStartDate" placeholder="Y1-M1-D1">
+                </div>
+                <div class="form-group">
+                    <label for="generalLedgerEndDate">To (Y#-M#-D#):</label>
+                    <input type="text" id="generalLedgerEndDate" placeholder="Y1-M12-D28">
+                </div>
+            </div>
+            <div id="generalLedgerContent" class="financial-statement">
+            </div>
+        </section>
+
+        <!-- Transaction Journal Section -->
+        <section id="transaction-journal" class="tab-content">
+            <h2>Transaction Journal</h2>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="transactionJournalStartDate">From (Y#-M#-D#):</label>
+                    <input type="text" id="transactionJournalStartDate" placeholder="Y1-M1-D1">
+                </div>
+                <div class="form-group">
+                    <label for="transactionJournalEndDate">To (Y#-M#-D#):</label>
+                    <input type="text" id="transactionJournalEndDate" placeholder="Y1-M12-D28">
+                </div>
+            </div>
+            <div id="transactionJournalContent" class="financial-statement">
             </div>
         </section>
     </main>

@@ -924,6 +924,15 @@ function setupTabNavigation() {
             } else if (targetTab === 'cash-flow') {
                 updateStatementEndDates();
                 renderCashFlowStatement();
+            } else if (targetTab === 'trial-balance') {
+                updateStatementEndDates();
+                renderTrialBalance();
+            } else if (targetTab === 'general-ledger') {
+                updateStatementEndDates();
+                renderGeneralLedger();
+            } else if (targetTab === 'transaction-journal') {
+                updateStatementEndDates();
+                renderTransactionJournal();
             } else if (targetTab === 'commodities') {
                 renderCommoditiesMarket();
             } else if (targetTab === 'map') {
@@ -5895,16 +5904,45 @@ function renderCashFlowStatement() {
     );
     const netIncome = totalRevenue - totalExpenses;
 
-    // Calculate changes in working capital (simplified)
-    const arAccounts = appState.accounts.filter(a =>
-        a.name.toLowerCase().includes('receivable')
-    );
-    const apAccounts = appState.accounts.filter(a =>
-        a.name.toLowerCase().includes('payable')
-    );
-    const inventoryAccounts = appState.accounts.filter(a =>
-        a.name.toLowerCase().includes('inventory')
-    );
+    // Get period transactions (excluding voided)
+    const periodTransactions = appState.transactions.filter(t => {
+        if (t.status === 'void') return false;
+        const txDate = t.simDate || t.date;
+        return compareDates(txDate, startDate) >= 0 && compareDates(txDate, endDate) <= 0;
+    });
+
+    // Categorize transactions by metadata type
+    const operating = [];
+    const investing = [];
+    const financing = [];
+
+    periodTransactions.forEach(t => {
+        const metaType = t.metadata?.type || '';
+
+        // Operating Activities
+        if (['commodity_purchase', 'commodity_sale', 'wage_payment', 'interest_accrual'].includes(metaType) ||
+            t.description?.includes('Wage payment') ||
+            t.description?.includes('Interest accrued')) {
+            operating.push(t);
+        }
+        // Investing Activities
+        else if (['property_purchase', 'building_construction'].includes(metaType) ||
+                 t.description?.includes('Purchase property') ||
+                 t.description?.includes('Started construction')) {
+            investing.push(t);
+        }
+        // Financing Activities
+        else if (['loan_disbursement', 'loan_payment_principal', 'loan_payment_interest', 'equity_issuance'].includes(metaType) ||
+                 t.description?.includes('Bank loan received') ||
+                 t.description?.includes('Issued') && t.description?.includes('shares')) {
+            financing.push(t);
+        }
+    });
+
+    // Calculate changes in working capital accounts
+    const arAccounts = appState.accounts.filter(a => a.name.toLowerCase().includes('receivable'));
+    const apAccounts = appState.accounts.filter(a => a.name.toLowerCase().includes('payable') && !a.name.includes('Loans'));
+    const inventoryAccounts = appState.accounts.filter(a => a.name.toLowerCase().includes('inventory'));
 
     const arChange = arAccounts.reduce((sum, a) =>
         sum + ((endBalances[a.id] || 0) - (startBalances[a.id] || 0)), 0
@@ -5916,118 +5954,58 @@ function renderCashFlowStatement() {
         sum + ((endBalances[a.id] || 0) - (startBalances[a.id] || 0)), 0
     );
 
-    const operatingCash = netIncome - arChange + apChange - inventoryChange;
+    // Calculate cash from operating activities (indirect method)
+    let operatingCashFromIncome = netIncome;
 
-    // Get financing activities from transactions in the period
-    const periodTransactions = appState.transactions.filter(t => {
-        return isDateInRange(t.date, startDate, endDate);
+    // Adjustments to reconcile net income to cash from operations
+    let workingCapitalAdjustments = 0;
+    workingCapitalAdjustments -= arChange; // Increase in AR uses cash
+    workingCapitalAdjustments += apChange; // Increase in AP provides cash
+    workingCapitalAdjustments -= inventoryChange; // Increase in inventory uses cash
+
+    const netOperatingCash = operatingCashFromIncome + workingCapitalAdjustments;
+
+    // Calculate investing cash flows
+    let investingCashFlows = {};
+    investing.forEach(t => {
+        const type = t.metadata?.type || 'other';
+        if (!investingCashFlows[type]) investingCashFlows[type] = [];
+        investingCashFlows[type].push(t);
     });
 
-    // Categorize financing activities
-    const loanProceeds = periodTransactions.filter(t =>
-        t.description.includes('Bank loan received')
-    );
-    const loanPrincipalPayments = periodTransactions.filter(t =>
-        t.description.includes('payment - Principal reduction')
-    );
-    const loanInterestPayments = periodTransactions.filter(t =>
-        t.description.includes('payment - Interest paid')
-    );
-    const stockIssuances = periodTransactions.filter(t =>
-        t.description.includes('Issued') && t.description.includes('shares')
-    );
+    const propertyPurchases = investingCashFlows.property_purchase || [];
+    const buildingConstruction = investingCashFlows.building_construction || [];
 
-    const totalLoanProceeds = loanProceeds.reduce((sum, t) => sum + t.amount, 0);
-    const totalLoanPrincipalPayments = loanPrincipalPayments.reduce((sum, t) => sum + t.amount, 0);
-    const totalLoanInterestPayments = loanInterestPayments.reduce((sum, t) => sum + t.amount, 0);
-    const totalStockIssuances = stockIssuances.reduce((sum, t) => sum + t.amount, 0);
+    const totalPropertyPurchases = propertyPurchases.reduce((sum, t) => {
+        return sum + (getTransactionCashImpact(t, cashAccounts));
+    }, 0);
+    const totalBuildingConstruction = buildingConstruction.reduce((sum, t) => {
+        return sum + (getTransactionCashImpact(t, cashAccounts));
+    }, 0);
 
-    const netFinancingCash = totalLoanProceeds + totalStockIssuances - totalLoanPrincipalPayments - totalLoanInterestPayments;
+    const netInvestingCash = totalPropertyPurchases + totalBuildingConstruction;
 
-    // Categorize investing activities
-    const propertyPurchases = periodTransactions.filter(t =>
-        t.description.includes('Purchase property at')
-    );
-    const buildingDemolitions = periodTransactions.filter(t =>
-        t.description.includes('Demolished') && t.description.includes('Materials recovered')
-    );
+    // Calculate financing cash flows
+    let financingCashFlows = {};
+    financing.forEach(t => {
+        const type = t.metadata?.type || 'other';
+        if (!financingCashFlows[type]) financingCashFlows[type] = [];
+        financingCashFlows[type].push(t);
+    });
 
-    const totalPropertyPurchases = propertyPurchases.reduce((sum, t) => sum + t.amount, 0);
-    const totalBuildingDemolitions = buildingDemolitions.reduce((sum, t) => sum + t.amount, 0);
+    const loanDisbursements = financingCashFlows.loan_disbursement || [];
+    const loanPrincipalPayments = financingCashFlows.loan_payment_principal || [];
+    const loanInterestPayments = financingCashFlows.loan_payment_interest || [];
+    const equityIssuances = financingCashFlows.equity_issuance || [];
 
-    const netInvestingCash = -totalPropertyPurchases + totalBuildingDemolitions;
+    const totalLoanProceeds = loanDisbursements.reduce((sum, t) => sum + getTransactionCashImpact(t, cashAccounts), 0);
+    const totalPrincipalPayments = loanPrincipalPayments.reduce((sum, t) => sum + getTransactionCashImpact(t, cashAccounts), 0);
+    const totalInterestPayments = loanInterestPayments.reduce((sum, t) => sum + getTransactionCashImpact(t, cashAccounts), 0);
+    const totalEquityProceeds = equityIssuances.reduce((sum, t) => sum + getTransactionCashImpact(t, cashAccounts), 0);
 
-    // Build investing activities HTML
-    let investingActivitiesHtml = '';
+    const netFinancingCash = totalLoanProceeds + totalEquityProceeds + totalPrincipalPayments + totalInterestPayments;
 
-    if (propertyPurchases.length > 0) {
-        investingActivitiesHtml += `
-            <div class="statement-item">
-                <span>Property Purchases</span>
-                <span>(${formatCurrency(totalPropertyPurchases)})</span>
-            </div>`;
-    }
-
-    if (buildingDemolitions.length > 0) {
-        investingActivitiesHtml += `
-            <div class="statement-item">
-                <span>Building Demolitions (Materials Recovered)</span>
-                <span>${formatCurrency(totalBuildingDemolitions)}</span>
-            </div>`;
-    }
-
-    if (investingActivitiesHtml === '') {
-        investingActivitiesHtml = `
-            <div class="statement-item">
-                <span>No investing activities recorded</span>
-                <span>${formatCurrency(0)}</span>
-            </div>`;
-    }
-
-    // Build financing activities HTML
-    let financingActivitiesHtml = '';
-
-    if (loanProceeds.length > 0) {
-        financingActivitiesHtml += `
-            <div class="statement-item">
-                <span>Loan Proceeds</span>
-                <span>${formatCurrency(totalLoanProceeds)}</span>
-            </div>`;
-    }
-
-    if (stockIssuances.length > 0) {
-        financingActivitiesHtml += `
-            <div class="statement-item">
-                <span>Stock Issuances</span>
-                <span>${formatCurrency(totalStockIssuances)}</span>
-            </div>`;
-    }
-
-    if (loanPrincipalPayments.length > 0) {
-        financingActivitiesHtml += `
-            <div class="statement-item">
-                <span>Loan Principal Payments</span>
-                <span>(${formatCurrency(totalLoanPrincipalPayments)})</span>
-            </div>`;
-    }
-
-    if (loanInterestPayments.length > 0) {
-        financingActivitiesHtml += `
-            <div class="statement-item">
-                <span>Loan Interest Payments</span>
-                <span>(${formatCurrency(totalLoanInterestPayments)})</span>
-            </div>`;
-    }
-
-    if (financingActivitiesHtml === '') {
-        financingActivitiesHtml = `
-            <div class="statement-item">
-                <span>No financing activities recorded</span>
-                <span>${formatCurrency(0)}</span>
-            </div>`;
-    }
-
-    const content = document.getElementById('cashFlowContent');
+    const content = document.getElementById('cashFlowStatementContent');
     content.innerHTML = `
         <div class="statement-section">
             <div class="statement-title">CASH FLOW STATEMENT</div>
@@ -6035,32 +6013,57 @@ function renderCashFlowStatement() {
         </div>
 
         <div class="statement-section">
-            <div class="statement-category">OPERATING ACTIVITIES</div>
+            <div class="statement-category">CASH FLOWS FROM OPERATING ACTIVITIES</div>
+            <div class="statement-subcategory">Indirect Method</div>
             <div class="statement-item">
                 <span>Net Income</span>
                 <span>${formatCurrency(netIncome)}</span>
             </div>
-            <div class="statement-item">
-                <span>Changes in Accounts Receivable</span>
-                <span>${formatCurrency(-arChange)}</span>
-            </div>
-            <div class="statement-item">
-                <span>Changes in Inventory</span>
-                <span>${formatCurrency(-inventoryChange)}</span>
-            </div>
-            <div class="statement-item">
-                <span>Changes in Accounts Payable</span>
-                <span>${formatCurrency(apChange)}</span>
-            </div>
+            <div class="statement-subcategory" style="margin-top: 0.75rem;">Adjustments to reconcile net income to cash:</div>
+            ${arChange !== 0 ? `
+                <div class="statement-item">
+                    <span>Change in Accounts Receivable</span>
+                    <span>${formatCurrency(-arChange)}</span>
+                </div>
+            ` : ''}
+            ${inventoryChange !== 0 ? `
+                <div class="statement-item">
+                    <span>Change in Inventory</span>
+                    <span>${formatCurrency(-inventoryChange)}</span>
+                </div>
+            ` : ''}
+            ${apChange !== 0 ? `
+                <div class="statement-item">
+                    <span>Change in Accounts Payable</span>
+                    <span>${formatCurrency(apChange)}</span>
+                </div>
+            ` : ''}
             <div class="statement-subtotal">
                 <span>Net Cash from Operating Activities</span>
-                <span>${formatCurrency(operatingCash)}</span>
+                <span>${formatCurrency(netOperatingCash)}</span>
             </div>
         </div>
 
         <div class="statement-section">
-            <div class="statement-category">INVESTING ACTIVITIES</div>
-            ${investingActivitiesHtml}
+            <div class="statement-category">CASH FLOWS FROM INVESTING ACTIVITIES</div>
+            ${propertyPurchases.length > 0 ? `
+                <div class="statement-item">
+                    <span>Purchase of Real Estate (${propertyPurchases.length} transactions)</span>
+                    <span>${formatCurrency(totalPropertyPurchases)}</span>
+                </div>
+            ` : ''}
+            ${buildingConstruction.length > 0 ? `
+                <div class="statement-item">
+                    <span>Building Construction (${buildingConstruction.length} projects)</span>
+                    <span>${formatCurrency(totalBuildingConstruction)}</span>
+                </div>
+            ` : ''}
+            ${propertyPurchases.length === 0 && buildingConstruction.length === 0 ? `
+                <div class="statement-item">
+                    <span style="font-style: italic; color: #6b7280;">No investing activities</span>
+                    <span>$0.00</span>
+                </div>
+            ` : ''}
             <div class="statement-subtotal">
                 <span>Net Cash from Investing Activities</span>
                 <span>${formatCurrency(netInvestingCash)}</span>
@@ -6068,28 +6071,490 @@ function renderCashFlowStatement() {
         </div>
 
         <div class="statement-section">
-            <div class="statement-category">FINANCING ACTIVITIES</div>
-            ${financingActivitiesHtml}
+            <div class="statement-category">CASH FLOWS FROM FINANCING ACTIVITIES</div>
+            ${loanDisbursements.length > 0 ? `
+                <div class="statement-item">
+                    <span>Proceeds from Loans (${loanDisbursements.length} loans)</span>
+                    <span>${formatCurrency(totalLoanProceeds)}</span>
+                </div>
+            ` : ''}
+            ${equityIssuances.length > 0 ? `
+                <div class="statement-item">
+                    <span>Proceeds from Stock Issuance (${equityIssuances.length} issuances)</span>
+                    <span>${formatCurrency(totalEquityProceeds)}</span>
+                </div>
+            ` : ''}
+            ${loanPrincipalPayments.length > 0 ? `
+                <div class="statement-item">
+                    <span>Principal Payments on Loans (${loanPrincipalPayments.length} payments)</span>
+                    <span>${formatCurrency(totalPrincipalPayments)}</span>
+                </div>
+            ` : ''}
+            ${loanInterestPayments.length > 0 ? `
+                <div class="statement-item">
+                    <span>Interest Payments (${loanInterestPayments.length} payments)</span>
+                    <span>${formatCurrency(totalInterestPayments)}</span>
+                </div>
+            ` : ''}
+            ${loanDisbursements.length === 0 && equityIssuances.length === 0 && loanPrincipalPayments.length === 0 && loanInterestPayments.length === 0 ? `
+                <div class="statement-item">
+                    <span style="font-style: italic; color: #6b7280;">No financing activities</span>
+                    <span>$0.00</span>
+                </div>
+            ` : ''}
             <div class="statement-subtotal">
                 <span>Net Cash from Financing Activities</span>
                 <span>${formatCurrency(netFinancingCash)}</span>
             </div>
         </div>
 
-        <div class="statement-total">
-            <span>Net Change in Cash</span>
-            <span>${formatCurrency(netCashChange)}</span>
-        </div>
-
-        <div class="statement-section" style="margin-top: 1rem;">
-            <div class="statement-item">
+        <div class="statement-section">
+            <div class="statement-total">
+                <span>Net Change in Cash</span>
+                <span>${formatCurrency(netCashChange)}</span>
+            </div>
+            <div class="statement-subsubtotal" style="margin-top: 0.5rem;">
                 <span>Cash at Beginning of Period</span>
                 <span>${formatCurrency(cashStart)}</span>
             </div>
-            <div class="statement-item">
+            <div class="statement-total">
                 <span>Cash at End of Period</span>
                 <span>${formatCurrency(cashEnd)}</span>
             </div>
+        </div>
+    `;
+}
+
+// Helper function to get cash impact of a transaction
+function getTransactionCashImpact(transaction, cashAccounts) {
+    let impact = 0;
+    const cashAccountIds = cashAccounts.map(a => a.id);
+
+    if (transaction.entries) {
+        transaction.entries.forEach(entry => {
+            const accountId = entry.accountId || entry.account;
+            if (cashAccountIds.includes(accountId)) {
+                if (entry.type === 'debit') {
+                    impact += entry.amount;
+                } else {
+                    impact -= entry.amount;
+                }
+            }
+        });
+    } else if (transaction.debitAccount || transaction.creditAccount) {
+        if (cashAccountIds.includes(transaction.debitAccount)) {
+            impact += transaction.amount;
+        }
+        if (cashAccountIds.includes(transaction.creditAccount)) {
+            impact -= transaction.amount;
+        }
+    }
+
+    return impact;
+}
+
+// ====================================
+// TRIAL BALANCE REPORT
+// ====================================
+
+function renderTrialBalance() {
+    const asOfDate = document.getElementById('trialBalanceDate').value || getTodayDate();
+    const balances = window.generalLedger ? window.generalLedger.getBalances(asOfDate) : {};
+
+    // Get all accounts with balances
+    const accountsWithBalances = appState.accounts
+        .map(account => ({
+            ...account,
+            balance: balances[account.id] || 0
+        }))
+        .filter(account => Math.abs(account.balance) >= 0.01) // Only show accounts with non-zero balances
+        .sort((a, b) => {
+            // Sort by type, then by name
+            if (a.type !== b.type) {
+                const typeOrder = { 'Asset': 1, 'Liability': 2, 'Equity': 3, 'Revenue': 4, 'Expense': 5 };
+                return typeOrder[a.type] - typeOrder[b.type];
+            }
+            return a.name.localeCompare(b.name);
+        });
+
+    let totalDebits = 0;
+    let totalCredits = 0;
+
+    // Prepare rows
+    const rows = accountsWithBalances.map(account => {
+        let debitAmount = 0;
+        let creditAmount = 0;
+
+        // Determine which column the balance goes in based on normal balance
+        if (account.type === 'Asset' || account.type === 'Expense') {
+            // Normal debit balance
+            if (account.balance > 0) {
+                debitAmount = account.balance;
+                totalDebits += debitAmount;
+            } else {
+                creditAmount = -account.balance;
+                totalCredits += creditAmount;
+            }
+        } else {
+            // Liability, Equity, Revenue - normal credit balance
+            if (account.balance > 0) {
+                creditAmount = account.balance;
+                totalCredits += creditAmount;
+            } else {
+                debitAmount = -account.balance;
+                totalDebits += debitAmount;
+            }
+        }
+
+        return `
+            <tr>
+                <td>${escapeHtml(account.name)}</td>
+                <td style="text-align: right;">${debitAmount > 0 ? formatCurrency(debitAmount) : ''}</td>
+                <td style="text-align: right;">${creditAmount > 0 ? formatCurrency(creditAmount) : ''}</td>
+            </tr>`;
+    }).join('');
+
+    const balanced = Math.abs(totalDebits - totalCredits) < 0.01;
+    const difference = totalDebits - totalCredits;
+
+    const content = document.getElementById('trialBalanceContent');
+    content.innerHTML = `
+        <div class="statement-section">
+            <div class="statement-title">TRIAL BALANCE</div>
+            <div>As of ${formatDate(asOfDate)}</div>
+            ${balanced ?
+                '<div style="color: #10b981; font-weight: bold; margin-top: 0.5rem;">✓ In Balance</div>' :
+                `<div style="color: #ef4444; font-weight: bold; margin-top: 0.5rem;">⚠ Out of Balance by ${formatCurrency(Math.abs(difference))}</div>`
+            }
+        </div>
+
+        <table style="width: 100%; margin-top: 1rem; border-collapse: collapse;">
+            <thead>
+                <tr style="border-bottom: 2px solid #333;">
+                    <th style="text-align: left; padding: 0.5rem;">Account</th>
+                    <th style="text-align: right; padding: 0.5rem;">Debit</th>
+                    <th style="text-align: right; padding: 0.5rem;">Credit</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${rows}
+            </tbody>
+            <tfoot>
+                <tr style="border-top: 2px solid #333; font-weight: bold;">
+                    <td style="padding: 0.5rem;">TOTAL</td>
+                    <td style="text-align: right; padding: 0.5rem;">${formatCurrency(totalDebits)}</td>
+                    <td style="text-align: right; padding: 0.5rem;">${formatCurrency(totalCredits)}</td>
+                </tr>
+            </tfoot>
+        </table>
+
+        <div style="margin-top: 1.5rem; padding: 1rem; background: #f3f4f6; border-radius: 4px;">
+            <div style="font-weight: bold; margin-bottom: 0.5rem;">About Trial Balance</div>
+            <p style="font-size: 0.9rem; color: #4b5563;">
+                The Trial Balance lists all accounts with their debit and credit balances.
+                In a properly maintained accounting system, total debits must equal total credits.
+                This report helps verify the mathematical accuracy of the general ledger.
+            </p>
+        </div>
+    `;
+}
+
+// ====================================
+// GENERAL LEDGER REPORT
+// ====================================
+
+function renderGeneralLedger() {
+    const startDate = document.getElementById('generalLedgerStartDate').value || getFirstDayOfMonth();
+    const endDate = document.getElementById('generalLedgerEndDate').value || getTodayDate();
+
+    // Get all accounts sorted by type and name
+    const accounts = [...appState.accounts].sort((a, b) => {
+        if (a.type !== b.type) {
+            const typeOrder = { 'Asset': 1, 'Liability': 2, 'Equity': 3, 'Revenue': 4, 'Expense': 5 };
+            return typeOrder[a.type] - typeOrder[b.type];
+        }
+        return a.name.localeCompare(b.name);
+    });
+
+    // Build HTML for each account
+    const accountSections = accounts.map(account => {
+        // Get all transactions affecting this account
+        const accountTransactions = appState.transactions.filter(t => {
+            const tDate = t.simDate || t.date;
+            if (tDate < startDate || tDate > endDate) return false;
+
+            if (t.entries) {
+                return t.entries.some(e => e.accountId === account.id);
+            } else {
+                // Legacy format
+                return t.debitAccount === account.id || t.creditAccount === account.id;
+            }
+        }).sort((a, b) => {
+            const aDate = a.simDate || a.date;
+            const bDate = b.simDate || b.date;
+            return aDate.localeCompare(bDate);
+        });
+
+        if (accountTransactions.length === 0) return '';
+
+        // Calculate running balance
+        let runningBalance = 0;
+        const rows = accountTransactions.map(t => {
+            let debitAmount = 0;
+            let creditAmount = 0;
+
+            if (t.entries) {
+                t.entries.forEach(entry => {
+                    if (entry.accountId === account.id) {
+                        if (entry.type === 'debit') {
+                            debitAmount += entry.amount;
+                        } else {
+                            creditAmount += entry.amount;
+                        }
+                    }
+                });
+            } else {
+                // Legacy format
+                if (t.debitAccount === account.id) {
+                    debitAmount = t.amount;
+                }
+                if (t.creditAccount === account.id) {
+                    creditAmount = t.amount;
+                }
+            }
+
+            // Update running balance based on normal balance
+            if (account.type === 'Asset' || account.type === 'Expense') {
+                runningBalance += debitAmount - creditAmount;
+            } else {
+                runningBalance += creditAmount - debitAmount;
+            }
+
+            const tDate = t.simDate || t.date;
+            const tTime = t.simTime || '';
+
+            return `
+                <tr>
+                    <td style="padding: 0.25rem 0.5rem;">${formatDate(tDate)} ${tTime}</td>
+                    <td style="padding: 0.25rem 0.5rem;">${escapeHtml(t.description)}</td>
+                    <td style="padding: 0.25rem 0.5rem; text-align: right;">${debitAmount > 0 ? formatCurrency(debitAmount) : ''}</td>
+                    <td style="padding: 0.25rem 0.5rem; text-align: right;">${creditAmount > 0 ? formatCurrency(creditAmount) : ''}</td>
+                    <td style="padding: 0.25rem 0.5rem; text-align: right; font-weight: 500;">${formatCurrency(Math.abs(runningBalance))}</td>
+                </tr>`;
+        }).join('');
+
+        return `
+            <div class="statement-section" style="margin-bottom: 2rem;">
+                <div style="font-weight: bold; font-size: 1.1rem; margin-bottom: 0.5rem;">
+                    ${escapeHtml(account.name)} (${account.type})
+                </div>
+                <table style="width: 100%; border-collapse: collapse; font-size: 0.9rem;">
+                    <thead>
+                        <tr style="border-bottom: 1px solid #333; background: #f3f4f6;">
+                            <th style="text-align: left; padding: 0.5rem;">Date</th>
+                            <th style="text-align: left; padding: 0.5rem;">Description</th>
+                            <th style="text-align: right; padding: 0.5rem;">Debit</th>
+                            <th style="text-align: right; padding: 0.5rem;">Credit</th>
+                            <th style="text-align: right; padding: 0.5rem;">Balance</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rows}
+                    </tbody>
+                    <tfoot>
+                        <tr style="border-top: 2px solid #333; font-weight: bold;">
+                            <td colspan="4" style="padding: 0.5rem;">Ending Balance</td>
+                            <td style="text-align: right; padding: 0.5rem;">${formatCurrency(Math.abs(runningBalance))}</td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>`;
+    }).filter(html => html !== '').join('');
+
+    const content = document.getElementById('generalLedgerContent');
+    content.innerHTML = `
+        <div class="statement-section">
+            <div class="statement-title">GENERAL LEDGER</div>
+            <div>For the period ${formatDate(startDate)} to ${formatDate(endDate)}</div>
+        </div>
+
+        ${accountSections || '<div style="margin-top: 1rem; color: #6b7280;">No transactions recorded for this period.</div>'}
+
+        <div style="margin-top: 1.5rem; padding: 1rem; background: #f3f4f6; border-radius: 4px;">
+            <div style="font-weight: bold; margin-bottom: 0.5rem;">About General Ledger</div>
+            <p style="font-size: 0.9rem; color: #4b5563;">
+                The General Ledger shows detailed transaction history for each account with running balances.
+                This is the complete record of all financial transactions organized by account.
+            </p>
+        </div>
+    `;
+}
+
+// ====================================
+// TRANSACTION JOURNAL REPORT
+// ====================================
+
+function renderTransactionJournal() {
+    const startDate = document.getElementById('transactionJournalStartDate').value || getFirstDayOfMonth();
+    const endDate = document.getElementById('transactionJournalEndDate').value || getTodayDate();
+
+    // Get all transactions in the period
+    const periodTransactions = appState.transactions.filter(t => {
+        const tDate = t.simDate || t.date;
+        return tDate >= startDate && tDate <= endDate;
+    }).sort((a, b) => {
+        const aDate = a.simDate || a.date;
+        const bDate = b.simDate || b.date;
+        if (aDate !== bDate) return aDate.localeCompare(bDate);
+        return (a.id || 0) - (b.id || 0);
+    });
+
+    const journalEntries = periodTransactions.map(t => {
+        const tDate = t.simDate || t.date;
+        const tTime = t.simTime || '';
+        const timestamp = t.timestamp ? new Date(t.timestamp).toLocaleString() : '';
+
+        let entriesHtml = '';
+        let totalDebit = 0;
+        let totalCredit = 0;
+
+        if (t.entries) {
+            // New format with multiple entries
+            const debitEntries = t.entries.filter(e => e.type === 'debit');
+            const creditEntries = t.entries.filter(e => e.type === 'credit');
+
+            debitEntries.forEach(entry => {
+                const account = appState.accounts.find(a => a.id === entry.accountId);
+                totalDebit += entry.amount;
+                entriesHtml += `
+                    <tr>
+                        <td style="padding: 0.25rem 0.5rem; padding-left: 2rem;">
+                            DR: ${escapeHtml(account ? account.name : 'Unknown Account')}
+                        </td>
+                        <td style="padding: 0.25rem 0.5rem; text-align: right;">${formatCurrency(entry.amount)}</td>
+                        <td style="padding: 0.25rem 0.5rem;"></td>
+                    </tr>`;
+            });
+
+            creditEntries.forEach(entry => {
+                const account = appState.accounts.find(a => a.id === entry.accountId);
+                totalCredit += entry.amount;
+                entriesHtml += `
+                    <tr>
+                        <td style="padding: 0.25rem 0.5rem; padding-left: 3rem;">
+                            CR: ${escapeHtml(account ? account.name : 'Unknown Account')}
+                        </td>
+                        <td style="padding: 0.25rem 0.5rem;"></td>
+                        <td style="padding: 0.25rem 0.5rem; text-align: right;">${formatCurrency(entry.amount)}</td>
+                    </tr>`;
+            });
+        } else {
+            // Legacy format
+            const debitAccount = appState.accounts.find(a => a.id === t.debitAccount);
+            const creditAccount = appState.accounts.find(a => a.id === t.creditAccount);
+            totalDebit = t.amount;
+            totalCredit = t.amount;
+
+            entriesHtml = `
+                <tr>
+                    <td style="padding: 0.25rem 0.5rem; padding-left: 2rem;">
+                        DR: ${escapeHtml(debitAccount ? debitAccount.name : 'Unknown Account')}
+                    </td>
+                    <td style="padding: 0.25rem 0.5rem; text-align: right;">${formatCurrency(t.amount)}</td>
+                    <td style="padding: 0.25rem 0.5rem;"></td>
+                </tr>
+                <tr>
+                    <td style="padding: 0.25rem 0.5rem; padding-left: 3rem;">
+                        CR: ${escapeHtml(creditAccount ? creditAccount.name : 'Unknown Account')}
+                    </td>
+                    <td style="padding: 0.25rem 0.5rem;"></td>
+                    <td style="padding: 0.25rem 0.5rem; text-align: right;">${formatCurrency(t.amount)}</td>
+                </tr>`;
+        }
+
+        const balanced = Math.abs(totalDebit - totalCredit) < 0.01;
+        const balanceIndicator = balanced ? '' : ' <span style="color: #ef4444;">⚠ UNBALANCED</span>';
+
+        // Metadata display
+        let metadataHtml = '';
+        if (t.metadata && Object.keys(t.metadata).length > 0) {
+            const metaItems = Object.entries(t.metadata)
+                .filter(([key, value]) => value !== null && value !== undefined && value !== '')
+                .map(([key, value]) => `${key}: ${JSON.stringify(value)}`)
+                .join(', ');
+            if (metaItems) {
+                metadataHtml = `
+                    <tr>
+                        <td colspan="3" style="padding: 0.25rem 0.5rem; padding-left: 2rem; color: #6b7280; font-size: 0.85rem;">
+                            ${escapeHtml(metaItems)}
+                        </td>
+                    </tr>`;
+            }
+        }
+
+        return `
+            <div class="statement-section" style="margin-bottom: 1.5rem; border: 1px solid #e5e7eb; padding: 1rem; border-radius: 4px;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 0.9rem;">
+                    <thead>
+                        <tr style="background: #f9fafb;">
+                            <th colspan="3" style="text-align: left; padding: 0.5rem; border-bottom: 1px solid #d1d5db;">
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <div>
+                                        <strong>Journal Entry #${t.id || 'N/A'}</strong>
+                                        ${balanceIndicator}
+                                    </div>
+                                    <div style="font-weight: normal; color: #6b7280;">
+                                        ${formatDate(tDate)} ${tTime}
+                                        ${timestamp ? `<br/><span style="font-size: 0.8rem;">${timestamp}</span>` : ''}
+                                    </div>
+                                </div>
+                            </th>
+                        </tr>
+                        <tr style="background: #f9fafb;">
+                            <th colspan="3" style="text-align: left; padding: 0.5rem; font-weight: normal; border-bottom: 1px solid #e5e7eb;">
+                                ${escapeHtml(t.description)}
+                            </th>
+                        </tr>
+                        <tr style="background: #f3f4f6; font-size: 0.85rem;">
+                            <th style="text-align: left; padding: 0.25rem 0.5rem;">Account</th>
+                            <th style="text-align: right; padding: 0.25rem 0.5rem;">Debit</th>
+                            <th style="text-align: right; padding: 0.25rem 0.5rem;">Credit</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${entriesHtml}
+                        ${metadataHtml}
+                    </tbody>
+                    <tfoot>
+                        <tr style="border-top: 1px solid #333; font-weight: bold;">
+                            <td style="padding: 0.5rem;">TOTAL</td>
+                            <td style="text-align: right; padding: 0.5rem;">${formatCurrency(totalDebit)}</td>
+                            <td style="text-align: right; padding: 0.5rem;">${formatCurrency(totalCredit)}</td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>`;
+    }).join('');
+
+    const content = document.getElementById('transactionJournalContent');
+    content.innerHTML = `
+        <div class="statement-section">
+            <div class="statement-title">TRANSACTION JOURNAL</div>
+            <div>For the period ${formatDate(startDate)} to ${formatDate(endDate)}</div>
+            <div style="margin-top: 0.5rem; color: #6b7280;">
+                Total Entries: ${periodTransactions.length}
+            </div>
+        </div>
+
+        ${journalEntries || '<div style="margin-top: 1rem; color: #6b7280;">No transactions recorded for this period.</div>'}
+
+        <div style="margin-top: 1.5rem; padding: 1rem; background: #f3f4f6; border-radius: 4px;">
+            <div style="font-weight: bold; margin-bottom: 0.5rem;">About Transaction Journal</div>
+            <p style="font-size: 0.9rem; color: #4b5563;">
+                The Transaction Journal (also called General Journal) is the chronological record of all transactions
+                in double-entry format. Each entry shows the debits (DR) and credits (CR) with full metadata.
+                This is the original book of entry where all transactions are first recorded.
+            </p>
         </div>
     `;
 }
@@ -6546,6 +7011,11 @@ function setDefaultStatementDates() {
     document.getElementById('incomeEndDate').value = getTodayDate();
     document.getElementById('cashFlowStartDate').value = getFirstDayOfMonth();
     document.getElementById('cashFlowEndDate').value = getTodayDate();
+    document.getElementById('trialBalanceDate').value = getTodayDate();
+    document.getElementById('generalLedgerStartDate').value = getFirstDayOfMonth();
+    document.getElementById('generalLedgerEndDate').value = getTodayDate();
+    document.getElementById('transactionJournalStartDate').value = getFirstDayOfMonth();
+    document.getElementById('transactionJournalEndDate').value = getTodayDate();
 }
 
 // Update end dates for financial statements to current date (preserves user's start dates)
@@ -6559,12 +7029,25 @@ function updateStatementEndDates() {
     document.getElementById('incomeEndDate').value = currentDate;
     document.getElementById('cashFlowEndDate').value = currentDate;
 
+    // Update trial balance date
+    document.getElementById('trialBalanceDate').value = currentDate;
+
+    // Update general ledger and transaction journal end dates
+    document.getElementById('generalLedgerEndDate').value = currentDate;
+    document.getElementById('transactionJournalEndDate').value = currentDate;
+
     // If start dates are empty, set them to first day of current month
     if (!document.getElementById('incomeStartDate').value) {
         document.getElementById('incomeStartDate').value = getFirstDayOfMonth();
     }
     if (!document.getElementById('cashFlowStartDate').value) {
         document.getElementById('cashFlowStartDate').value = getFirstDayOfMonth();
+    }
+    if (!document.getElementById('generalLedgerStartDate').value) {
+        document.getElementById('generalLedgerStartDate').value = getFirstDayOfMonth();
+    }
+    if (!document.getElementById('transactionJournalStartDate').value) {
+        document.getElementById('transactionJournalStartDate').value = getFirstDayOfMonth();
     }
 }
 
@@ -6591,6 +7074,12 @@ function render() {
         renderIncomeStatement();
     } else if (activeTab === 'cash-flow') {
         renderCashFlowStatement();
+    } else if (activeTab === 'trial-balance') {
+        renderTrialBalance();
+    } else if (activeTab === 'general-ledger') {
+        renderGeneralLedger();
+    } else if (activeTab === 'transaction-journal') {
+        renderTransactionJournal();
     } else if (activeTab === 'commodities') {
         renderCommoditiesMarket();
     } else if (activeTab === 'map') {
@@ -6640,6 +7129,11 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('incomeEndDate').addEventListener('change', renderIncomeStatement);
     document.getElementById('cashFlowStartDate').addEventListener('change', renderCashFlowStatement);
     document.getElementById('cashFlowEndDate').addEventListener('change', renderCashFlowStatement);
+    document.getElementById('trialBalanceDate').addEventListener('change', renderTrialBalance);
+    document.getElementById('generalLedgerStartDate').addEventListener('change', renderGeneralLedger);
+    document.getElementById('generalLedgerEndDate').addEventListener('change', renderGeneralLedger);
+    document.getElementById('transactionJournalStartDate').addEventListener('change', renderTransactionJournal);
+    document.getElementById('transactionJournalEndDate').addEventListener('change', renderTransactionJournal);
 
     // Set default dates
     setDefaultTransactionDate();
