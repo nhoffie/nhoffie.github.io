@@ -111,18 +111,18 @@ let appState = {
         }
     ],
     commodities: [
-        { id: 1, name: 'Power', description: 'Electrical energy units', buyPrice: 4.00, sellPrice: 5.00 },
-        { id: 2, name: 'Water', description: 'Fresh water units', buyPrice: 2.00, sellPrice: 2.50 },
-        { id: 3, name: 'Lumber', description: 'Construction-grade lumber', buyPrice: 14.00, sellPrice: 16.00 },
-        { id: 4, name: 'Steel', description: 'Structural steel beams', buyPrice: 42.00, sellPrice: 50.00 },
-        { id: 5, name: 'Concrete', description: 'Ready-mix concrete', buyPrice: 18.00, sellPrice: 20.00 },
-        { id: 6, name: 'Raw Logs', description: 'Unprocessed timber logs', buyPrice: 6.00, sellPrice: 6.60 },
-        { id: 7, name: 'Iron Ore', description: 'Raw iron ore for smelting', buyPrice: 8.00, sellPrice: 8.80 },
-        { id: 8, name: 'Sand', description: 'Construction-grade sand', buyPrice: 2.00, sellPrice: 2.20 },
-        { id: 9, name: 'Gravel', description: 'Construction-grade gravel', buyPrice: 3.00, sellPrice: 3.30 },
-        { id: 10, name: 'Coal', description: 'Fuel for power generation and smelting', buyPrice: 5.00, sellPrice: 5.50 },
-        { id: 11, name: 'Oil', description: 'Petroleum fuel for power generation', buyPrice: 12.00, sellPrice: 13.20 },
-        { id: 12, name: 'Natural Gas', description: 'Clean-burning fuel for power', buyPrice: 8.00, sellPrice: 8.80 }
+        { id: 1, name: 'Power', description: 'Electrical energy units', buyPrice: 5.50, sellPrice: 5.00 },
+        { id: 2, name: 'Water', description: 'Fresh water units', buyPrice: 2.75, sellPrice: 2.50 },
+        { id: 3, name: 'Lumber', description: 'Construction-grade lumber', buyPrice: 18.50, sellPrice: 16.50 },
+        { id: 4, name: 'Steel', description: 'Structural steel beams', buyPrice: 45.00, sellPrice: 40.00 },
+        { id: 5, name: 'Concrete', description: 'Ready-mix concrete', buyPrice: 18.50, sellPrice: 16.50 },
+        { id: 6, name: 'Raw Logs', description: 'Unprocessed timber logs', buyPrice: 6.60, sellPrice: 6.00 },
+        { id: 7, name: 'Iron Ore', description: 'Raw iron ore for smelting', buyPrice: 8.80, sellPrice: 8.00 },
+        { id: 8, name: 'Sand', description: 'Construction-grade sand', buyPrice: 2.20, sellPrice: 2.00 },
+        { id: 9, name: 'Gravel', description: 'Construction-grade gravel', buyPrice: 3.30, sellPrice: 3.00 },
+        { id: 10, name: 'Coal', description: 'Fuel for power generation and smelting', buyPrice: 5.50, sellPrice: 5.00 },
+        { id: 11, name: 'Oil', description: 'Petroleum fuel for power generation', buyPrice: 13.20, sellPrice: 12.00 },
+        { id: 12, name: 'Natural Gas', description: 'Clean-burning fuel for power', buyPrice: 8.80, sellPrice: 8.00 }
     ],
     portfolio: {
         // Structure: { commodityId: { lots: [{ quantity, costBasis, purchaseDate, purchaseId }] } }
