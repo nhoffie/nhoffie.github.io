@@ -111,18 +111,18 @@ let appState = {
         }
     ],
     commodities: [
-        { id: 1, name: 'Power', description: 'Electrical energy units', price: 5.00 },
-        { id: 2, name: 'Water', description: 'Fresh water units', price: 2.50 },
-        { id: 3, name: 'Lumber', description: 'Construction-grade lumber', price: 10.00 },
-        { id: 4, name: 'Steel', description: 'Structural steel beams', price: 20.00 },
-        { id: 5, name: 'Concrete', description: 'Ready-mix concrete', price: 15.00 },
-        { id: 6, name: 'Raw Logs', description: 'Unprocessed timber logs', price: 8.00 },
-        { id: 7, name: 'Iron Ore', description: 'Raw iron ore for smelting', price: 12.00 },
-        { id: 8, name: 'Sand', description: 'Construction-grade sand', price: 3.00 },
-        { id: 9, name: 'Gravel', description: 'Construction-grade gravel', price: 4.00 },
-        { id: 10, name: 'Coal', description: 'Fuel for power generation and smelting', price: 7.00 },
-        { id: 11, name: 'Oil', description: 'Petroleum fuel for power generation', price: 15.00 },
-        { id: 12, name: 'Natural Gas', description: 'Clean-burning fuel for power', price: 10.00 }
+        { id: 1, name: 'Power', description: 'Electrical energy units', buyPrice: 4.00, sellPrice: 5.00 },
+        { id: 2, name: 'Water', description: 'Fresh water units', buyPrice: 2.00, sellPrice: 2.50 },
+        { id: 3, name: 'Lumber', description: 'Construction-grade lumber', buyPrice: 14.00, sellPrice: 16.00 },
+        { id: 4, name: 'Steel', description: 'Structural steel beams', buyPrice: 42.00, sellPrice: 50.00 },
+        { id: 5, name: 'Concrete', description: 'Ready-mix concrete', buyPrice: 18.00, sellPrice: 20.00 },
+        { id: 6, name: 'Raw Logs', description: 'Unprocessed timber logs', buyPrice: 6.00, sellPrice: 6.60 },
+        { id: 7, name: 'Iron Ore', description: 'Raw iron ore for smelting', buyPrice: 8.00, sellPrice: 8.80 },
+        { id: 8, name: 'Sand', description: 'Construction-grade sand', buyPrice: 2.00, sellPrice: 2.20 },
+        { id: 9, name: 'Gravel', description: 'Construction-grade gravel', buyPrice: 3.00, sellPrice: 3.30 },
+        { id: 10, name: 'Coal', description: 'Fuel for power generation and smelting', buyPrice: 5.00, sellPrice: 5.50 },
+        { id: 11, name: 'Oil', description: 'Petroleum fuel for power generation', buyPrice: 12.00, sellPrice: 13.20 },
+        { id: 12, name: 'Natural Gas', description: 'Clean-burning fuel for power', buyPrice: 8.00, sellPrice: 8.80 }
     ],
     portfolio: {
         // Structure: { commodityId: { lots: [{ quantity, costBasis, purchaseDate, purchaseId }] } }
@@ -1187,7 +1187,7 @@ function buyCommodity(commodityId, quantity) {
         return false;
     }
 
-    const totalCost = quantity * commodity.price;
+    const totalCost = quantity * commodity.buyPrice;
     const cashBalance = getCashBalance();
 
     if (totalCost > cashBalance) {
@@ -1208,7 +1208,7 @@ function buyCommodity(commodityId, quantity) {
     const transaction = {
         id: appState.nextTransactionId++,
         date: getTodayDate(),
-        description: `Purchase ${quantity} units of ${commodity.name} @ ${formatCurrency(commodity.price)}/unit`,
+        description: `Purchase ${quantity} units of ${commodity.name} @ ${formatCurrency(commodity.buyPrice)}/unit`,
         debitAccount: inventoryAccount.id,
         creditAccount: cashAccount.id,
         amount: totalCost
@@ -1220,7 +1220,7 @@ function buyCommodity(commodityId, quantity) {
     const portfolio = getPortfolioCommodity(commodityId);
     portfolio.lots.push({
         quantity: quantity,
-        costBasis: commodity.price,
+        costBasis: commodity.buyPrice,
         purchaseDate: getTodayDate(),
         purchaseId: appState.nextTradeId
     });
@@ -1231,7 +1231,7 @@ function buyCommodity(commodityId, quantity) {
         type: 'buy',
         commodityId: commodityId,
         quantity: quantity,
-        price: commodity.price,
+        price: commodity.buyPrice,
         totalValue: totalCost,
         date: getTodayDate(),
         transactionId: transaction.id
@@ -1255,7 +1255,7 @@ function sellCommodity(commodityId, quantity) {
     }
 
     // Calculate proceeds
-    const totalProceeds = quantity * commodity.price;
+    const totalProceeds = quantity * commodity.sellPrice;
 
     // Get accounts
     const cashAccount = getCashAccount();
@@ -1314,7 +1314,7 @@ function sellCommodity(commodityId, quantity) {
     const transaction = {
         id: appState.nextTransactionId++,
         date: getTodayDate(),
-        description: `Sale ${quantity} units of ${commodity.name} @ ${formatCurrency(commodity.price)}/unit (${isGain ? 'Gain' : 'Loss'}: ${formatCurrency(Math.abs(gainLoss))})`,
+        description: `Sale ${quantity} units of ${commodity.name} @ ${formatCurrency(commodity.sellPrice)}/unit (${isGain ? 'Gain' : 'Loss'}: ${formatCurrency(Math.abs(gainLoss))})`,
         entries: entries
     };
 
@@ -1335,7 +1335,7 @@ function sellCommodity(commodityId, quantity) {
         type: 'sell',
         commodityId: commodityId,
         quantity: quantity,
-        price: commodity.price,
+        price: commodity.sellPrice,
         totalValue: totalProceeds,
         costBasis: totalCostBasis,
         gainLoss: gainLoss,
@@ -1354,7 +1354,7 @@ function getPortfolioSummary() {
         const quantity = getTotalQuantity(commodity.id);
         if (quantity > 0 || true) { // Show all commodities
             const avgCost = getAverageCostBasis(commodity.id);
-            const currentValue = quantity * commodity.price;
+            const currentValue = quantity * commodity.sellPrice;
             const totalCost = quantity * avgCost;
             const unrealizedGainLoss = currentValue - totalCost;
             const percentGainLoss = totalCost > 0 ? (unrealizedGainLoss / totalCost) * 100 : 0;
@@ -1363,7 +1363,7 @@ function getPortfolioSummary() {
                 commodity: commodity,
                 quantity: quantity,
                 avgCost: avgCost,
-                currentPrice: commodity.price,
+                currentPrice: commodity.sellPrice,
                 currentValue: currentValue,
                 totalCost: totalCost,
                 unrealizedGainLoss: unrealizedGainLoss,
@@ -1400,7 +1400,7 @@ function renderCommoditiesList() {
     `;
 
     appState.commodities.forEach(commodity => {
-        selectorHtml += `<option value="${commodity.id}" ${commodity.id === selectedCommodityId ? 'selected' : ''}>${commodity.name} - ${formatCurrency(commodity.price)}/unit</option>`;
+        selectorHtml += `<option value="${commodity.id}" ${commodity.id === selectedCommodityId ? 'selected' : ''}>${commodity.name} - Buy: ${formatCurrency(commodity.buyPrice)} / Sell: ${formatCurrency(commodity.sellPrice)}</option>`;
     });
 
     selectorHtml += `
@@ -1445,7 +1445,10 @@ function renderSelectedCommodity() {
         <div class="commodity-card-single">
             <div class="commodity-header">
                 <h4>${escapeHtml(commodity.name)}</h4>
-                <div class="commodity-price">${formatCurrency(commodity.price)}<span class="price-unit">/unit</span></div>
+                <div class="commodity-price">
+                    <div>Buy: ${formatCurrency(commodity.buyPrice)}<span class="price-unit">/unit</span></div>
+                    <div>Sell: ${formatCurrency(commodity.sellPrice)}<span class="price-unit">/unit</span></div>
+                </div>
             </div>
             <p class="commodity-description">${escapeHtml(commodity.description)}</p>
             <div class="commodity-inventory">In Portfolio: <strong>${quantity} units</strong></div>
@@ -1455,7 +1458,7 @@ function renderSelectedCommodity() {
                     <h5>Buy</h5>
                     <div class="trade-controls">
                         <input type="number" id="buy-quantity-${commodity.id}" min="1" step="1" value="1" class="quantity-input">
-                        <div class="trade-total" id="buy-total-${commodity.id}">${formatCurrency(commodity.price)}</div>
+                        <div class="trade-total" id="buy-total-${commodity.id}">${formatCurrency(commodity.buyPrice)}</div>
                         <button class="btn btn-primary" onclick="executeBuy(${commodity.id})">Buy</button>
                     </div>
                 </div>
@@ -1464,7 +1467,7 @@ function renderSelectedCommodity() {
                     <h5>Sell</h5>
                     <div class="trade-controls">
                         <input type="number" id="sell-quantity-${commodity.id}" min="1" step="1" value="1" max="${quantity}" class="quantity-input" ${quantity === 0 ? 'disabled' : ''}>
-                        <div class="trade-total" id="sell-total-${commodity.id}">${formatCurrency(commodity.price)}</div>
+                        <div class="trade-total" id="sell-total-${commodity.id}">${formatCurrency(commodity.sellPrice)}</div>
                         <button class="btn btn-danger" onclick="executeSell(${commodity.id})" ${quantity === 0 ? 'disabled' : ''}>Sell</button>
                     </div>
                 </div>
@@ -1481,14 +1484,14 @@ function renderSelectedCommodity() {
     if (buyInput) {
         buyInput.addEventListener('input', () => {
             const quantity = parseFloat(buyInput.value) || 0;
-            buyTotal.textContent = formatCurrency(quantity * commodity.price);
+            buyTotal.textContent = formatCurrency(quantity * commodity.buyPrice);
         });
     }
 
     if (sellInput) {
         sellInput.addEventListener('input', () => {
             const quantity = parseFloat(sellInput.value) || 0;
-            sellTotal.textContent = formatCurrency(quantity * commodity.price);
+            sellTotal.textContent = formatCurrency(quantity * commodity.sellPrice);
         });
     }
 }
@@ -3603,7 +3606,7 @@ function cancelProduction(productionId) {
 
         appState.portfolio[commodityId].lots.push({
             quantity: refundQty,
-            costBasis: commodity.price,
+            costBasis: commodity.buyPrice,
             purchaseDate: getTodayDate(),
             purchaseId: `cancel-${productionId}`
         });
@@ -3914,7 +3917,7 @@ function demolishBuilding(buildingId) {
         if (!commodity) continue;
 
         const recoveredQty = Math.floor(quantity * 0.5); // 50% recovery
-        const recoveredValue = recoveredQty * commodity.price;
+        const recoveredValue = recoveredQty * commodity.buyPrice;
 
         // Add to portfolio
         if (!appState.portfolio[commodity.id]) {
@@ -3923,7 +3926,7 @@ function demolishBuilding(buildingId) {
 
         appState.portfolio[commodity.id].lots.push({
             quantity: recoveredQty,
-            costBasis: commodity.price,
+            costBasis: commodity.buyPrice,
             purchaseDate: getTodayDate(),
             purchaseId: `demolish-${buildingId}`
         });
@@ -5651,12 +5654,13 @@ document.addEventListener('DOMContentLoaded', () => {
  * To change a commodity's price:
  *
  * 1. Find the commodity in appState.commodities
- * 2. Update its price property
+ * 2. Update its buyPrice and/or sellPrice properties
  * 3. Call render() to update the UI
  *
  * Example:
  * const commodity = appState.commodities.find(c => c.name === 'Power');
- * commodity.price = 55.00;
+ * commodity.buyPrice = 4.50;
+ * commodity.sellPrice = 5.50;
  * render();
  *
  * Note: Price changes only affect future trades. Existing portfolio lots
