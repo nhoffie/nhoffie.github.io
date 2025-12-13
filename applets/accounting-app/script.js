@@ -172,6 +172,513 @@ let appState = {
 let hasUnsavedChanges = false;
 
 // ====================================
+// TRANSACTION MANAGER & GENERAL LEDGER
+// ====================================
+
+/**
+ * TransactionManager - Centralized transaction creation and validation
+ * Ensures all transactions follow double-entry rules and have proper timestamps
+ */
+class TransactionManager {
+    constructor(appState) {
+        this.appState = appState;
+    }
+
+    /**
+     * Create and post a transaction
+     * @param {Object} params - Transaction parameters
+     * @param {string} params.description - Transaction description
+     * @param {Array} params.entries - Array of {accountId, type, amount}
+     * @param {Object} params.metadata - Optional metadata for traceability
+     * @returns {Object} Posted transaction or null if validation failed
+     */
+    createTransaction({ description, entries, metadata = {} }) {
+        // Generate timestamp
+        const timestamp = new Date().toISOString();
+        const simMs = getCurrentSimulationTime();
+        const simTime = msToCalendarTime(simMs);
+        const simDate = `Y${simTime.year}-M${simTime.month}-D${simTime.day}`;
+        const simTimeStr = `${String(simTime.hour).padStart(2, '0')}:${String(simTime.minute).padStart(2, '0')}:${String(simTime.second).padStart(2, '0')}`;
+
+        // Create transaction object
+        const transaction = {
+            id: this.appState.nextTransactionId++,
+            timestamp: timestamp,
+            simDate: simDate,
+            simTime: simTimeStr,
+            simMs: simMs, // Store milliseconds for sorting
+            description: description,
+            status: 'posted',
+            entries: entries,
+            metadata: metadata,
+            audit: {
+                createdBy: metadata.createdBy || 'system',
+                createdAt: timestamp,
+                voidedBy: null,
+                voidedAt: null,
+                voidReason: null
+            }
+        };
+
+        // Validate transaction
+        const validation = this.validateTransaction(transaction);
+        if (!validation.valid) {
+            console.error('Transaction validation failed:', validation.errors);
+            return { success: false, errors: validation.errors };
+        }
+
+        // Post transaction
+        this.appState.transactions.push(transaction);
+
+        // Update general ledger
+        if (window.generalLedger) {
+            window.generalLedger.postTransaction(transaction);
+        }
+
+        // Validate balance sheet
+        if (window.generalLedger) {
+            const balanceCheck = window.generalLedger.validateBalanceSheet();
+            if (!balanceCheck.balanced) {
+                console.warn('Balance sheet is out of balance after transaction!', balanceCheck);
+            }
+        }
+
+        hasUnsavedChanges = true;
+        return { success: true, transaction: transaction };
+    }
+
+    /**
+     * Create a simple two-account transaction
+     * @param {string} description - Transaction description
+     * @param {number} debitAccountId - Account to debit
+     * @param {number} creditAccountId - Account to credit
+     * @param {number} amount - Transaction amount
+     * @param {Object} metadata - Optional metadata
+     */
+    createSimpleTransaction(description, debitAccountId, creditAccountId, amount, metadata = {}) {
+        return this.createTransaction({
+            description: description,
+            entries: [
+                { accountId: debitAccountId, type: 'debit', amount: amount },
+                { accountId: creditAccountId, type: 'credit', amount: amount }
+            ],
+            metadata: metadata
+        });
+    }
+
+    /**
+     * Validate a transaction
+     * @param {Object} transaction - Transaction to validate
+     * @returns {Object} Validation result with valid flag and errors array
+     */
+    validateTransaction(transaction) {
+        const errors = [];
+
+        // Check required fields
+        if (!transaction.description) {
+            errors.push('Description is required');
+        }
+
+        if (!transaction.entries || transaction.entries.length < 2) {
+            errors.push('Transaction must have at least 2 entries');
+        }
+
+        // Validate entries
+        let debitTotal = 0;
+        let creditTotal = 0;
+
+        transaction.entries.forEach((entry, index) => {
+            // Check account exists
+            const account = this.appState.accounts.find(a => a.id === entry.accountId);
+            if (!account) {
+                errors.push(`Entry ${index + 1}: Account ID ${entry.accountId} not found`);
+            }
+
+            // Check amount is positive
+            if (!entry.amount || entry.amount <= 0) {
+                errors.push(`Entry ${index + 1}: Amount must be positive`);
+            }
+
+            // Check type is valid
+            if (entry.type !== 'debit' && entry.type !== 'credit') {
+                errors.push(`Entry ${index + 1}: Type must be 'debit' or 'credit'`);
+            }
+
+            // Sum debits and credits
+            if (entry.type === 'debit') {
+                debitTotal += entry.amount;
+            } else if (entry.type === 'credit') {
+                creditTotal += entry.amount;
+            }
+        });
+
+        // Check debits = credits (allow small rounding difference)
+        if (Math.abs(debitTotal - creditTotal) > 0.01) {
+            errors.push(`Debits (${debitTotal.toFixed(2)}) must equal credits (${creditTotal.toFixed(2)})`);
+        }
+
+        return {
+            valid: errors.length === 0,
+            errors: errors
+        };
+    }
+
+    /**
+     * Void a transaction (mark as void, don't delete)
+     * @param {number} transactionId - ID of transaction to void
+     * @param {string} reason - Reason for voiding
+     * @param {string} voidedBy - Who voided it (user/system)
+     */
+    voidTransaction(transactionId, reason, voidedBy = 'user') {
+        const transaction = this.appState.transactions.find(t => t.id === transactionId);
+        if (!transaction) {
+            return { success: false, error: 'Transaction not found' };
+        }
+
+        if (transaction.status === 'void') {
+            return { success: false, error: 'Transaction already voided' };
+        }
+
+        transaction.status = 'void';
+        transaction.audit.voidedBy = voidedBy;
+        transaction.audit.voidedAt = new Date().toISOString();
+        transaction.audit.voidReason = reason;
+
+        // Update general ledger
+        if (window.generalLedger) {
+            window.generalLedger.invalidateCache();
+        }
+
+        hasUnsavedChanges = true;
+        return { success: true };
+    }
+
+    /**
+     * Get transactions by date range
+     * @param {string} startDate - Start date (simDate format)
+     * @param {string} endDate - End date (simDate format)
+     * @param {boolean} includeVoided - Whether to include voided transactions
+     */
+    getTransactionsByDateRange(startDate, endDate, includeVoided = false) {
+        return this.appState.transactions.filter(t => {
+            if (!includeVoided && t.status === 'void') return false;
+            if (startDate && compareDates(t.simDate, startDate) < 0) return false;
+            if (endDate && compareDates(t.simDate, endDate) > 0) return false;
+            return true;
+        });
+    }
+}
+
+/**
+ * GeneralLedger - Manages account balances with caching and incremental updates
+ */
+class GeneralLedger {
+    constructor(appState) {
+        this.appState = appState;
+        this.balanceCache = null;
+        this.cacheTimestamp = null;
+        this.lastProcessedTransactionId = 0;
+    }
+
+    /**
+     * Get account balances as of a specific date
+     * @param {string} asOfDate - Date in simDate format (null for current)
+     * @returns {Object} Balances by account ID
+     */
+    getBalances(asOfDate = null) {
+        // If requesting current balances and cache is valid, use cache
+        if (!asOfDate && this.balanceCache && this.isCacheValid()) {
+            return { ...this.balanceCache };
+        }
+
+        // Calculate balances
+        const balances = this.calculateBalances(asOfDate);
+
+        // Cache if current balances
+        if (!asOfDate) {
+            this.balanceCache = balances;
+            this.cacheTimestamp = Date.now();
+            this.lastProcessedTransactionId = this.appState.nextTransactionId - 1;
+        }
+
+        return balances;
+    }
+
+    /**
+     * Calculate balances from scratch
+     * @param {string} asOfDate - Date in simDate format (null for all transactions)
+     */
+    calculateBalances(asOfDate = null) {
+        const balances = {};
+
+        // Initialize with opening balances
+        this.appState.accounts.forEach(account => {
+            balances[account.id] = account.openingBalance || 0;
+        });
+
+        // Filter transactions
+        const transactions = asOfDate
+            ? this.appState.transactions.filter(t => {
+                return t.status !== 'void' && compareDates(t.simDate || t.date, asOfDate) <= 0;
+            })
+            : this.appState.transactions.filter(t => t.status !== 'void');
+
+        // Apply transactions
+        transactions.forEach(transaction => {
+            this.applyTransactionToBalances(transaction, balances);
+        });
+
+        return balances;
+    }
+
+    /**
+     * Apply a single transaction to balance object
+     * @param {Object} transaction - Transaction to apply
+     * @param {Object} balances - Balances object to update
+     */
+    applyTransactionToBalances(transaction, balances) {
+        // Handle new format with entries array
+        if (transaction.entries) {
+            transaction.entries.forEach(entry => {
+                const account = this.appState.accounts.find(a => a.id === entry.accountId);
+                if (!account) return;
+
+                if (!balances[entry.accountId]) balances[entry.accountId] = 0;
+
+                const amount = entry.amount;
+
+                if (entry.type === 'debit') {
+                    // Debit increases: Assets, Expenses
+                    // Debit decreases: Liabilities, Equity, Revenue
+                    if (account.type === 'Asset' || account.type === 'Expense') {
+                        balances[entry.accountId] += amount;
+                    } else {
+                        balances[entry.accountId] -= amount;
+                    }
+                } else {
+                    // Credit increases: Liabilities, Equity, Revenue
+                    // Credit decreases: Assets, Expenses
+                    if (account.type === 'Liability' || account.type === 'Equity' || account.type === 'Revenue') {
+                        balances[entry.accountId] += amount;
+                    } else {
+                        balances[entry.accountId] -= amount;
+                    }
+                }
+            });
+        }
+        // Handle legacy format
+        else if (transaction.debitAccount && transaction.creditAccount) {
+            const debitAccount = this.appState.accounts.find(a => a.id === transaction.debitAccount);
+            const creditAccount = this.appState.accounts.find(a => a.id === transaction.creditAccount);
+
+            if (!debitAccount || !creditAccount) return;
+
+            if (!balances[transaction.debitAccount]) balances[transaction.debitAccount] = 0;
+            if (!balances[transaction.creditAccount]) balances[transaction.creditAccount] = 0;
+
+            // Apply debit
+            if (debitAccount.type === 'Asset' || debitAccount.type === 'Expense') {
+                balances[transaction.debitAccount] += transaction.amount;
+            } else {
+                balances[transaction.debitAccount] -= transaction.amount;
+            }
+
+            // Apply credit
+            if (creditAccount.type === 'Liability' || creditAccount.type === 'Equity' || creditAccount.type === 'Revenue') {
+                balances[transaction.creditAccount] += transaction.amount;
+            } else {
+                balances[transaction.creditAccount] -= transaction.amount;
+            }
+        }
+    }
+
+    /**
+     * Post a transaction and update cache incrementally
+     * @param {Object} transaction - Transaction that was just posted
+     */
+    postTransaction(transaction) {
+        if (this.balanceCache) {
+            this.applyTransactionToBalances(transaction, this.balanceCache);
+            this.lastProcessedTransactionId = transaction.id;
+        }
+    }
+
+    /**
+     * Check if cache is still valid
+     */
+    isCacheValid() {
+        // Cache is valid if no transactions were added, edited, or voided
+        return this.lastProcessedTransactionId === this.appState.nextTransactionId - 1;
+    }
+
+    /**
+     * Invalidate cache (call when transactions are modified)
+     */
+    invalidateCache() {
+        this.balanceCache = null;
+        this.cacheTimestamp = null;
+        this.lastProcessedTransactionId = 0;
+    }
+
+    /**
+     * Validate that the balance sheet balances
+     * @returns {Object} Validation result with balanced flag and totals
+     */
+    validateBalanceSheet() {
+        const balances = this.getBalances();
+
+        let totalAssets = 0;
+        let totalLiabilities = 0;
+        let totalEquity = 0;
+
+        this.appState.accounts.forEach(account => {
+            const balance = balances[account.id] || 0;
+
+            if (account.type === 'Asset') {
+                totalAssets += balance;
+            } else if (account.type === 'Liability') {
+                totalLiabilities += balance;
+            } else if (account.type === 'Equity') {
+                totalEquity += balance;
+            }
+        });
+
+        const difference = Math.abs(totalAssets - (totalLiabilities + totalEquity));
+        const balanced = difference < 0.01; // Allow 1 cent rounding error
+
+        return {
+            balanced: balanced,
+            totalAssets: totalAssets,
+            totalLiabilities: totalLiabilities,
+            totalEquity: totalEquity,
+            difference: difference
+        };
+    }
+
+    /**
+     * Get balance for a specific account
+     * @param {number} accountId - Account ID
+     * @param {string} asOfDate - Optional date
+     */
+    getAccountBalance(accountId, asOfDate = null) {
+        const balances = this.getBalances(asOfDate);
+        return balances[accountId] || 0;
+    }
+}
+
+// Initialize global instances
+let transactionManager = null;
+let generalLedger = null;
+
+function initializeFinancialSystem() {
+    // Migrate legacy transactions to new format
+    migrateLegacyTransactions();
+
+    // Initialize managers
+    transactionManager = new TransactionManager(appState);
+    generalLedger = new GeneralLedger(appState);
+
+    // Make available globally
+    window.transactionManager = transactionManager;
+    window.generalLedger = generalLedger;
+}
+
+/**
+ * Migrate legacy transactions to new format with timestamps and status
+ */
+function migrateLegacyTransactions() {
+    let migrationCount = 0;
+
+    appState.transactions.forEach(transaction => {
+        let needsMigration = false;
+
+        // Add timestamp if missing
+        if (!transaction.timestamp) {
+            transaction.timestamp = new Date().toISOString();
+            needsMigration = true;
+        }
+
+        // Add simulation date/time if missing
+        if (!transaction.simDate && transaction.date) {
+            transaction.simDate = transaction.date;
+            needsMigration = true;
+        }
+
+        // Add simTime if missing
+        if (!transaction.simTime) {
+            transaction.simTime = '00:00:00';
+            needsMigration = true;
+        }
+
+        // Add simMs if missing (try to parse from simDate)
+        if (!transaction.simMs && transaction.simDate) {
+            const parts = transaction.simDate.match(/Y(\d+)-M(\d+)-D(\d+)/);
+            if (parts) {
+                const year = parseInt(parts[1]);
+                const month = parseInt(parts[2]);
+                const day = parseInt(parts[3]);
+                transaction.simMs = calendarTimeToMs(year, month, day, 0, 0, 0);
+                needsMigration = true;
+            }
+        }
+
+        // Add status if missing
+        if (!transaction.status) {
+            transaction.status = 'posted';
+            needsMigration = true;
+        }
+
+        // Convert simple format to entries format
+        if (transaction.debitAccount && transaction.creditAccount && !transaction.entries) {
+            transaction.entries = [
+                { accountId: transaction.debitAccount, type: 'debit', amount: transaction.amount },
+                { accountId: transaction.creditAccount, type: 'credit', amount: transaction.amount }
+            ];
+            needsMigration = true;
+        }
+
+        // Convert old entry format (account) to new format (accountId)
+        if (transaction.entries) {
+            transaction.entries.forEach(entry => {
+                if (entry.account && !entry.accountId) {
+                    entry.accountId = entry.account;
+                    needsMigration = true;
+                }
+            });
+        }
+
+        // Add audit trail if missing
+        if (!transaction.audit) {
+            transaction.audit = {
+                createdBy: 'system',
+                createdAt: transaction.timestamp || new Date().toISOString(),
+                voidedBy: null,
+                voidedAt: null,
+                voidReason: null
+            };
+            needsMigration = true;
+        }
+
+        // Add metadata if missing
+        if (!transaction.metadata) {
+            transaction.metadata = {
+                source: 'legacy'
+            };
+            needsMigration = true;
+        }
+
+        if (needsMigration) {
+            migrationCount++;
+        }
+    });
+
+    if (migrationCount > 0) {
+        console.log(`Migrated ${migrationCount} legacy transactions to new format`);
+        hasUnsavedChanges = true;
+    }
+}
+
+// ====================================
 // SESSION KEY MANAGEMENT
 // ====================================
 
@@ -333,6 +840,9 @@ function restoreSessionKey() {
         hasUnsavedChanges = false;
         keyInput.value = '';
         showStatus('restoreStatus', 'Data restored successfully!', 'success');
+
+        // Reinitialize financial system with restored data
+        initializeFinancialSystem();
 
         // Restart the clock with the updated time
         startSimulationClock();
@@ -1039,20 +1549,59 @@ function saveTransaction(event) {
     }
 
     if (transactionId) {
-        // Edit existing transaction
+        // Edit existing transaction (legacy mode)
         const transaction = appState.transactions.find(t => t.id === parseInt(transactionId));
         if (transaction) {
             Object.assign(transaction, transactionData);
+            // Invalidate cache since we modified a transaction
+            if (window.generalLedger) {
+                window.generalLedger.invalidateCache();
+            }
         }
+        hasUnsavedChanges = true;
     } else {
-        // Add new transaction
-        appState.transactions.push({
-            id: appState.nextTransactionId++,
-            ...transactionData
-        });
+        // Add new transaction using TransactionManager
+        if (window.transactionManager) {
+            // Convert to new format with accountId
+            let entries;
+            if (transactionData.entries) {
+                // Multi-entry transaction - convert account to accountId
+                entries = transactionData.entries.map(e => ({
+                    accountId: e.account,
+                    type: e.type,
+                    amount: e.amount
+                }));
+            } else {
+                // Simple transaction - convert to entries format
+                entries = [
+                    { accountId: transactionData.debitAccount, type: 'debit', amount: transactionData.amount },
+                    { accountId: transactionData.creditAccount, type: 'credit', amount: transactionData.amount }
+                ];
+            }
+
+            const result = window.transactionManager.createTransaction({
+                description: description,
+                entries: entries,
+                metadata: {
+                    createdBy: 'user',
+                    source: 'manual_entry'
+                }
+            });
+
+            if (!result.success) {
+                alert('Transaction validation failed:\n' + result.errors.join('\n'));
+                return;
+            }
+        } else {
+            // Fallback to legacy mode if TransactionManager not available
+            appState.transactions.push({
+                id: appState.nextTransactionId++,
+                ...transactionData
+            });
+            hasUnsavedChanges = true;
+        }
     }
 
-    hasUnsavedChanges = true;
     cancelTransactionEdit();
     render();
 }
@@ -1204,17 +1753,25 @@ function buyCommodity(commodityId, quantity) {
         return false;
     }
 
-    // Create transaction: Debit Inventory, Credit Cash
-    const transaction = {
-        id: appState.nextTransactionId++,
-        date: getTodayDate(),
-        description: `Purchase ${quantity} units of ${commodity.name} @ ${formatCurrency(commodity.buyPrice)}/unit`,
-        debitAccount: inventoryAccount.id,
-        creditAccount: cashAccount.id,
-        amount: totalCost
-    };
+    // Create transaction using TransactionManager: Debit Inventory, Credit Cash
+    const result = window.transactionManager.createSimpleTransaction(
+        `Purchase ${quantity} units of ${commodity.name} @ ${formatCurrency(commodity.buyPrice)}/unit`,
+        inventoryAccount.id,  // debit
+        cashAccount.id,       // credit
+        totalCost,
+        {
+            type: 'commodity_purchase',
+            commodityId: commodityId,
+            quantity: quantity,
+            unitPrice: commodity.buyPrice,
+            tradeId: appState.nextTradeId
+        }
+    );
 
-    appState.transactions.push(transaction);
+    if (!result.success) {
+        alert('Failed to create transaction: ' + result.errors.join(', '));
+        return false;
+    }
 
     // Add to portfolio using FIFO (create new lot)
     const portfolio = getPortfolioCommodity(commodityId);
@@ -1234,7 +1791,7 @@ function buyCommodity(commodityId, quantity) {
         price: commodity.buyPrice,
         totalValue: totalCost,
         date: getTodayDate(),
-        transactionId: transaction.id
+        transactionId: result.transaction.id
     });
 
     hasUnsavedChanges = true;
@@ -4749,6 +5306,12 @@ function renderEquityManagement() {
 // ====================================
 
 function calculateAccountBalances(asOfDate = null) {
+    // Use GeneralLedger if available (new system), otherwise fall back to legacy calculation
+    if (window.generalLedger) {
+        return window.generalLedger.getBalances(asOfDate);
+    }
+
+    // Legacy calculation (for backward compatibility during migration)
     const balances = {};
 
     // Initialize with opening balances
@@ -4758,7 +5321,7 @@ function calculateAccountBalances(asOfDate = null) {
 
     // Filter transactions by date if specified
     const relevantTransactions = asOfDate
-        ? appState.transactions.filter(t => compareDates(t.date, asOfDate) <= 0)
+        ? appState.transactions.filter(t => compareDates(t.date || t.simDate, asOfDate) <= 0)
         : appState.transactions;
 
     // Apply transactions
@@ -4766,26 +5329,27 @@ function calculateAccountBalances(asOfDate = null) {
         if (transaction.entries) {
             // Multi-entry transaction
             transaction.entries.forEach(entry => {
-                const account = appState.accounts.find(a => a.id === entry.account);
+                const account = appState.accounts.find(a => a.id === entry.account || a.id === entry.accountId);
                 if (!account) return;
 
-                if (!balances[entry.account]) balances[entry.account] = 0;
+                const accountId = entry.account || entry.accountId;
+                if (!balances[accountId]) balances[accountId] = 0;
 
                 if (entry.type === 'debit') {
                     // Debit increases: Assets, Expenses
                     // Debit decreases: Liabilities, Equity, Revenue
                     if (account.type === 'Asset' || account.type === 'Expense') {
-                        balances[entry.account] += entry.amount;
+                        balances[accountId] += entry.amount;
                     } else {
-                        balances[entry.account] -= entry.amount;
+                        balances[accountId] -= entry.amount;
                     }
                 } else {
                     // Credit increases: Liabilities, Equity, Revenue
                     // Credit decreases: Assets, Expenses
                     if (account.type === 'Liability' || account.type === 'Equity' || account.type === 'Revenue') {
-                        balances[entry.account] += entry.amount;
+                        balances[accountId] += entry.amount;
                     } else {
-                        balances[entry.account] -= entry.amount;
+                        balances[accountId] -= entry.amount;
                     }
                 }
             });
@@ -4846,11 +5410,19 @@ function renderBalanceSheet() {
     const totalLiabilities = liabilities.reduce((sum, a) => sum + a.balance, 0);
     const totalEquity = equity.reduce((sum, a) => sum + a.balance, 0);
 
+    // Calculate balance sheet validation
+    const difference = Math.abs(totalAssets - (totalLiabilities + totalEquity));
+    const balanced = difference < 0.01; // Allow 1 cent rounding error
+    const balanceIndicator = balanced
+        ? '<span style="color: #28a745; font-weight: bold;">✓ Balanced</span>'
+        : `<span style="color: #dc3545; font-weight: bold;">✗ Out of Balance (${formatCurrency(difference)})</span>`;
+
     const content = document.getElementById('balanceSheetContent');
     content.innerHTML = `
         <div class="statement-section">
             <div class="statement-title">BALANCE SHEET</div>
             <div>As of ${formatDate(asOfDate)}</div>
+            <div style="margin-top: 0.5rem; font-size: 0.9rem;">Status: ${balanceIndicator}</div>
         </div>
 
         <div class="statement-section">
@@ -5766,6 +6338,9 @@ document.addEventListener('DOMContentLoaded', () => {
             e.returnValue = '';
         }
     });
+
+    // Initialize financial system (TransactionManager and GeneralLedger)
+    initializeFinancialSystem();
 
     // Initial render
     render();
