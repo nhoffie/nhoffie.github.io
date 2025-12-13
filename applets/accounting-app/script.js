@@ -5492,17 +5492,38 @@ function renderBalanceSheet() {
     const asOfDate = document.getElementById('balanceSheetDate').value || getTodayDate();
     const balances = calculateAccountBalances(asOfDate);
 
-    const assets = getAccountsByType('Asset', balances);
-    const liabilities = getAccountsByType('Liability', balances);
+    // Categorize assets
+    const currentAssets = getAccountsByType('Asset', balances).filter(a =>
+        ['Cash', 'Accounts Receivable', 'Inventory'].includes(a.name)
+    );
+    const longTermAssets = getAccountsByType('Asset', balances).filter(a =>
+        !['Cash', 'Accounts Receivable', 'Inventory'].includes(a.name)
+    );
+
+    // Categorize liabilities
+    const currentLiabilities = getAccountsByType('Liability', balances).filter(a =>
+        ['Accounts Payable', 'Bank Loans Payable - Interest'].includes(a.name)
+    );
+    const longTermLiabilities = getAccountsByType('Liability', balances).filter(a =>
+        !['Accounts Payable', 'Bank Loans Payable - Interest'].includes(a.name)
+    );
+
     const equity = getAccountsByType('Equity', balances);
 
-    const totalAssets = assets.reduce((sum, a) => sum + a.balance, 0);
-    const totalLiabilities = liabilities.reduce((sum, a) => sum + a.balance, 0);
+    // Calculate subtotals
+    const totalCurrentAssets = currentAssets.reduce((sum, a) => sum + a.balance, 0);
+    const totalLongTermAssets = longTermAssets.reduce((sum, a) => sum + a.balance, 0);
+    const totalAssets = totalCurrentAssets + totalLongTermAssets;
+
+    const totalCurrentLiabilities = currentLiabilities.reduce((sum, a) => sum + a.balance, 0);
+    const totalLongTermLiabilities = longTermLiabilities.reduce((sum, a) => sum + a.balance, 0);
+    const totalLiabilities = totalCurrentLiabilities + totalLongTermLiabilities;
+
     const totalEquity = equity.reduce((sum, a) => sum + a.balance, 0);
 
     // Calculate balance sheet validation
     const difference = Math.abs(totalAssets - (totalLiabilities + totalEquity));
-    const balanced = difference < 0.01; // Allow 1 cent rounding error
+    const balanced = difference < 0.01;
     const balanceIndicator = balanced
         ? '<span style="color: #28a745; font-weight: bold;">✓ Balanced</span>'
         : `<span style="color: #dc3545; font-weight: bold;">✗ Out of Balance (${formatCurrency(difference)})</span>`;
@@ -5517,12 +5538,35 @@ function renderBalanceSheet() {
 
         <div class="statement-section">
             <div class="statement-category">ASSETS</div>
-            ${assets.map(account => `
-                <div class="statement-item">
-                    <span>${escapeHtml(account.name)}</span>
-                    <span>${formatCurrency(account.balance)}</span>
+
+            ${currentAssets.length > 0 ? `
+                <div class="statement-subcategory">Current Assets</div>
+                ${currentAssets.map(account => `
+                    <div class="statement-item clickable" onclick="showAccountDetail(${account.id}, '${escapeHtml(asOfDate)}')">
+                        <span>${escapeHtml(account.name)}</span>
+                        <span>${formatCurrency(account.balance)}</span>
+                    </div>
+                `).join('')}
+                <div class="statement-subsubtotal">
+                    <span>Total Current Assets</span>
+                    <span>${formatCurrency(totalCurrentAssets)}</span>
                 </div>
-            `).join('')}
+            ` : ''}
+
+            ${longTermAssets.length > 0 ? `
+                <div class="statement-subcategory">Long-Term Assets</div>
+                ${longTermAssets.map(account => `
+                    <div class="statement-item clickable" onclick="showAccountDetail(${account.id}, '${escapeHtml(asOfDate)}')">
+                        <span>${escapeHtml(account.name)}</span>
+                        <span>${formatCurrency(account.balance)}</span>
+                    </div>
+                `).join('')}
+                <div class="statement-subsubtotal">
+                    <span>Total Long-Term Assets</span>
+                    <span>${formatCurrency(totalLongTermAssets)}</span>
+                </div>
+            ` : ''}
+
             <div class="statement-subtotal">
                 <span>Total Assets</span>
                 <span>${formatCurrency(totalAssets)}</span>
@@ -5531,12 +5575,35 @@ function renderBalanceSheet() {
 
         <div class="statement-section">
             <div class="statement-category">LIABILITIES</div>
-            ${liabilities.map(account => `
-                <div class="statement-item">
-                    <span>${escapeHtml(account.name)}</span>
-                    <span>${formatCurrency(account.balance)}</span>
+
+            ${currentLiabilities.length > 0 ? `
+                <div class="statement-subcategory">Current Liabilities</div>
+                ${currentLiabilities.map(account => `
+                    <div class="statement-item clickable" onclick="showAccountDetail(${account.id}, '${escapeHtml(asOfDate)}')">
+                        <span>${escapeHtml(account.name)}</span>
+                        <span>${formatCurrency(account.balance)}</span>
+                    </div>
+                `).join('')}
+                <div class="statement-subsubtotal">
+                    <span>Total Current Liabilities</span>
+                    <span>${formatCurrency(totalCurrentLiabilities)}</span>
                 </div>
-            `).join('')}
+            ` : ''}
+
+            ${longTermLiabilities.length > 0 ? `
+                <div class="statement-subcategory">Long-Term Liabilities</div>
+                ${longTermLiabilities.map(account => `
+                    <div class="statement-item clickable" onclick="showAccountDetail(${account.id}, '${escapeHtml(asOfDate)}')">
+                        <span>${escapeHtml(account.name)}</span>
+                        <span>${formatCurrency(account.balance)}</span>
+                    </div>
+                `).join('')}
+                <div class="statement-subsubtotal">
+                    <span>Total Long-Term Liabilities</span>
+                    <span>${formatCurrency(totalLongTermLiabilities)}</span>
+                </div>
+            ` : ''}
+
             <div class="statement-subtotal">
                 <span>Total Liabilities</span>
                 <span>${formatCurrency(totalLiabilities)}</span>
@@ -5544,24 +5611,107 @@ function renderBalanceSheet() {
         </div>
 
         <div class="statement-section">
-            <div class="statement-category">EQUITY</div>
+            <div class="statement-category">STOCKHOLDERS' EQUITY</div>
             ${equity.map(account => `
-                <div class="statement-item">
+                <div class="statement-item clickable" onclick="showAccountDetail(${account.id}, '${escapeHtml(asOfDate)}')">
                     <span>${escapeHtml(account.name)}</span>
                     <span>${formatCurrency(account.balance)}</span>
                 </div>
             `).join('')}
             <div class="statement-subtotal">
-                <span>Total Equity</span>
+                <span>Total Stockholders' Equity</span>
                 <span>${formatCurrency(totalEquity)}</span>
             </div>
         </div>
 
         <div class="statement-total">
-            <span>Total Liabilities & Equity</span>
+            <span>Total Liabilities & Stockholders' Equity</span>
             <span>${formatCurrency(totalLiabilities + totalEquity)}</span>
         </div>
     `;
+}
+
+// Show account detail drill-down
+function showAccountDetail(accountId, asOfDate) {
+    const account = appState.accounts.find(a => a.id === accountId);
+    if (!account) return;
+
+    // Get all transactions affecting this account
+    const transactions = appState.transactions.filter(t => {
+        if (t.status === 'void') return false;
+        if (asOfDate && compareDates(t.simDate || t.date, asOfDate) > 0) return false;
+
+        if (t.entries) {
+            return t.entries.some(e => (e.accountId || e.account) === accountId);
+        } else {
+            return t.debitAccount === accountId || t.creditAccount === accountId;
+        }
+    });
+
+    const transactionsHtml = transactions.map(t => {
+        let debit = '';
+        let credit = '';
+
+        if (t.entries) {
+            const entry = t.entries.find(e => (e.accountId || e.account) === accountId);
+            if (entry) {
+                if (entry.type === 'debit') debit = formatCurrency(entry.amount);
+                else credit = formatCurrency(entry.amount);
+            }
+        } else {
+            if (t.debitAccount === accountId) debit = formatCurrency(t.amount);
+            if (t.creditAccount === accountId) credit = formatCurrency(t.amount);
+        }
+
+        return `
+            <tr>
+                <td>${t.simDate || t.date}</td>
+                <td>${escapeHtml(t.description)}</td>
+                <td>${debit}</td>
+                <td>${credit}</td>
+            </tr>
+        `;
+    }).join('');
+
+    const balances = calculateAccountBalances(asOfDate);
+    const currentBalance = balances[accountId] || 0;
+
+    const modal = `
+        <div class="modal-overlay" onclick="closeAccountDetail(event)">
+            <div class="modal-content" onclick="event.stopPropagation()">
+                <h3>Account Detail: ${escapeHtml(account.name)} (${account.number})</h3>
+                <p><strong>Account Type:</strong> ${account.type}</p>
+                <p><strong>Current Balance:</strong> ${formatCurrency(currentBalance)}</p>
+                <p><strong>Transactions (${transactions.length}):</strong></p>
+
+                <div style="max-height: 400px; overflow-y: auto;">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Description</th>
+                                <th>Debit</th>
+                                <th>Credit</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${transactionsHtml || '<tr><td colspan="4">No transactions</td></tr>'}
+                        </tbody>
+                    </table>
+                </div>
+
+                <button class="btn btn-secondary" onclick="closeAccountDetail()">Close</button>
+            </div>
+        </div>
+    `;
+
+    document.body.insertAdjacentHTML('beforeend', modal);
+}
+
+function closeAccountDetail(event) {
+    if (event && event.target.className !== 'modal-overlay') return;
+    const modal = document.querySelector('.modal-overlay');
+    if (modal) modal.remove();
 }
 
 // ====================================
@@ -5576,26 +5726,56 @@ function renderIncomeStatement() {
     const startBalances = calculateAccountBalances(getPreviousDay(startDate));
     const endBalances = calculateAccountBalances(endDate);
 
-    // Calculate change in balances for revenue and expense accounts
-    const revenues = appState.accounts
-        .filter(a => a.type === 'Revenue')
+    // Get revenue accounts with period changes
+    const salesRevenue = appState.accounts.filter(a => a.name === 'Sales Revenue' || a.name === 'Service Revenue')
         .map(account => ({
             ...account,
             balance: (endBalances[account.id] || 0) - (startBalances[account.id] || 0)
-        }))
-        .sort((a, b) => a.number.localeCompare(b.number));
+        }));
 
-    const expenses = appState.accounts
-        .filter(a => a.type === 'Expense')
+    const otherRevenue = appState.accounts.filter(a => a.type === 'Revenue' && a.name !== 'Sales Revenue' && a.name !== 'Service Revenue')
         .map(account => ({
             ...account,
             balance: (endBalances[account.id] || 0) - (startBalances[account.id] || 0)
-        }))
-        .sort((a, b) => a.number.localeCompare(b.number));
+        }));
 
-    const totalRevenue = revenues.reduce((sum, a) => sum + a.balance, 0);
-    const totalExpenses = expenses.reduce((sum, a) => sum + a.balance, 0);
-    const netIncome = totalRevenue - totalExpenses;
+    // Get expense accounts categorized
+    const cogs = appState.accounts.filter(a => a.name === 'Cost of Goods Sold')
+        .map(account => ({
+            ...account,
+            balance: (endBalances[account.id] || 0) - (startBalances[account.id] || 0)
+        }));
+
+    const operatingExpenses = appState.accounts.filter(a =>
+        a.type === 'Expense' &&
+        !['Cost of Goods Sold', 'Interest Expense', 'Losses on Commodity Sales'].includes(a.name)
+    ).map(account => ({
+        ...account,
+        balance: (endBalances[account.id] || 0) - (startBalances[account.id] || 0)
+    }));
+
+    const nonOperatingExpenses = appState.accounts.filter(a =>
+        a.name === 'Interest Expense' || a.name === 'Losses on Commodity Sales'
+    ).map(account => ({
+        ...account,
+        balance: (endBalances[account.id] || 0) - (startBalances[account.id] || 0)
+    }));
+
+    // Calculate totals and subtotals
+    const totalSalesRevenue = salesRevenue.reduce((sum, a) => sum + a.balance, 0);
+    const totalOtherRevenue = otherRevenue.reduce((sum, a) => sum + a.balance, 0);
+    const totalRevenue = totalSalesRevenue + totalOtherRevenue;
+    const totalCOGS = cogs.reduce((sum, a) => sum + a.balance, 0);
+    const grossProfit = totalSalesRevenue - totalCOGS;
+    const totalOperatingExpenses = operatingExpenses.reduce((sum, a) => sum + a.balance, 0);
+    const operatingIncome = grossProfit + totalOtherRevenue - totalOperatingExpenses;
+    const totalNonOperatingExpenses = nonOperatingExpenses.reduce((sum, a) => sum + a.balance, 0);
+    const netIncome = operatingIncome - totalNonOperatingExpenses;
+
+    // Calculate percentages (as % of total revenue)
+    const grossMargin = totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0;
+    const operatingMargin = totalRevenue > 0 ? (operatingIncome / totalRevenue) * 100 : 0;
+    const netMargin = totalRevenue > 0 ? (netIncome / totalRevenue) * 100 : 0;
 
     const content = document.getElementById('incomeStatementContent');
     content.innerHTML = `
@@ -5606,7 +5786,13 @@ function renderIncomeStatement() {
 
         <div class="statement-section">
             <div class="statement-category">REVENUE</div>
-            ${revenues.map(account => `
+            ${salesRevenue.map(account => `
+                <div class="statement-item">
+                    <span>${escapeHtml(account.name)}</span>
+                    <span>${formatCurrency(account.balance)}</span>
+                </div>
+            `).join('')}
+            ${otherRevenue.map(account => `
                 <div class="statement-item">
                     <span>${escapeHtml(account.name)}</span>
                     <span>${formatCurrency(account.balance)}</span>
@@ -5618,23 +5804,61 @@ function renderIncomeStatement() {
             </div>
         </div>
 
-        <div class="statement-section">
-            <div class="statement-category">EXPENSES</div>
-            ${expenses.map(account => `
-                <div class="statement-item">
-                    <span>${escapeHtml(account.name)}</span>
-                    <span>${formatCurrency(account.balance)}</span>
+        ${cogs.length > 0 && totalCOGS > 0 ? `
+            <div class="statement-section">
+                <div class="statement-subcategory">Cost of Goods Sold</div>
+                ${cogs.map(account => `
+                    <div class="statement-item">
+                        <span>${escapeHtml(account.name)}</span>
+                        <span>${formatCurrency(account.balance)}</span>
+                    </div>
+                `).join('')}
+                <div class="statement-subsubtotal">
+                    <span>Gross Profit</span>
+                    <span>${formatCurrency(grossProfit)} <span class="percentage-column">(${grossMargin.toFixed(1)}%)</span></span>
                 </div>
-            `).join('')}
-            <div class="statement-subtotal">
-                <span>Total Expenses</span>
-                <span>${formatCurrency(totalExpenses)}</span>
             </div>
-        </div>
+        ` : ''}
+
+        ${operatingExpenses.length > 0 ? `
+            <div class="statement-section">
+                <div class="statement-category">OPERATING EXPENSES</div>
+                ${operatingExpenses.map(account => `
+                    <div class="statement-item">
+                        <span>${escapeHtml(account.name)}</span>
+                        <span>${formatCurrency(account.balance)}</span>
+                    </div>
+                `).join('')}
+                <div class="statement-subtotal">
+                    <span>Total Operating Expenses</span>
+                    <span>${formatCurrency(totalOperatingExpenses)}</span>
+                </div>
+                <div class="statement-subsubtotal" style="margin-top: 0.5rem;">
+                    <span>Operating Income</span>
+                    <span>${formatCurrency(operatingIncome)} <span class="percentage-column">(${operatingMargin.toFixed(1)}%)</span></span>
+                </div>
+            </div>
+        ` : ''}
+
+        ${nonOperatingExpenses.length > 0 && totalNonOperatingExpenses > 0 ? `
+            <div class="statement-section">
+                <div class="statement-category">OTHER EXPENSES</div>
+                ${nonOperatingExpenses.map(account => `
+                    <div class="statement-item">
+                        <span>${escapeHtml(account.name)}</span>
+                        <span>${formatCurrency(account.balance)}</span>
+                    </div>
+                `).join('')}
+                <div class="statement-subtotal">
+                    <span>Total Other Expenses</span>
+                    <span>${formatCurrency(totalNonOperatingExpenses)}</span>
+                </div>
+            </div>
+        ` : ''}
 
         <div class="statement-total">
             <span>Net Income</span>
-            <span>${formatCurrency(netIncome)}</span>
+            <span>${formatCurrency(netIncome)} <span class="percentage-column">(${netMargin.toFixed(1)}%)</span></span>
         </div>
     `;
 }
