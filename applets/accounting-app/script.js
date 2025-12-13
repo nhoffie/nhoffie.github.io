@@ -111,18 +111,18 @@ let appState = {
         }
     ],
     commodities: [
-        { id: 1, name: 'Power', description: 'Electrical energy units', price: 5.00 },
-        { id: 2, name: 'Water', description: 'Fresh water units', price: 2.50 },
-        { id: 3, name: 'Lumber', description: 'Construction-grade lumber', price: 10.00 },
-        { id: 4, name: 'Steel', description: 'Structural steel beams', price: 20.00 },
-        { id: 5, name: 'Concrete', description: 'Ready-mix concrete', price: 15.00 },
-        { id: 6, name: 'Raw Logs', description: 'Unprocessed timber logs', price: 8.00 },
-        { id: 7, name: 'Iron Ore', description: 'Raw iron ore for smelting', price: 12.00 },
-        { id: 8, name: 'Sand', description: 'Construction-grade sand', price: 3.00 },
-        { id: 9, name: 'Gravel', description: 'Construction-grade gravel', price: 4.00 },
-        { id: 10, name: 'Coal', description: 'Fuel for power generation and smelting', price: 7.00 },
-        { id: 11, name: 'Oil', description: 'Petroleum fuel for power generation', price: 15.00 },
-        { id: 12, name: 'Natural Gas', description: 'Clean-burning fuel for power', price: 10.00 }
+        { id: 1, name: 'Power', description: 'Electrical energy units', buyPrice: 5.50, sellPrice: 5.00 },
+        { id: 2, name: 'Water', description: 'Fresh water units', buyPrice: 2.75, sellPrice: 2.50 },
+        { id: 3, name: 'Lumber', description: 'Construction-grade lumber', buyPrice: 18.50, sellPrice: 16.50 },
+        { id: 4, name: 'Steel', description: 'Structural steel beams', buyPrice: 45.00, sellPrice: 40.00 },
+        { id: 5, name: 'Concrete', description: 'Ready-mix concrete', buyPrice: 18.50, sellPrice: 16.50 },
+        { id: 6, name: 'Raw Logs', description: 'Unprocessed timber logs', buyPrice: 6.60, sellPrice: 6.00 },
+        { id: 7, name: 'Iron Ore', description: 'Raw iron ore for smelting', buyPrice: 8.80, sellPrice: 8.00 },
+        { id: 8, name: 'Sand', description: 'Construction-grade sand', buyPrice: 2.20, sellPrice: 2.00 },
+        { id: 9, name: 'Gravel', description: 'Construction-grade gravel', buyPrice: 3.30, sellPrice: 3.00 },
+        { id: 10, name: 'Coal', description: 'Fuel for power generation and smelting', buyPrice: 5.50, sellPrice: 5.00 },
+        { id: 11, name: 'Oil', description: 'Petroleum fuel for power generation', buyPrice: 13.20, sellPrice: 12.00 },
+        { id: 12, name: 'Natural Gas', description: 'Clean-burning fuel for power', buyPrice: 8.80, sellPrice: 8.00 }
     ],
     portfolio: {
         // Structure: { commodityId: { lots: [{ quantity, costBasis, purchaseDate, purchaseId }] } }
@@ -1187,7 +1187,7 @@ function buyCommodity(commodityId, quantity) {
         return false;
     }
 
-    const totalCost = quantity * commodity.price;
+    const totalCost = quantity * commodity.buyPrice;
     const cashBalance = getCashBalance();
 
     if (totalCost > cashBalance) {
@@ -1208,7 +1208,7 @@ function buyCommodity(commodityId, quantity) {
     const transaction = {
         id: appState.nextTransactionId++,
         date: getTodayDate(),
-        description: `Purchase ${quantity} units of ${commodity.name} @ ${formatCurrency(commodity.price)}/unit`,
+        description: `Purchase ${quantity} units of ${commodity.name} @ ${formatCurrency(commodity.buyPrice)}/unit`,
         debitAccount: inventoryAccount.id,
         creditAccount: cashAccount.id,
         amount: totalCost
@@ -1220,7 +1220,7 @@ function buyCommodity(commodityId, quantity) {
     const portfolio = getPortfolioCommodity(commodityId);
     portfolio.lots.push({
         quantity: quantity,
-        costBasis: commodity.price,
+        costBasis: commodity.buyPrice,
         purchaseDate: getTodayDate(),
         purchaseId: appState.nextTradeId
     });
@@ -1231,7 +1231,7 @@ function buyCommodity(commodityId, quantity) {
         type: 'buy',
         commodityId: commodityId,
         quantity: quantity,
-        price: commodity.price,
+        price: commodity.buyPrice,
         totalValue: totalCost,
         date: getTodayDate(),
         transactionId: transaction.id
@@ -1255,7 +1255,7 @@ function sellCommodity(commodityId, quantity) {
     }
 
     // Calculate proceeds
-    const totalProceeds = quantity * commodity.price;
+    const totalProceeds = quantity * commodity.sellPrice;
 
     // Get accounts
     const cashAccount = getCashAccount();
@@ -1314,7 +1314,7 @@ function sellCommodity(commodityId, quantity) {
     const transaction = {
         id: appState.nextTransactionId++,
         date: getTodayDate(),
-        description: `Sale ${quantity} units of ${commodity.name} @ ${formatCurrency(commodity.price)}/unit (${isGain ? 'Gain' : 'Loss'}: ${formatCurrency(Math.abs(gainLoss))})`,
+        description: `Sale ${quantity} units of ${commodity.name} @ ${formatCurrency(commodity.sellPrice)}/unit (${isGain ? 'Gain' : 'Loss'}: ${formatCurrency(Math.abs(gainLoss))})`,
         entries: entries
     };
 
@@ -1335,7 +1335,7 @@ function sellCommodity(commodityId, quantity) {
         type: 'sell',
         commodityId: commodityId,
         quantity: quantity,
-        price: commodity.price,
+        price: commodity.sellPrice,
         totalValue: totalProceeds,
         costBasis: totalCostBasis,
         gainLoss: gainLoss,
@@ -1354,7 +1354,7 @@ function getPortfolioSummary() {
         const quantity = getTotalQuantity(commodity.id);
         if (quantity > 0 || true) { // Show all commodities
             const avgCost = getAverageCostBasis(commodity.id);
-            const currentValue = quantity * commodity.price;
+            const currentValue = quantity * commodity.sellPrice;
             const totalCost = quantity * avgCost;
             const unrealizedGainLoss = currentValue - totalCost;
             const percentGainLoss = totalCost > 0 ? (unrealizedGainLoss / totalCost) * 100 : 0;
@@ -1363,7 +1363,7 @@ function getPortfolioSummary() {
                 commodity: commodity,
                 quantity: quantity,
                 avgCost: avgCost,
-                currentPrice: commodity.price,
+                currentPrice: commodity.sellPrice,
                 currentValue: currentValue,
                 totalCost: totalCost,
                 unrealizedGainLoss: unrealizedGainLoss,
@@ -1379,6 +1379,7 @@ function renderCommoditiesMarket() {
     renderCommoditiesList();
     renderPortfolio();
     renderTradeHistory();
+    renderProductionAnalytics();
 }
 
 let selectedCommodityId = 1; // Default to first commodity
@@ -1400,7 +1401,7 @@ function renderCommoditiesList() {
     `;
 
     appState.commodities.forEach(commodity => {
-        selectorHtml += `<option value="${commodity.id}" ${commodity.id === selectedCommodityId ? 'selected' : ''}>${commodity.name} - ${formatCurrency(commodity.price)}/unit</option>`;
+        selectorHtml += `<option value="${commodity.id}" ${commodity.id === selectedCommodityId ? 'selected' : ''}>${commodity.name} - Buy: ${formatCurrency(commodity.buyPrice)} / Sell: ${formatCurrency(commodity.sellPrice)}</option>`;
     });
 
     selectorHtml += `
@@ -1445,7 +1446,10 @@ function renderSelectedCommodity() {
         <div class="commodity-card-single">
             <div class="commodity-header">
                 <h4>${escapeHtml(commodity.name)}</h4>
-                <div class="commodity-price">${formatCurrency(commodity.price)}<span class="price-unit">/unit</span></div>
+                <div class="commodity-price">
+                    <div>Buy: ${formatCurrency(commodity.buyPrice)}<span class="price-unit">/unit</span></div>
+                    <div>Sell: ${formatCurrency(commodity.sellPrice)}<span class="price-unit">/unit</span></div>
+                </div>
             </div>
             <p class="commodity-description">${escapeHtml(commodity.description)}</p>
             <div class="commodity-inventory">In Portfolio: <strong>${quantity} units</strong></div>
@@ -1455,7 +1459,7 @@ function renderSelectedCommodity() {
                     <h5>Buy</h5>
                     <div class="trade-controls">
                         <input type="number" id="buy-quantity-${commodity.id}" min="1" step="1" value="1" class="quantity-input">
-                        <div class="trade-total" id="buy-total-${commodity.id}">${formatCurrency(commodity.price)}</div>
+                        <div class="trade-total" id="buy-total-${commodity.id}">${formatCurrency(commodity.buyPrice)}</div>
                         <button class="btn btn-primary" onclick="executeBuy(${commodity.id})">Buy</button>
                     </div>
                 </div>
@@ -1464,7 +1468,7 @@ function renderSelectedCommodity() {
                     <h5>Sell</h5>
                     <div class="trade-controls">
                         <input type="number" id="sell-quantity-${commodity.id}" min="1" step="1" value="1" max="${quantity}" class="quantity-input" ${quantity === 0 ? 'disabled' : ''}>
-                        <div class="trade-total" id="sell-total-${commodity.id}">${formatCurrency(commodity.price)}</div>
+                        <div class="trade-total" id="sell-total-${commodity.id}">${formatCurrency(commodity.sellPrice)}</div>
                         <button class="btn btn-danger" onclick="executeSell(${commodity.id})" ${quantity === 0 ? 'disabled' : ''}>Sell</button>
                     </div>
                 </div>
@@ -1481,14 +1485,14 @@ function renderSelectedCommodity() {
     if (buyInput) {
         buyInput.addEventListener('input', () => {
             const quantity = parseFloat(buyInput.value) || 0;
-            buyTotal.textContent = formatCurrency(quantity * commodity.price);
+            buyTotal.textContent = formatCurrency(quantity * commodity.buyPrice);
         });
     }
 
     if (sellInput) {
         sellInput.addEventListener('input', () => {
             const quantity = parseFloat(sellInput.value) || 0;
-            sellTotal.textContent = formatCurrency(quantity * commodity.price);
+            sellTotal.textContent = formatCurrency(quantity * commodity.sellPrice);
         });
     }
 }
@@ -1624,6 +1628,99 @@ function renderTradeHistory() {
     html += `
             </tbody>
         </table>
+    `;
+
+    container.innerHTML = html;
+}
+
+function renderProductionAnalytics() {
+    const container = document.getElementById('productionAnalytics');
+    if (!container) {
+        // Container doesn't exist in HTML yet - need to add it
+        return;
+    }
+
+    // Calculate profitability for all recipes
+    const recipeAnalytics = Object.values(PRODUCTION_RECIPES).map(recipe => {
+        const profitability = calculateRecipeProfitability(recipe);
+        return {
+            recipe,
+            profitability
+        };
+    });
+
+    // Sort by profit per hour (descending)
+    recipeAnalytics.sort((a, b) => b.profitability.profitPerHour - a.profitability.profitPerHour);
+
+    let html = `
+        <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; margin-top: 15px;">
+            <h3 style="margin: 0 0 12px 0; color: #333;">📊 Production Economics Dashboard</h3>
+            <p style="margin: 0 0 12px 0; font-size: 13px; color: #666;">Compare all production recipes to make informed decisions</p>
+
+            <table class="trades-table" style="font-size: 12px;">
+                <thead>
+                    <tr>
+                        <th style="text-align: left;">Recipe</th>
+                        <th style="text-align: center;">Time</th>
+                        <th style="text-align: right;">Input Cost</th>
+                        <th style="text-align: right;">Output Value</th>
+                        <th style="text-align: right;">Profit/Batch</th>
+                        <th style="text-align: right; background: #e7f3ff;">💰 Profit/Hour</th>
+                        <th style="text-align: center;">ROI</th>
+                        <th style="text-align: center;">Ranking</th>
+                    </tr>
+                </thead>
+                <tbody>
+    `;
+
+    recipeAnalytics.forEach((item, index) => {
+        const { recipe, profitability } = item;
+        const profitColor = profitability.profitPerBatch >= 0 ? '#28a745' : '#dc3545';
+        const roiDisplay = profitability.roi === Infinity ? '∞%' : profitability.roi.toFixed(0) + '%';
+
+        // Ranking medals
+        let rankingDisplay = '';
+        if (index === 0) rankingDisplay = '🥇';
+        else if (index === 1) rankingDisplay = '🥈';
+        else if (index === 2) rankingDisplay = '🥉';
+        else rankingDisplay = `#${index + 1}`;
+
+        const inputs = Object.keys(recipe.inputs).length > 0
+            ? Object.entries(recipe.inputs).map(([mat, qty]) => `${qty} ${mat}`).join(', ')
+            : 'None';
+
+        const outputs = Object.entries(recipe.outputs).map(([mat, qty]) => `${qty} ${mat}`).join(', ');
+
+        html += `
+            <tr style="border-left: 3px solid ${profitColor};">
+                <td style="text-align: left;">
+                    <strong>${escapeHtml(recipe.name)}</strong><br/>
+                    <span style="font-size: 10px; color: #666;">
+                        ${escapeHtml(inputs)} → ${escapeHtml(outputs)}
+                    </span>
+                </td>
+                <td style="text-align: center;">${profitability.productionTimeHours.toFixed(1)}h</td>
+                <td style="text-align: right; color: #dc3545;">${formatCurrency(profitability.inputCost)}</td>
+                <td style="text-align: right; color: #28a745;">${formatCurrency(profitability.outputValue)}</td>
+                <td style="text-align: right; font-weight: bold; color: ${profitColor};">${formatCurrency(profitability.profitPerBatch)}</td>
+                <td style="text-align: right; font-weight: bold; background: #e7f3ff; color: #007bff;">${formatCurrency(profitability.profitPerHour)}</td>
+                <td style="text-align: center;">${roiDisplay}</td>
+                <td style="text-align: center; font-size: 16px;">${rankingDisplay}</td>
+            </tr>
+        `;
+    });
+
+    html += `
+                </tbody>
+            </table>
+
+            <div style="margin-top: 12px; font-size: 11px; color: #666; padding: 8px; background: white; border-radius: 3px;">
+                <strong>💡 Tips:</strong>
+                • Higher profit/hour = better efficiency |
+                • ROI shows capital efficiency |
+                • All recipes are profitable! Choose based on available materials and capital.
+            </div>
+        </div>
     `;
 
     container.innerHTML = html;
@@ -2311,21 +2408,45 @@ function showBuildingInterior(buildingId) {
                                 .map(([com, qty]) => `${qty} ${com}`)
                                 .join(', ');
 
-                            content += `<div style="margin: 5px 0; padding: 5px; background: #f9f9f9; border-radius: 3px; font-size: 11px;">`;
-                            content += `<div style="display: flex; justify-content: space-between; align-items: center;">`;
+                            // Calculate profitability metrics
+                            const profitability = calculateRecipeProfitability(recipe);
+                            const profitColor = profitability.profitPerBatch >= 0 ? '#28a745' : '#dc3545';
+                            const roiDisplay = profitability.roi === Infinity ? '∞' : profitability.roi.toFixed(0) + '%';
+
+                            content += `<div style="margin: 5px 0; padding: 8px; background: #f9f9f9; border-radius: 3px; border-left: 3px solid ${profitColor}; font-size: 11px;">`;
+                            content += `<div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 10px;">`;
+
+                            // Left side - Recipe details
                             content += `<div style="flex: 1;">`;
-                            content += `<strong>${recipe.name}</strong><br/>`;
-                            content += `Inputs: ${inputsDisplay}<br/>`;
-                            content += `Outputs: ${outputsDisplay}<br/>`;
-                            content += `Time: ${(recipe.baseProductionTime / (60 * 60 * 1000)).toFixed(1)} hours`;
+                            content += `<strong style="font-size: 12px;">${recipe.name}</strong><br/>`;
+                            content += `<div style="color: #666; margin-top: 3px;">`;
+                            content += `📥 Inputs: ${inputsDisplay}<br/>`;
+                            content += `📤 Outputs: ${outputsDisplay}<br/>`;
+                            content += `⏱️ Time: ${profitability.productionTimeHours.toFixed(1)} hours`;
                             content += `</div>`;
-                            content += `<div style="display: flex; gap: 5px;">`;
+                            content += `</div>`;
+
+                            // Middle - Economics dashboard
+                            content += `<div style="background: white; padding: 6px 10px; border-radius: 3px; border: 1px solid #ddd; min-width: 140px;">`;
+                            content += `<div style="font-weight: bold; font-size: 10px; color: #666; margin-bottom: 3px;">📊 ECONOMICS</div>`;
+                            content += `<div style="font-size: 10px; line-height: 1.5;">`;
+                            content += `Cost: <span style="color: #dc3545;">${formatCurrency(profitability.inputCost)}</span><br/>`;
+                            content += `Value: <span style="color: #28a745;">${formatCurrency(profitability.outputValue)}</span><br/>`;
+                            content += `<strong style="color: ${profitColor};">Profit: ${formatCurrency(profitability.profitPerBatch)}</strong><br/>`;
+                            content += `<div style="background: #f0f0f0; padding: 2px 4px; margin-top: 2px; border-radius: 2px;">`;
+                            content += `<strong style="color: #007bff;">${formatCurrency(profitability.profitPerHour)}/hr</strong> | ROI: ${roiDisplay}`;
+                            content += `</div>`;
+                            content += `</div>`;
+                            content += `</div>`;
+
+                            // Right side - Action buttons
+                            content += `<div style="display: flex; flex-direction: column; gap: 3px; min-width: 90px;">`;
 
                             if (hasMaterials) {
-                                content += `<button class="btn" onclick="handleStartCommodityProduction(${buildingId}, ${equip.id}, '${recipe.id}', false)" style="background: #007bff; color: white; font-size: 10px; padding: 4px 8px;">Start</button>`;
-                                content += `<button class="btn" onclick="handleStartCommodityProduction(${buildingId}, ${equip.id}, '${recipe.id}', true)" style="background: #28a745; color: white; font-size: 10px; padding: 4px 8px;">Continuous</button>`;
+                                content += `<button class="btn" onclick="handleStartCommodityProduction(${buildingId}, ${equip.id}, '${recipe.id}', false)" style="background: #007bff; color: white; font-size: 10px; padding: 5px 10px; white-space: nowrap;">▶️ Start</button>`;
+                                content += `<button class="btn" onclick="handleStartCommodityProduction(${buildingId}, ${equip.id}, '${recipe.id}', true)" style="background: #28a745; color: white; font-size: 10px; padding: 5px 10px; white-space: nowrap;">🔄 Continuous</button>`;
                             } else {
-                                content += `<button class="btn" disabled style="background: #ccc; font-size: 10px; padding: 4px 8px;">Need Materials</button>`;
+                                content += `<button class="btn" disabled style="background: #ccc; font-size: 10px; padding: 5px 10px;">❌ Need Materials</button>`;
                             }
 
                             content += `</div>`;
@@ -2845,7 +2966,7 @@ const PRODUCTION_RECIPES = {
         description: 'Process raw logs into construction-grade lumber',
         equipmentRequired: 'lumber_mill',
         inputs: { 'raw logs': 2 },
-        outputs: { lumber: 1 },
+        outputs: { lumber: 3 },
         baseProductionTime: 2 * 60 * 60 * 1000,  // 2 hours per batch
         batchSize: 1
     },
@@ -2855,7 +2976,7 @@ const PRODUCTION_RECIPES = {
         description: 'Smelt iron ore with coal into steel',
         equipmentRequired: 'foundry',
         inputs: { 'iron ore': 3, coal: 1 },
-        outputs: { steel: 1 },
+        outputs: { steel: 3 },
         baseProductionTime: 4 * 60 * 60 * 1000,  // 4 hours
         batchSize: 1
     },
@@ -2865,7 +2986,7 @@ const PRODUCTION_RECIPES = {
         description: 'Mix sand, gravel, and water into concrete',
         equipmentRequired: 'concrete_mixer',
         inputs: { sand: 2, gravel: 2, water: 1 },
-        outputs: { concrete: 1 },
+        outputs: { concrete: 2 },
         baseProductionTime: 1 * 60 * 60 * 1000,  // 1 hour
         batchSize: 1
     },
@@ -2875,7 +2996,7 @@ const PRODUCTION_RECIPES = {
         description: 'Generate electrical power from coal',
         equipmentRequired: 'power_generator',
         inputs: { coal: 1 },
-        outputs: { power: 10 },
+        outputs: { power: 3 },
         baseProductionTime: 30 * 60 * 1000,  // 30 minutes
         batchSize: 1
     },
@@ -2885,7 +3006,7 @@ const PRODUCTION_RECIPES = {
         description: 'Generate electrical power from oil',
         equipmentRequired: 'power_generator',
         inputs: { oil: 1 },
-        outputs: { power: 15 },
+        outputs: { power: 4 },
         baseProductionTime: 30 * 60 * 1000,  // 30 minutes
         batchSize: 1
     },
@@ -2895,7 +3016,7 @@ const PRODUCTION_RECIPES = {
         description: 'Generate electrical power from natural gas',
         equipmentRequired: 'power_generator',
         inputs: { 'natural gas': 1 },
-        outputs: { power: 12 },
+        outputs: { power: 3 },
         baseProductionTime: 30 * 60 * 1000,  // 30 minutes
         batchSize: 1
     },
@@ -2925,6 +3046,48 @@ function getEquipmentDefinition(equipmentType) {
 function getCommodityIdByName(commodityName) {
     const commodity = appState.commodities.find(c => c.name.toLowerCase() === commodityName.toLowerCase());
     return commodity ? commodity.id : null;
+}
+
+// Calculate recipe profitability for production economics dashboard
+function calculateRecipeProfitability(recipe) {
+    // Calculate input costs (what we pay to buy materials)
+    let inputCost = 0;
+    for (const [materialName, quantity] of Object.entries(recipe.inputs)) {
+        const commodityId = getCommodityIdByName(materialName);
+        if (commodityId) {
+            const commodity = appState.commodities.find(c => c.id === commodityId);
+            if (commodity) {
+                inputCost += quantity * commodity.buyPrice;
+            }
+        }
+    }
+
+    // Calculate output value (what we receive when selling products)
+    let outputValue = 0;
+    for (const [commodityName, quantity] of Object.entries(recipe.outputs)) {
+        const commodityId = getCommodityIdByName(commodityName);
+        if (commodityId) {
+            const commodity = appState.commodities.find(c => c.id === commodityId);
+            if (commodity) {
+                outputValue += quantity * commodity.sellPrice;
+            }
+        }
+    }
+
+    // Calculate profitability metrics
+    const profitPerBatch = outputValue - inputCost;
+    const productionTimeHours = recipe.baseProductionTime / (60 * 60 * 1000);
+    const profitPerHour = productionTimeHours > 0 ? profitPerBatch / productionTimeHours : 0;
+    const roi = inputCost > 0 ? (profitPerBatch / inputCost) * 100 : Infinity;
+
+    return {
+        inputCost,
+        outputValue,
+        profitPerBatch,
+        profitPerHour,
+        roi,
+        productionTimeHours
+    };
 }
 
 // Check if equipment can be placed at grid location
@@ -3469,11 +3632,33 @@ function startCommodityProduction(buildingId, equipmentId, recipeId, continuous 
 function checkProductionProgress() {
     const currentTime = getCurrentSimulationTime();
 
-    appState.productionQueue.forEach(job => {
-        if (job.status === 'in_progress' && currentTime >= job.estimatedCompletionTime) {
-            completeProduction(job);
+    // Keep checking until no more jobs are ready to complete
+    // This is critical for admin time-skip: if you skip 10 hours and a 2-hour
+    // production is on continuous mode, it should complete 5 times, not just once!
+    let completedAny = true;
+    let iterations = 0;
+    const maxIterations = 1000; // Safety limit to prevent infinite loops
+
+    while (completedAny && iterations < maxIterations) {
+        completedAny = false;
+        iterations++;
+
+        // Check all jobs - use filter to avoid issues with array modification during iteration
+        const jobsToComplete = appState.productionQueue.filter(job =>
+            job.status === 'in_progress' && currentTime >= job.estimatedCompletionTime
+        );
+
+        if (jobsToComplete.length > 0) {
+            completedAny = true;
+            jobsToComplete.forEach(job => {
+                completeProduction(job);
+            });
         }
-    });
+    }
+
+    if (iterations >= maxIterations) {
+        console.warn('checkProductionProgress: Hit max iterations safety limit');
+    }
 }
 
 // Complete a production job
@@ -3537,6 +3722,11 @@ function completeProduction(productionJob) {
             const hasMaterials = Object.keys(recipe.inputs).length === 0 || hasRequiredMaterials(recipe.inputs);
 
             if (hasMaterials) {
+                // CRITICAL FIX: Set equipment to idle BEFORE restarting
+                // Otherwise startCommodityProduction() will fail with "Equipment is currently busy"
+                equipment.status = 'idle';
+                equipment.currentProduction = null;
+
                 // Auto-restart production
                 const result = startCommodityProduction(
                     productionJob.buildingId,
@@ -3548,9 +3738,7 @@ function completeProduction(productionJob) {
                 if (result.success) {
                     console.log(`Continuous production: restarted ${recipe.name}`);
                 } else {
-                    // Stop continuous production if restart failed
-                    equipment.status = 'idle';
-                    equipment.currentProduction = null;
+                    // Restart failed - equipment already idle from above
                     console.warn(`Continuous production stopped: ${result.error}`);
                 }
             } else {
@@ -3603,7 +3791,7 @@ function cancelProduction(productionId) {
 
         appState.portfolio[commodityId].lots.push({
             quantity: refundQty,
-            costBasis: commodity.price,
+            costBasis: commodity.buyPrice,
             purchaseDate: getTodayDate(),
             purchaseId: `cancel-${productionId}`
         });
@@ -3914,7 +4102,7 @@ function demolishBuilding(buildingId) {
         if (!commodity) continue;
 
         const recoveredQty = Math.floor(quantity * 0.5); // 50% recovery
-        const recoveredValue = recoveredQty * commodity.price;
+        const recoveredValue = recoveredQty * commodity.buyPrice;
 
         // Add to portfolio
         if (!appState.portfolio[commodity.id]) {
@@ -3923,7 +4111,7 @@ function demolishBuilding(buildingId) {
 
         appState.portfolio[commodity.id].lots.push({
             quantity: recoveredQty,
-            costBasis: commodity.price,
+            costBasis: commodity.buyPrice,
             purchaseDate: getTodayDate(),
             purchaseId: `demolish-${buildingId}`
         });
@@ -5651,12 +5839,13 @@ document.addEventListener('DOMContentLoaded', () => {
  * To change a commodity's price:
  *
  * 1. Find the commodity in appState.commodities
- * 2. Update its price property
+ * 2. Update its buyPrice and/or sellPrice properties
  * 3. Call render() to update the UI
  *
  * Example:
  * const commodity = appState.commodities.find(c => c.name === 'Power');
- * commodity.price = 55.00;
+ * commodity.buyPrice = 4.50;
+ * commodity.sellPrice = 5.50;
  * render();
  *
  * Note: Price changes only affect future trades. Existing portfolio lots
