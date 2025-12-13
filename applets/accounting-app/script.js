@@ -3700,6 +3700,11 @@ function completeProduction(productionJob) {
             const hasMaterials = Object.keys(recipe.inputs).length === 0 || hasRequiredMaterials(recipe.inputs);
 
             if (hasMaterials) {
+                // CRITICAL FIX: Set equipment to idle BEFORE restarting
+                // Otherwise startCommodityProduction() will fail with "Equipment is currently busy"
+                equipment.status = 'idle';
+                equipment.currentProduction = null;
+
                 // Auto-restart production
                 const result = startCommodityProduction(
                     productionJob.buildingId,
@@ -3711,9 +3716,7 @@ function completeProduction(productionJob) {
                 if (result.success) {
                     console.log(`Continuous production: restarted ${recipe.name}`);
                 } else {
-                    // Stop continuous production if restart failed
-                    equipment.status = 'idle';
-                    equipment.currentProduction = null;
+                    // Restart failed - equipment already idle from above
                     console.warn(`Continuous production stopped: ${result.error}`);
                 }
             } else {
