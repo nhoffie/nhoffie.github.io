@@ -1379,6 +1379,7 @@ function renderCommoditiesMarket() {
     renderCommoditiesList();
     renderPortfolio();
     renderTradeHistory();
+    renderProductionAnalytics();
 }
 
 let selectedCommodityId = 1; // Default to first commodity
@@ -1627,6 +1628,99 @@ function renderTradeHistory() {
     html += `
             </tbody>
         </table>
+    `;
+
+    container.innerHTML = html;
+}
+
+function renderProductionAnalytics() {
+    const container = document.getElementById('productionAnalytics');
+    if (!container) {
+        // Container doesn't exist in HTML yet - need to add it
+        return;
+    }
+
+    // Calculate profitability for all recipes
+    const recipeAnalytics = Object.values(PRODUCTION_RECIPES).map(recipe => {
+        const profitability = calculateRecipeProfitability(recipe);
+        return {
+            recipe,
+            profitability
+        };
+    });
+
+    // Sort by profit per hour (descending)
+    recipeAnalytics.sort((a, b) => b.profitability.profitPerHour - a.profitability.profitPerHour);
+
+    let html = `
+        <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; margin-top: 15px;">
+            <h3 style="margin: 0 0 12px 0; color: #333;">📊 Production Economics Dashboard</h3>
+            <p style="margin: 0 0 12px 0; font-size: 13px; color: #666;">Compare all production recipes to make informed decisions</p>
+
+            <table class="trades-table" style="font-size: 12px;">
+                <thead>
+                    <tr>
+                        <th style="text-align: left;">Recipe</th>
+                        <th style="text-align: center;">Time</th>
+                        <th style="text-align: right;">Input Cost</th>
+                        <th style="text-align: right;">Output Value</th>
+                        <th style="text-align: right;">Profit/Batch</th>
+                        <th style="text-align: right; background: #e7f3ff;">💰 Profit/Hour</th>
+                        <th style="text-align: center;">ROI</th>
+                        <th style="text-align: center;">Ranking</th>
+                    </tr>
+                </thead>
+                <tbody>
+    `;
+
+    recipeAnalytics.forEach((item, index) => {
+        const { recipe, profitability } = item;
+        const profitColor = profitability.profitPerBatch >= 0 ? '#28a745' : '#dc3545';
+        const roiDisplay = profitability.roi === Infinity ? '∞%' : profitability.roi.toFixed(0) + '%';
+
+        // Ranking medals
+        let rankingDisplay = '';
+        if (index === 0) rankingDisplay = '🥇';
+        else if (index === 1) rankingDisplay = '🥈';
+        else if (index === 2) rankingDisplay = '🥉';
+        else rankingDisplay = `#${index + 1}`;
+
+        const inputs = Object.keys(recipe.inputs).length > 0
+            ? Object.entries(recipe.inputs).map(([mat, qty]) => `${qty} ${mat}`).join(', ')
+            : 'None';
+
+        const outputs = Object.entries(recipe.outputs).map(([mat, qty]) => `${qty} ${mat}`).join(', ');
+
+        html += `
+            <tr style="border-left: 3px solid ${profitColor};">
+                <td style="text-align: left;">
+                    <strong>${escapeHtml(recipe.name)}</strong><br/>
+                    <span style="font-size: 10px; color: #666;">
+                        ${escapeHtml(inputs)} → ${escapeHtml(outputs)}
+                    </span>
+                </td>
+                <td style="text-align: center;">${profitability.productionTimeHours.toFixed(1)}h</td>
+                <td style="text-align: right; color: #dc3545;">${formatCurrency(profitability.inputCost)}</td>
+                <td style="text-align: right; color: #28a745;">${formatCurrency(profitability.outputValue)}</td>
+                <td style="text-align: right; font-weight: bold; color: ${profitColor};">${formatCurrency(profitability.profitPerBatch)}</td>
+                <td style="text-align: right; font-weight: bold; background: #e7f3ff; color: #007bff;">${formatCurrency(profitability.profitPerHour)}</td>
+                <td style="text-align: center;">${roiDisplay}</td>
+                <td style="text-align: center; font-size: 16px;">${rankingDisplay}</td>
+            </tr>
+        `;
+    });
+
+    html += `
+                </tbody>
+            </table>
+
+            <div style="margin-top: 12px; font-size: 11px; color: #666; padding: 8px; background: white; border-radius: 3px;">
+                <strong>💡 Tips:</strong>
+                • Higher profit/hour = better efficiency |
+                • ROI shows capital efficiency |
+                • All recipes are profitable! Choose based on available materials and capital.
+            </div>
+        </div>
     `;
 
     container.innerHTML = html;
@@ -2314,21 +2408,45 @@ function showBuildingInterior(buildingId) {
                                 .map(([com, qty]) => `${qty} ${com}`)
                                 .join(', ');
 
-                            content += `<div style="margin: 5px 0; padding: 5px; background: #f9f9f9; border-radius: 3px; font-size: 11px;">`;
-                            content += `<div style="display: flex; justify-content: space-between; align-items: center;">`;
+                            // Calculate profitability metrics
+                            const profitability = calculateRecipeProfitability(recipe);
+                            const profitColor = profitability.profitPerBatch >= 0 ? '#28a745' : '#dc3545';
+                            const roiDisplay = profitability.roi === Infinity ? '∞' : profitability.roi.toFixed(0) + '%';
+
+                            content += `<div style="margin: 5px 0; padding: 8px; background: #f9f9f9; border-radius: 3px; border-left: 3px solid ${profitColor}; font-size: 11px;">`;
+                            content += `<div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 10px;">`;
+
+                            // Left side - Recipe details
                             content += `<div style="flex: 1;">`;
-                            content += `<strong>${recipe.name}</strong><br/>`;
-                            content += `Inputs: ${inputsDisplay}<br/>`;
-                            content += `Outputs: ${outputsDisplay}<br/>`;
-                            content += `Time: ${(recipe.baseProductionTime / (60 * 60 * 1000)).toFixed(1)} hours`;
+                            content += `<strong style="font-size: 12px;">${recipe.name}</strong><br/>`;
+                            content += `<div style="color: #666; margin-top: 3px;">`;
+                            content += `📥 Inputs: ${inputsDisplay}<br/>`;
+                            content += `📤 Outputs: ${outputsDisplay}<br/>`;
+                            content += `⏱️ Time: ${profitability.productionTimeHours.toFixed(1)} hours`;
                             content += `</div>`;
-                            content += `<div style="display: flex; gap: 5px;">`;
+                            content += `</div>`;
+
+                            // Middle - Economics dashboard
+                            content += `<div style="background: white; padding: 6px 10px; border-radius: 3px; border: 1px solid #ddd; min-width: 140px;">`;
+                            content += `<div style="font-weight: bold; font-size: 10px; color: #666; margin-bottom: 3px;">📊 ECONOMICS</div>`;
+                            content += `<div style="font-size: 10px; line-height: 1.5;">`;
+                            content += `Cost: <span style="color: #dc3545;">${formatCurrency(profitability.inputCost)}</span><br/>`;
+                            content += `Value: <span style="color: #28a745;">${formatCurrency(profitability.outputValue)}</span><br/>`;
+                            content += `<strong style="color: ${profitColor};">Profit: ${formatCurrency(profitability.profitPerBatch)}</strong><br/>`;
+                            content += `<div style="background: #f0f0f0; padding: 2px 4px; margin-top: 2px; border-radius: 2px;">`;
+                            content += `<strong style="color: #007bff;">${formatCurrency(profitability.profitPerHour)}/hr</strong> | ROI: ${roiDisplay}`;
+                            content += `</div>`;
+                            content += `</div>`;
+                            content += `</div>`;
+
+                            // Right side - Action buttons
+                            content += `<div style="display: flex; flex-direction: column; gap: 3px; min-width: 90px;">`;
 
                             if (hasMaterials) {
-                                content += `<button class="btn" onclick="handleStartCommodityProduction(${buildingId}, ${equip.id}, '${recipe.id}', false)" style="background: #007bff; color: white; font-size: 10px; padding: 4px 8px;">Start</button>`;
-                                content += `<button class="btn" onclick="handleStartCommodityProduction(${buildingId}, ${equip.id}, '${recipe.id}', true)" style="background: #28a745; color: white; font-size: 10px; padding: 4px 8px;">Continuous</button>`;
+                                content += `<button class="btn" onclick="handleStartCommodityProduction(${buildingId}, ${equip.id}, '${recipe.id}', false)" style="background: #007bff; color: white; font-size: 10px; padding: 5px 10px; white-space: nowrap;">▶️ Start</button>`;
+                                content += `<button class="btn" onclick="handleStartCommodityProduction(${buildingId}, ${equip.id}, '${recipe.id}', true)" style="background: #28a745; color: white; font-size: 10px; padding: 5px 10px; white-space: nowrap;">🔄 Continuous</button>`;
                             } else {
-                                content += `<button class="btn" disabled style="background: #ccc; font-size: 10px; padding: 4px 8px;">Need Materials</button>`;
+                                content += `<button class="btn" disabled style="background: #ccc; font-size: 10px; padding: 5px 10px;">❌ Need Materials</button>`;
                             }
 
                             content += `</div>`;
@@ -2928,6 +3046,48 @@ function getEquipmentDefinition(equipmentType) {
 function getCommodityIdByName(commodityName) {
     const commodity = appState.commodities.find(c => c.name.toLowerCase() === commodityName.toLowerCase());
     return commodity ? commodity.id : null;
+}
+
+// Calculate recipe profitability for production economics dashboard
+function calculateRecipeProfitability(recipe) {
+    // Calculate input costs (what we pay to buy materials)
+    let inputCost = 0;
+    for (const [materialName, quantity] of Object.entries(recipe.inputs)) {
+        const commodityId = getCommodityIdByName(materialName);
+        if (commodityId) {
+            const commodity = appState.commodities.find(c => c.id === commodityId);
+            if (commodity) {
+                inputCost += quantity * commodity.buyPrice;
+            }
+        }
+    }
+
+    // Calculate output value (what we receive when selling products)
+    let outputValue = 0;
+    for (const [commodityName, quantity] of Object.entries(recipe.outputs)) {
+        const commodityId = getCommodityIdByName(commodityName);
+        if (commodityId) {
+            const commodity = appState.commodities.find(c => c.id === commodityId);
+            if (commodity) {
+                outputValue += quantity * commodity.sellPrice;
+            }
+        }
+    }
+
+    // Calculate profitability metrics
+    const profitPerBatch = outputValue - inputCost;
+    const productionTimeHours = recipe.baseProductionTime / (60 * 60 * 1000);
+    const profitPerHour = productionTimeHours > 0 ? profitPerBatch / productionTimeHours : 0;
+    const roi = inputCost > 0 ? (profitPerBatch / inputCost) * 100 : Infinity;
+
+    return {
+        inputCost,
+        outputValue,
+        profitPerBatch,
+        profitPerHour,
+        roi,
+        productionTimeHours
+    };
 }
 
 // Check if equipment can be placed at grid location
