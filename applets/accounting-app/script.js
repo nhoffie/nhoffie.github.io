@@ -1849,33 +1849,44 @@ function sellCommodity(commodityId, quantity) {
     const gainLoss = totalProceeds - totalCostBasis;
     const isGain = gainLoss >= 0;
 
-    // Create multi-entry transaction
+    // Create multi-entry transaction using TransactionManager
     const entries = [
         // Debit Cash for proceeds
-        { account: cashAccount.id, type: 'debit', amount: totalProceeds },
+        { accountId: cashAccount.id, type: 'debit', amount: totalProceeds },
         // Credit Inventory for cost basis
-        { account: inventoryAccount.id, type: 'credit', amount: totalCostBasis }
+        { accountId: inventoryAccount.id, type: 'credit', amount: totalCostBasis }
     ];
 
     // Add gain or loss entry
     if (Math.abs(gainLoss) > 0.01) {
         if (isGain) {
             // Credit Gains
-            entries.push({ account: gainsAccount.id, type: 'credit', amount: Math.abs(gainLoss) });
+            entries.push({ accountId: gainsAccount.id, type: 'credit', amount: Math.abs(gainLoss) });
         } else {
             // Debit Losses
-            entries.push({ account: lossesAccount.id, type: 'debit', amount: Math.abs(gainLoss) });
+            entries.push({ accountId: lossesAccount.id, type: 'debit', amount: Math.abs(gainLoss) });
         }
     }
 
-    const transaction = {
-        id: appState.nextTransactionId++,
-        date: getTodayDate(),
+    const result = window.transactionManager.createTransaction({
         description: `Sale ${quantity} units of ${commodity.name} @ ${formatCurrency(commodity.sellPrice)}/unit (${isGain ? 'Gain' : 'Loss'}: ${formatCurrency(Math.abs(gainLoss))})`,
-        entries: entries
-    };
+        entries: entries,
+        metadata: {
+            type: 'commodity_sale',
+            commodityId: commodityId,
+            quantity: quantity,
+            unitPrice: commodity.sellPrice,
+            totalProceeds: totalProceeds,
+            costBasis: totalCostBasis,
+            gainLoss: gainLoss,
+            tradeId: appState.nextTradeId
+        }
+    });
 
-    appState.transactions.push(transaction);
+    if (!result.success) {
+        alert('Failed to create transaction: ' + result.errors.join(', '));
+        return false;
+    }
 
     // Update portfolio - remove sold quantities using FIFO
     soldLots.forEach(sold => {
@@ -1897,7 +1908,7 @@ function sellCommodity(commodityId, quantity) {
         costBasis: totalCostBasis,
         gainLoss: gainLoss,
         date: getTodayDate(),
-        transactionId: transaction.id
+        transactionId: result.transaction.id
     });
 
     hasUnsavedChanges = true;
@@ -2374,17 +2385,23 @@ function purchaseProperty(x, y) {
         return false;
     }
 
-    // Create transaction: Debit Real Estate, Credit Cash
-    const transaction = {
-        id: appState.nextTransactionId++,
-        date: getTodayDate(),
-        description: `Purchase property at (${x}, ${y}) for ${formatCurrency(price)}`,
-        debitAccount: realEstateAccount.id,
-        creditAccount: cashAccount.id,
-        amount: price
-    };
+    // Create transaction using TransactionManager: Debit Real Estate, Credit Cash
+    const result = window.transactionManager.createSimpleTransaction(
+        `Purchase property at (${x}, ${y}) for ${formatCurrency(price)}`,
+        realEstateAccount.id,  // debit
+        cashAccount.id,        // credit
+        price,
+        {
+            type: 'property_purchase',
+            coordinates: { x, y },
+            pricePerSquare: price
+        }
+    );
 
-    appState.transactions.push(transaction);
+    if (!result.success) {
+        alert('Failed to create transaction: ' + result.errors.join(', '));
+        return false;
+    }
 
     // Add to owned squares
     appState.map.ownedSquares.push({
@@ -2392,7 +2409,7 @@ function purchaseProperty(x, y) {
         y: y,
         purchaseDate: getTodayDate(),
         purchasePrice: price,
-        transactionId: transaction.id
+        transactionId: result.transaction.id
     });
 
     hasUnsavedChanges = true;
@@ -3226,17 +3243,29 @@ function applyForLoan(principal, termMonths) {
 
     appState.loans.push(loan);
 
-    // Record transaction: Debit Cash, Credit Bank Loans Payable
-    const transaction = {
-        id: appState.nextTransactionId++,
-        date: issueDate,
-        description: `Bank loan received - ${termMonths} months @ ${creditInfo.interestRate}% APR`,
-        debitAccount: cashAccount.id,
-        creditAccount: loansPayableAccount.id,
-        amount: principal
-    };
+    // Record transaction using TransactionManager: Debit Cash, Credit Bank Loans Payable
+    const result = window.transactionManager.createSimpleTransaction(
+        `Bank loan received - ${termMonths} months @ ${creditInfo.interestRate}% APR`,
+        cashAccount.id,            // debit Cash
+        loansPayableAccount.id,    // credit Bank Loans Payable
+        principal,
+        {
+            type: 'loan_disbursement',
+            loanId: loan.id,
+            principal: principal,
+            interestRate: creditInfo.interestRate,
+            termMonths: termMonths,
+            maturityDate: loan.maturityDate
+        }
+    );
 
-    appState.transactions.push(transaction);
+    if (!result.success) {
+        // Rollback loan creation
+        appState.loans = appState.loans.filter(l => l.id !== loan.id);
+        alert('Failed to create transaction: ' + result.errors.join(', '));
+        return false;
+    }
+
     hasUnsavedChanges = true;
 
     return true;
@@ -3272,17 +3301,25 @@ function accrueInterestOnLoan(loanId) {
         const interestAmount = outstandingBalance * monthlyRate;
         const accrualDate = addMonthsToDate(lastAccrual, i + 1);
 
-        // Record transaction: Debit Interest Expense, Credit Bank Loans Payable - Interest
-        const transaction = {
-            id: appState.nextTransactionId++,
-            date: accrualDate,
-            description: `Loan #${loanId} - Interest accrued for month`,
-            debitAccount: interestExpenseAccount.id,
-            creditAccount: loansInterestAccount.id,
-            amount: parseFloat(interestAmount.toFixed(2))
-        };
+        // Record transaction using TransactionManager: Debit Interest Expense, Credit Bank Loans Payable - Interest
+        const result = window.transactionManager.createSimpleTransaction(
+            `Loan #${loanId} - Interest accrued for month`,
+            interestExpenseAccount.id,  // debit Interest Expense
+            loansInterestAccount.id,    // credit Bank Loans Payable - Interest
+            parseFloat(interestAmount.toFixed(2)),
+            {
+                type: 'interest_accrual',
+                loanId: loanId,
+                outstandingBalance: outstandingBalance,
+                monthlyRate: monthlyRate,
+                accrualDate: accrualDate
+            }
+        );
 
-        appState.transactions.push(transaction);
+        if (!result.success) {
+            console.error('Failed to record interest accrual:', result.errors);
+            // Continue with other months even if one fails
+        }
 
         // Add interest to accrued interest balance (compound)
         loan.accruedInterestBalance += interestAmount;
@@ -3330,17 +3367,25 @@ function makeLoanPayment(loanId, paymentAmount) {
     if (loan.accruedInterestBalance > 0 && remainingPayment > 0) {
         const interestPayment = Math.min(remainingPayment, loan.accruedInterestBalance);
 
-        // Record transaction: Debit Bank Loans Payable - Interest, Credit Cash
-        const interestTransaction = {
-            id: appState.nextTransactionId++,
-            date: paymentDate,
-            description: `Loan #${loanId} payment - Interest paid`,
-            debitAccount: loansInterestAccount.id,
-            creditAccount: cashAccount.id,
-            amount: parseFloat(interestPayment.toFixed(2))
-        };
+        // Record transaction using TransactionManager: Debit Bank Loans Payable - Interest, Credit Cash
+        const result = window.transactionManager.createSimpleTransaction(
+            `Loan #${loanId} payment - Interest paid`,
+            loansInterestAccount.id,  // debit Bank Loans Payable - Interest
+            cashAccount.id,           // credit Cash
+            parseFloat(interestPayment.toFixed(2)),
+            {
+                type: 'loan_payment_interest',
+                loanId: loanId,
+                interestPaid: interestPayment,
+                paymentDate: paymentDate
+            }
+        );
 
-        appState.transactions.push(interestTransaction);
+        if (!result.success) {
+            alert('Failed to record interest payment: ' + result.errors.join(', '));
+            return false;
+        }
+
         loan.accruedInterestBalance -= interestPayment;
         remainingPayment -= interestPayment;
     }
@@ -3349,17 +3394,25 @@ function makeLoanPayment(loanId, paymentAmount) {
     if (loan.principalBalance > 0 && remainingPayment > 0) {
         const principalPayment = Math.min(remainingPayment, loan.principalBalance);
 
-        // Record transaction: Debit Bank Loans Payable - Principal, Credit Cash
-        const principalTransaction = {
-            id: appState.nextTransactionId++,
-            date: paymentDate,
-            description: `Loan #${loanId} payment - Principal reduction`,
-            debitAccount: loansPrincipalAccount.id,
-            creditAccount: cashAccount.id,
-            amount: parseFloat(principalPayment.toFixed(2))
-        };
+        // Record transaction using TransactionManager: Debit Bank Loans Payable - Principal, Credit Cash
+        const result = window.transactionManager.createSimpleTransaction(
+            `Loan #${loanId} payment - Principal reduction`,
+            loansPrincipalAccount.id,  // debit Bank Loans Payable - Principal
+            cashAccount.id,            // credit Cash
+            parseFloat(principalPayment.toFixed(2)),
+            {
+                type: 'loan_payment_principal',
+                loanId: loanId,
+                principalPaid: principalPayment,
+                paymentDate: paymentDate
+            }
+        );
 
-        appState.transactions.push(principalTransaction);
+        if (!result.success) {
+            alert('Failed to record principal payment: ' + result.errors.join(', '));
+            return false;
+        }
+
         loan.principalBalance -= principalPayment;
     }
 
@@ -4541,20 +4594,32 @@ function startConstruction(x, y, buildingType) {
     appState.buildings.push(building);
     appState.constructionQueue.push({ buildingId: building.id, completionDate: building.completionDate });
 
-    // Record transactions: consume inventory, add to construction-in-progress
+    // Record transaction using TransactionManager: consume inventory, add to buildings
     const inventoryAccount = appState.accounts.find(a => a.number === '1200');
     const buildingsAccount = appState.accounts.find(a => a.number === '1400');
 
-    const transaction = {
-        id: appState.nextTransactionId++,
-        date: getTodayDate(),
-        description: `Started construction: ${buildingDef.name} at (${x}, ${y})`,
-        debitAccount: buildingsAccount.id,
-        creditAccount: inventoryAccount.id,
-        amount: parseFloat(totalCost.toFixed(2))
-    };
+    const result = window.transactionManager.createSimpleTransaction(
+        `Started construction: ${buildingDef.name} at (${x}, ${y})`,
+        buildingsAccount.id,   // debit Buildings
+        inventoryAccount.id,   // credit Inventory
+        parseFloat(totalCost.toFixed(2)),
+        {
+            type: 'building_construction',
+            buildingId: building.id,
+            buildingType: buildingType,
+            coordinates: { x, y },
+            materials: materialsUsed,
+            completionDate: building.completionDate
+        }
+    );
 
-    appState.transactions.push(transaction);
+    if (!result.success) {
+        // Rollback building creation
+        appState.buildings = appState.buildings.filter(b => b.id !== building.id);
+        appState.constructionQueue = appState.constructionQueue.filter(c => c.buildingId !== building.id);
+        alert('Failed to create transaction: ' + result.errors.join(', '));
+        return false;
+    }
     hasUnsavedChanges = true;
 
     return true;
@@ -4857,17 +4922,31 @@ function processWagePayments() {
             const cashBalance = getCashBalance();
 
             if (cashBalance >= employee.wage) {
-                // Pay the employee
-                const transaction = {
-                    id: appState.nextTransactionId++,
-                    date: getTodayDate(),
-                    description: `Wage payment - ${employee.name} (${formatCurrency(employee.wage)}/24hrs)`,
-                    debitAccount: salariesAccount.id,
-                    creditAccount: cashAccount.id,
-                    amount: employee.wage
-                };
+                // Pay the employee using TransactionManager
+                const result = window.transactionManager.createSimpleTransaction(
+                    `Wage payment - ${employee.name} (${formatCurrency(employee.wage)}/24hrs)`,
+                    salariesAccount.id,  // debit Salaries Expense
+                    cashAccount.id,      // credit Cash
+                    employee.wage,
+                    {
+                        type: 'wage_payment',
+                        employeeId: employee.id,
+                        employeeName: employee.name,
+                        wage: employee.wage,
+                        paymentPeriod: '24hrs'
+                    }
+                );
 
-                appState.transactions.push(transaction);
+                if (!result.success) {
+                    console.error(`Failed to record wage payment for ${employee.name}:`, result.errors);
+                    // Employee quits due to payment system failure
+                    const employeeIndex = appState.employees.findIndex(e => e.id === employee.id);
+                    if (employeeIndex !== -1) {
+                        appState.employees.splice(employeeIndex, 1);
+                        hasUnsavedChanges = true;
+                    }
+                    continue;
+                }
 
                 // Schedule next payment (24 hours later)
                 employee.nextPaymentDate = addTime(employee.nextPaymentDate, 24 * 60 * 60 * 1000);
@@ -4924,17 +5003,28 @@ function issueShares(numberOfShares, pricePerShare, holder = 'Owner') {
     const cashAccount = appState.accounts.find(a => a.number === '1000');
     const commonStockAccount = appState.accounts.find(a => a.number === '3000');
 
-    // Record transaction: Debit Cash, Credit Common Stock
-    const transaction = {
-        id: appState.nextTransactionId++,
-        date: issueDate,
-        description: `Issued ${numberOfShares} shares at ${formatCurrency(pricePerShare)} per share to ${holder}`,
-        debitAccount: cashAccount.id,
-        creditAccount: commonStockAccount.id,
-        amount: totalValue
-    };
+    // Record transaction using TransactionManager: Debit Cash, Credit Common Stock
+    const result = window.transactionManager.createSimpleTransaction(
+        `Issued ${numberOfShares} shares at ${formatCurrency(pricePerShare)} per share to ${holder}`,
+        cashAccount.id,        // debit Cash
+        commonStockAccount.id, // credit Common Stock
+        totalValue,
+        {
+            type: 'equity_issuance',
+            shareIssuanceId: shareIssuance.id,
+            numberOfShares: numberOfShares,
+            pricePerShare: pricePerShare,
+            holder: holder
+        }
+    );
 
-    appState.transactions.push(transaction);
+    if (!result.success) {
+        // Rollback share issuance
+        appState.shares = appState.shares.filter(s => s.id !== shareIssuance.id);
+        alert('Failed to create transaction: ' + result.errors.join(', '));
+        return false;
+    }
+
     hasUnsavedChanges = true;
     return true;
 }
