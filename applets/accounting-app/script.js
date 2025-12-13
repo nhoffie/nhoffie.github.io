@@ -3632,11 +3632,33 @@ function startCommodityProduction(buildingId, equipmentId, recipeId, continuous 
 function checkProductionProgress() {
     const currentTime = getCurrentSimulationTime();
 
-    appState.productionQueue.forEach(job => {
-        if (job.status === 'in_progress' && currentTime >= job.estimatedCompletionTime) {
-            completeProduction(job);
+    // Keep checking until no more jobs are ready to complete
+    // This is critical for admin time-skip: if you skip 10 hours and a 2-hour
+    // production is on continuous mode, it should complete 5 times, not just once!
+    let completedAny = true;
+    let iterations = 0;
+    const maxIterations = 1000; // Safety limit to prevent infinite loops
+
+    while (completedAny && iterations < maxIterations) {
+        completedAny = false;
+        iterations++;
+
+        // Check all jobs - use filter to avoid issues with array modification during iteration
+        const jobsToComplete = appState.productionQueue.filter(job =>
+            job.status === 'in_progress' && currentTime >= job.estimatedCompletionTime
+        );
+
+        if (jobsToComplete.length > 0) {
+            completedAny = true;
+            jobsToComplete.forEach(job => {
+                completeProduction(job);
+            });
         }
-    });
+    }
+
+    if (iterations >= maxIterations) {
+        console.warn('checkProductionProgress: Hit max iterations safety limit');
+    }
 }
 
 // Complete a production job
