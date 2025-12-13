@@ -1752,9 +1752,82 @@ function renderMap() {
     const cashBalance = getCashBalance();
     const ownedCount = appState.map.ownedSquares.length;
     const totalValue = ownedCount * appState.map.pricePerSquare;
+    const prodStats = getProductionStatistics();
+
+    // Production Dashboard
+    let dashboardHtml = `
+        <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; margin-bottom: 15px;">
+            <h3 style="margin: 0 0 10px 0;">📊 Production Dashboard</h3>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-bottom: 10px;">
+                <div style="background: white; padding: 10px; border-radius: 3px; border-left: 4px solid #007bff;">
+                    <div style="font-size: 24px; font-weight: bold; color: #007bff;">${prodStats.totalActive}</div>
+                    <div style="font-size: 12px; color: #666;">Active Productions</div>
+                </div>
+                <div style="background: white; padding: 10px; border-radius: 3px; border-left: 4px solid #28a745;">
+                    <div style="font-size: 24px; font-weight: bold; color: #28a745;">${prodStats.totalCompleted}</div>
+                    <div style="font-size: 12px; color: #666;">Total Completed</div>
+                </div>
+                <div style="background: white; padding: 10px; border-radius: 3px; border-left: 4px solid ${prodStats.lowStockMaterials.length > 0 ? '#dc3545' : '#28a745'};">
+                    <div style="font-size: 24px; font-weight: bold; color: ${prodStats.lowStockMaterials.length > 0 ? '#dc3545' : '#28a745'};">${prodStats.lowStockMaterials.length}</div>
+                    <div style="font-size: 12px; color: #666;">Low Stock Materials</div>
+                </div>
+            </div>
+    `;
+
+    // Low stock warnings
+    if (prodStats.lowStockMaterials.length > 0) {
+        dashboardHtml += `
+            <div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 10px; border-radius: 3px; margin-bottom: 10px;">
+                <strong>⚠️ Material Warnings:</strong>
+                <div style="margin-top: 5px; font-size: 12px;">
+        `;
+        prodStats.lowStockMaterials.forEach(mat => {
+            dashboardHtml += `<span style="display: inline-block; margin-right: 10px; padding: 3px 6px; background: white; border-radius: 3px;">${mat.name}: ${mat.quantity} units</span>`;
+        });
+        dashboardHtml += `
+                </div>
+            </div>
+        `;
+    }
+
+    // Recent completions
+    if (prodStats.recentCompletions.length > 0) {
+        dashboardHtml += `
+            <div style="background: white; padding: 10px; border-radius: 3px; border: 1px solid #dee2e6;">
+                <strong>✅ Recent Completions</strong>
+                <div style="margin-top: 5px; max-height: 150px; overflow-y: auto;">
+        `;
+        prodStats.recentCompletions.slice(0, 5).forEach(job => {
+            const building = appState.buildings.find(b => b.id === job.buildingId);
+            const location = building ? `(${building.x}, ${building.y})` : '';
+            let itemName = '';
+
+            if (job.productType === 'equipment') {
+                const equipDef = getEquipmentDefinition(job.productId);
+                itemName = equipDef ? equipDef.name : job.productId;
+            } else if (job.productType === 'commodity') {
+                const recipe = Object.values(PRODUCTION_RECIPES).find(r => r.id === job.recipeId);
+                itemName = recipe ? recipe.name : job.recipeId;
+            }
+
+            dashboardHtml += `
+                <div style="font-size: 11px; padding: 3px 0; border-bottom: 1px solid #f0f0f0;">
+                    <span style="color: #666;">${formatSimulationTime(job.actualCompletionTime)}</span> -
+                    <strong>${itemName}</strong> ${location}
+                </div>
+            `;
+        });
+        dashboardHtml += `
+                </div>
+            </div>
+        `;
+    }
+
+    dashboardHtml += `</div>`;
 
     // Update stats
     const statsHtml = `
+        ${dashboardHtml}
         <div class="map-stats">
             <div class="stat-item">
                 <span class="stat-label">Properties Owned:</span>
@@ -1864,6 +1937,31 @@ function showBuildingManagement(x, y) {
         `;
 
         if (building.status === 'completed') {
+            // Show production stats
+            const prodStats = getProductionStatistics();
+            const buildingStats = prodStats.byBuilding[building.id] || { active: 0, completed: 0, equipmentBusy: 0, equipmentIdle: 0 };
+            const equipment = getWarehouseEquipment(building.id);
+
+            if (equipment.length > 0 || buildingStats.active > 0 || buildingStats.completed > 0) {
+                content += `
+                    <div style="background: #f8f9fa; padding: 10px; border-radius: 5px; margin: 10px 0;">
+                        <h4 style="margin-top: 0;">📊 Production Summary</h4>
+                        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; font-size: 13px;">
+                            <div>
+                                <strong>Equipment:</strong> ${equipment.length} total<br/>
+                                <span style="color: #28a745;">● Idle: ${buildingStats.equipmentIdle}</span> |
+                                <span style="color: #ffc107;">● Busy: ${buildingStats.equipmentBusy}</span>
+                            </div>
+                            <div>
+                                <strong>Productions:</strong><br/>
+                                <span style="color: #007bff;">● Active: ${buildingStats.active}</span> |
+                                <span style="color: #6c757d;">● Completed: ${buildingStats.completed}</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+
             // Show employees
             const employees = getEmployeesByBuilding(building.id);
             content += `
@@ -3548,6 +3646,86 @@ function getActiveProductions(buildingId) {
 // Get all production jobs for a building (including completed)
 function getAllProductions(buildingId) {
     return appState.productionQueue.filter(p => p.buildingId === buildingId);
+}
+
+// Get production statistics for all warehouses
+function getProductionStatistics() {
+    const stats = {
+        totalActive: 0,
+        totalCompleted: 0,
+        byBuilding: {},
+        recentCompletions: [],
+        lowStockMaterials: []
+    };
+
+    // Count productions
+    appState.productionQueue.forEach(job => {
+        if (job.status === 'in_progress') {
+            stats.totalActive++;
+        } else if (job.status === 'completed') {
+            stats.totalCompleted++;
+
+            // Track recent completions (last 10)
+            if (stats.recentCompletions.length < 10) {
+                stats.recentCompletions.push(job);
+            }
+        }
+
+        // Per-building stats
+        if (!stats.byBuilding[job.buildingId]) {
+            stats.byBuilding[job.buildingId] = {
+                active: 0,
+                completed: 0,
+                equipmentBusy: 0,
+                equipmentIdle: 0
+            };
+        }
+
+        if (job.status === 'in_progress') {
+            stats.byBuilding[job.buildingId].active++;
+        } else if (job.status === 'completed') {
+            stats.byBuilding[job.buildingId].completed++;
+        }
+    });
+
+    // Check equipment status per building
+    appState.buildings.forEach(building => {
+        if (building.status === 'completed' && building.interior && building.interior.equipment) {
+            if (!stats.byBuilding[building.id]) {
+                stats.byBuilding[building.id] = {
+                    active: 0,
+                    completed: 0,
+                    equipmentBusy: 0,
+                    equipmentIdle: 0
+                };
+            }
+
+            building.interior.equipment.forEach(equip => {
+                if (equip.status === 'producing') {
+                    stats.byBuilding[building.id].equipmentBusy++;
+                } else {
+                    stats.byBuilding[building.id].equipmentIdle++;
+                }
+            });
+        }
+    });
+
+    // Check for low-stock materials (< 10 units)
+    const criticalMaterials = ['lumber', 'steel', 'concrete', 'raw logs', 'iron ore', 'coal', 'sand', 'gravel'];
+    criticalMaterials.forEach(matName => {
+        const commodityId = getCommodityIdByName(matName);
+        if (commodityId) {
+            const quantity = getTotalQuantity(commodityId);
+            if (quantity < 10 && quantity > 0) {
+                stats.lowStockMaterials.push({ name: matName, quantity: quantity });
+            }
+        }
+    });
+
+    // Sort recent completions by time (newest first)
+    stats.recentCompletions.sort((a, b) => b.actualCompletionTime - a.actualCompletionTime);
+
+    return stats;
 }
 
 // Start construction of a building
