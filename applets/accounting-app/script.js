@@ -2848,7 +2848,7 @@ const PRODUCTION_RECIPES = {
         description: 'Process raw logs into construction-grade lumber',
         equipmentRequired: 'lumber_mill',
         inputs: { 'raw logs': 2 },
-        outputs: { lumber: 1 },
+        outputs: { lumber: 3 },
         baseProductionTime: 2 * 60 * 60 * 1000,  // 2 hours per batch
         batchSize: 1
     },
@@ -2858,7 +2858,7 @@ const PRODUCTION_RECIPES = {
         description: 'Smelt iron ore with coal into steel',
         equipmentRequired: 'foundry',
         inputs: { 'iron ore': 3, coal: 1 },
-        outputs: { steel: 1 },
+        outputs: { steel: 3 },
         baseProductionTime: 4 * 60 * 60 * 1000,  // 4 hours
         batchSize: 1
     },
@@ -2868,7 +2868,7 @@ const PRODUCTION_RECIPES = {
         description: 'Mix sand, gravel, and water into concrete',
         equipmentRequired: 'concrete_mixer',
         inputs: { sand: 2, gravel: 2, water: 1 },
-        outputs: { concrete: 1 },
+        outputs: { concrete: 2 },
         baseProductionTime: 1 * 60 * 60 * 1000,  // 1 hour
         batchSize: 1
     },
@@ -2878,7 +2878,7 @@ const PRODUCTION_RECIPES = {
         description: 'Generate electrical power from coal',
         equipmentRequired: 'power_generator',
         inputs: { coal: 1 },
-        outputs: { power: 10 },
+        outputs: { power: 3 },
         baseProductionTime: 30 * 60 * 1000,  // 30 minutes
         batchSize: 1
     },
@@ -2888,7 +2888,7 @@ const PRODUCTION_RECIPES = {
         description: 'Generate electrical power from oil',
         equipmentRequired: 'power_generator',
         inputs: { oil: 1 },
-        outputs: { power: 15 },
+        outputs: { power: 4 },
         baseProductionTime: 30 * 60 * 1000,  // 30 minutes
         batchSize: 1
     },
@@ -2898,7 +2898,7 @@ const PRODUCTION_RECIPES = {
         description: 'Generate electrical power from natural gas',
         equipmentRequired: 'power_generator',
         inputs: { 'natural gas': 1 },
-        outputs: { power: 12 },
+        outputs: { power: 3 },
         baseProductionTime: 30 * 60 * 1000,  // 30 minutes
         batchSize: 1
     },
