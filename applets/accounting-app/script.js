@@ -187,6 +187,14 @@ let appState = {
 
 let hasUnsavedChanges = false;
 
+// Pagination state
+let transactionPagination = {
+    currentPage: 1,
+    itemsPerPage: 50,
+    totalItems: 0,
+    totalPages: 0
+};
+
 // ====================================
 // TRANSACTION MANAGER & GENERAL LEDGER
 // ====================================
@@ -245,6 +253,11 @@ class TransactionManager {
 
         // Post transaction
         this.appState.transactions.push(transaction);
+
+        // Update transaction index
+        if (window.transactionIndex) {
+            window.transactionIndex.addTransaction(transaction);
+        }
 
         // Update general ledger
         if (window.generalLedger) {
@@ -891,10 +904,228 @@ class PeriodManager {
     }
 }
 
+// ====================================
+// TRANSACTION INDEX
+// ====================================
+
+class TransactionIndex {
+    constructor(appState) {
+        this.appState = appState;
+        this.byDate = new Map(); // Map<dateString, Set<transactionId>>
+        this.byAccount = new Map(); // Map<accountId, Set<transactionId>>
+        this.byType = new Map(); // Map<metadataType, Set<transactionId>>
+        this.byPeriod = new Map(); // Map<periodId, Set<transactionId>>
+        this.sortedByDate = []; // Array of transaction IDs sorted by date
+        this.needsRebuild = true;
+    }
+
+    /**
+     * Build all indexes from scratch
+     */
+    buildIndexes() {
+        this.byDate.clear();
+        this.byAccount.clear();
+        this.byType.clear();
+        this.byPeriod.clear();
+        this.sortedByDate = [];
+
+        const sortedTransactions = [...this.appState.transactions]
+            .filter(t => t.status !== 'void')
+            .sort((a, b) => {
+                const aDate = a.simDate || a.date;
+                const bDate = b.simDate || b.date;
+                if (aDate !== bDate) return aDate.localeCompare(bDate);
+                return (a.simMs || 0) - (b.simMs || 0);
+            });
+
+        sortedTransactions.forEach(transaction => {
+            this.sortedByDate.push(transaction.id);
+            this.indexTransaction(transaction);
+        });
+
+        this.needsRebuild = false;
+    }
+
+    /**
+     * Index a single transaction
+     */
+    indexTransaction(transaction) {
+        const txId = transaction.id;
+        const date = transaction.simDate || transaction.date;
+
+        // Index by date
+        if (!this.byDate.has(date)) {
+            this.byDate.set(date, new Set());
+        }
+        this.byDate.get(date).add(txId);
+
+        // Index by account
+        if (transaction.entries) {
+            transaction.entries.forEach(entry => {
+                if (!this.byAccount.has(entry.accountId)) {
+                    this.byAccount.set(entry.accountId, new Set());
+                }
+                this.byAccount.get(entry.accountId).add(txId);
+            });
+        } else {
+            // Legacy format
+            if (transaction.debitAccount) {
+                if (!this.byAccount.has(transaction.debitAccount)) {
+                    this.byAccount.set(transaction.debitAccount, new Set());
+                }
+                this.byAccount.get(transaction.debitAccount).add(txId);
+            }
+            if (transaction.creditAccount) {
+                if (!this.byAccount.has(transaction.creditAccount)) {
+                    this.byAccount.set(transaction.creditAccount, new Set());
+                }
+                this.byAccount.get(transaction.creditAccount).add(txId);
+            }
+        }
+
+        // Index by metadata type
+        if (transaction.metadata?.type) {
+            const type = transaction.metadata.type;
+            if (!this.byType.has(type)) {
+                this.byType.set(type, new Set());
+            }
+            this.byType.get(type).add(txId);
+        }
+
+        // Index by period
+        if (transaction.metadata?.periodId) {
+            const periodId = transaction.metadata.periodId;
+            if (!this.byPeriod.has(periodId)) {
+                this.byPeriod.set(periodId, new Set());
+            }
+            this.byPeriod.get(periodId).add(txId);
+        }
+    }
+
+    /**
+     * Add transaction to indexes
+     */
+    addTransaction(transaction) {
+        // Add to sorted array (maintain sort order)
+        const date = transaction.simDate || transaction.date;
+        const simMs = transaction.simMs || 0;
+
+        // Binary search for insertion point
+        let left = 0;
+        let right = this.sortedByDate.length;
+
+        while (left < right) {
+            const mid = Math.floor((left + right) / 2);
+            const midTx = this.appState.transactions.find(t => t.id === this.sortedByDate[mid]);
+            const midDate = midTx.simDate || midTx.date;
+            const midMs = midTx.simMs || 0;
+
+            if (midDate < date || (midDate === date && midMs < simMs)) {
+                left = mid + 1;
+            } else {
+                right = mid;
+            }
+        }
+
+        this.sortedByDate.splice(left, 0, transaction.id);
+        this.indexTransaction(transaction);
+    }
+
+    /**
+     * Get transactions by date range (optimized)
+     */
+    getByDateRange(startDate, endDate) {
+        if (this.needsRebuild) this.buildIndexes();
+
+        const result = [];
+
+        // Binary search for start position
+        let startIdx = 0;
+        let left = 0;
+        let right = this.sortedByDate.length;
+
+        while (left < right) {
+            const mid = Math.floor((left + right) / 2);
+            const tx = this.appState.transactions.find(t => t.id === this.sortedByDate[mid]);
+            const txDate = tx.simDate || tx.date;
+
+            if (txDate < startDate) {
+                left = mid + 1;
+            } else {
+                right = mid;
+            }
+        }
+        startIdx = left;
+
+        // Collect transactions in range
+        for (let i = startIdx; i < this.sortedByDate.length; i++) {
+            const tx = this.appState.transactions.find(t => t.id === this.sortedByDate[i]);
+            const txDate = tx.simDate || tx.date;
+
+            if (txDate > endDate) break;
+            if (tx.status !== 'void') {
+                result.push(tx);
+            }
+        }
+
+        return result;
+    }
+
+    /**
+     * Get transactions by account (optimized)
+     */
+    getByAccount(accountId) {
+        if (this.needsRebuild) this.buildIndexes();
+
+        const txIds = this.byAccount.get(accountId);
+        if (!txIds) return [];
+
+        return Array.from(txIds)
+            .map(id => this.appState.transactions.find(t => t.id === id))
+            .filter(t => t && t.status !== 'void');
+    }
+
+    /**
+     * Get transactions by metadata type
+     */
+    getByType(metadataType) {
+        if (this.needsRebuild) this.buildIndexes();
+
+        const txIds = this.byType.get(metadataType);
+        if (!txIds) return [];
+
+        return Array.from(txIds)
+            .map(id => this.appState.transactions.find(t => t.id === id))
+            .filter(t => t && t.status !== 'void');
+    }
+
+    /**
+     * Get transactions by period
+     */
+    getByPeriod(periodId) {
+        if (this.needsRebuild) this.buildIndexes();
+
+        const txIds = this.byPeriod.get(periodId);
+        if (!txIds) return [];
+
+        return Array.from(txIds)
+            .map(id => this.appState.transactions.find(t => t.id === id))
+            .filter(t => t && t.status !== 'void');
+    }
+
+    /**
+     * Mark index as needing rebuild
+     */
+    invalidate() {
+        this.needsRebuild = true;
+    }
+}
+
 // Initialize global instances
 let transactionManager = null;
 let generalLedger = null;
 let periodManager = null;
+let transactionIndex = null;
 
 function initializeFinancialSystem() {
     // Migrate legacy transactions to new format
@@ -904,14 +1135,19 @@ function initializeFinancialSystem() {
     transactionManager = new TransactionManager(appState);
     generalLedger = new GeneralLedger(appState);
     periodManager = new PeriodManager(appState);
+    transactionIndex = new TransactionIndex(appState);
 
     // Initialize first fiscal period if needed
     periodManager.initializeFirstPeriod();
+
+    // Build transaction indexes
+    transactionIndex.buildIndexes();
 
     // Make available globally
     window.transactionManager = transactionManager;
     window.generalLedger = generalLedger;
     window.periodManager = periodManager;
+    window.transactionIndex = transactionIndex;
 }
 
 /**
@@ -1744,25 +1980,67 @@ function renderTransactions() {
     const filterEndDate = document.getElementById('filterEndDate').value;
     const filterAccount = parseInt(document.getElementById('filterAccount').value);
 
-    // Filter transactions
-    let filteredTransactions = [...appState.transactions];
+    // Filter transactions using optimized index when possible
+    let filteredTransactions;
 
-    if (filterStartDate) {
-        filteredTransactions = filteredTransactions.filter(t => t.date >= filterStartDate);
+    if (filterStartDate && filterEndDate && window.transactionIndex) {
+        // Use optimized date range query
+        filteredTransactions = window.transactionIndex.getByDateRange(filterStartDate, filterEndDate);
+    } else {
+        filteredTransactions = [...appState.transactions].filter(t => t.status !== 'void');
+
+        if (filterStartDate) {
+            filteredTransactions = filteredTransactions.filter(t => {
+                const tDate = t.simDate || t.date;
+                return tDate >= filterStartDate;
+            });
+        }
+        if (filterEndDate) {
+            filteredTransactions = filteredTransactions.filter(t => {
+                const tDate = t.simDate || t.date;
+                return tDate <= filterEndDate;
+            });
+        }
     }
-    if (filterEndDate) {
-        filteredTransactions = filteredTransactions.filter(t => t.date <= filterEndDate);
-    }
-    if (filterAccount) {
-        filteredTransactions = filteredTransactions.filter(
-            t => t.debitAccount === filterAccount || t.creditAccount === filterAccount
-        );
+
+    // Apply account filter
+    if (filterAccount && window.transactionIndex) {
+        // Use optimized account query
+        const accountTxs = window.transactionIndex.getByAccount(filterAccount);
+        const accountTxIds = new Set(accountTxs.map(t => t.id));
+        filteredTransactions = filteredTransactions.filter(t => accountTxIds.has(t.id));
+    } else if (filterAccount) {
+        filteredTransactions = filteredTransactions.filter(t => {
+            if (t.entries) {
+                return t.entries.some(e => e.accountId === filterAccount);
+            }
+            return t.debitAccount === filterAccount || t.creditAccount === filterAccount;
+        });
     }
 
     // Sort by date (newest first)
-    filteredTransactions.sort((a, b) => new Date(b.date) - new Date(a.date));
+    filteredTransactions.sort((a, b) => {
+        const aDate = a.simDate || a.date;
+        const bDate = b.simDate || b.date;
+        if (aDate !== bDate) return bDate.localeCompare(aDate);
+        return (b.simMs || 0) - (a.simMs || 0);
+    });
 
-    filteredTransactions.forEach(transaction => {
+    // Update pagination
+    transactionPagination.totalItems = filteredTransactions.length;
+    transactionPagination.totalPages = Math.ceil(filteredTransactions.length / transactionPagination.itemsPerPage);
+
+    // Ensure current page is valid
+    if (transactionPagination.currentPage > transactionPagination.totalPages) {
+        transactionPagination.currentPage = Math.max(1, transactionPagination.totalPages);
+    }
+
+    // Calculate pagination slice
+    const startIdx = (transactionPagination.currentPage - 1) * transactionPagination.itemsPerPage;
+    const endIdx = startIdx + transactionPagination.itemsPerPage;
+    const paginatedTransactions = filteredTransactions.slice(startIdx, endIdx);
+
+    paginatedTransactions.forEach(transaction => {
         let debitDisplay, creditDisplay, amountDisplay;
 
         if (transaction.entries) {
@@ -1811,11 +2089,68 @@ function renderTransactions() {
         tbody.appendChild(row);
     });
 
-    if (filteredTransactions.length === 0) {
+    if (paginatedTransactions.length === 0) {
         const row = document.createElement('tr');
         row.innerHTML = '<td colspan="6" style="text-align: center;">No transactions found</td>';
         tbody.appendChild(row);
     }
+
+    // Render pagination controls
+    renderTransactionPagination();
+}
+
+function renderTransactionPagination() {
+    let paginationContainer = document.getElementById('transactionPagination');
+
+    if (!paginationContainer) {
+        // Create pagination container if it doesn't exist
+        const table = document.getElementById('transactionsTableBody').closest('table');
+        paginationContainer = document.createElement('div');
+        paginationContainer.id = 'transactionPagination';
+        paginationContainer.style.cssText = 'margin-top: 1rem; display: flex; justify-content: space-between; align-items: center;';
+        table.parentNode.insertBefore(paginationContainer, table.nextSibling);
+    }
+
+    if (transactionPagination.totalPages <= 1) {
+        paginationContainer.innerHTML = '';
+        return;
+    }
+
+    const { currentPage, totalPages, totalItems, itemsPerPage } = transactionPagination;
+    const startItem = (currentPage - 1) * itemsPerPage + 1;
+    const endItem = Math.min(currentPage * itemsPerPage, totalItems);
+
+    let paginationHtml = `
+        <div>
+            Showing ${startItem}-${endItem} of ${totalItems} transactions
+        </div>
+        <div style="display: flex; gap: 0.5rem; align-items: center;">
+            <button class="btn btn-sm" onclick="changeTransactionPage(1)" ${currentPage === 1 ? 'disabled' : ''}>«</button>
+            <button class="btn btn-sm" onclick="changeTransactionPage(${currentPage - 1})" ${currentPage === 1 ? 'disabled' : ''}>‹</button>
+            <span style="padding: 0 1rem;">Page ${currentPage} of ${totalPages}</span>
+            <button class="btn btn-sm" onclick="changeTransactionPage(${currentPage + 1})" ${currentPage === totalPages ? 'disabled' : ''}>›</button>
+            <button class="btn btn-sm" onclick="changeTransactionPage(${totalPages})" ${currentPage === totalPages ? 'disabled' : ''}>»</button>
+            <select onchange="changeTransactionPageSize(this.value)" style="margin-left: 1rem;">
+                <option value="25" ${itemsPerPage === 25 ? 'selected' : ''}>25 per page</option>
+                <option value="50" ${itemsPerPage === 50 ? 'selected' : ''}>50 per page</option>
+                <option value="100" ${itemsPerPage === 100 ? 'selected' : ''}>100 per page</option>
+                <option value="250" ${itemsPerPage === 250 ? 'selected' : ''}>250 per page</option>
+            </select>
+        </div>
+    `;
+
+    paginationContainer.innerHTML = paginationHtml;
+}
+
+function changeTransactionPage(page) {
+    transactionPagination.currentPage = page;
+    renderTransactions();
+}
+
+function changeTransactionPageSize(size) {
+    transactionPagination.itemsPerPage = parseInt(size);
+    transactionPagination.currentPage = 1; // Reset to first page
+    renderTransactions();
 }
 
 function saveTransaction(event) {
