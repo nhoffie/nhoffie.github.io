@@ -25,7 +25,8 @@ let appState = {
         { id: 16, number: '5300', name: 'Salaries Expense', type: 'Expense', openingBalance: 0 },
         { id: 17, number: '5400', name: 'Supplies Expense', type: 'Expense', openingBalance: 0 },
         { id: 18, number: '5500', name: 'Losses on Commodity Sales', type: 'Expense', openingBalance: 0 },
-        { id: 20, number: '5600', name: 'Interest Expense', type: 'Expense', openingBalance: 0 }
+        { id: 20, number: '5600', name: 'Interest Expense', type: 'Expense', openingBalance: 0 },
+        { id: 23, number: '3200', name: 'Income Summary', type: 'Equity', openingBalance: 0 }
     ],
     transactions: [],
     transactionTypes: [
@@ -156,7 +157,7 @@ let appState = {
     // Structure: { id, name, wage, skillLevel, assignedBuildingId, hireDate, nextPaymentDate }
     productionQueue: [],
     // Structure: { id, buildingId, equipmentId, productType, productId, recipeId, quantity, startTime, estimatedCompletionTime, actualCompletionTime, status, materialsConsumed, outputs, assignedEmployees, continuous, transactionId }
-    nextAccountId: 23,
+    nextAccountId: 24,
     nextTransactionId: 1,
     nextTransactionTypeId: 11,
     nextCommodityId: 13,
@@ -166,7 +167,22 @@ let appState = {
     nextBuildingId: 1,
     nextEmployeeId: 1,
     nextProductionId: 1,
-    nextEquipmentId: 1
+    nextEquipmentId: 1,
+    // Fiscal Period Management
+    fiscalPeriods: [],
+    /* Structure: {
+        id: number,
+        year: number,
+        month: number,
+        startDate: string (Y#-M#-D#),
+        endDate: string (Y#-M#-D#),
+        status: 'open' | 'closing' | 'closed',
+        closedAt: timestamp | null,
+        closingTransactionId: number | null,
+        netIncome: number | null
+    } */
+    currentFiscalPeriod: null,
+    nextFiscalPeriodId: 1
 };
 
 let hasUnsavedChanges = false;
@@ -315,6 +331,15 @@ class TransactionManager {
         // Check debits = credits (allow small rounding difference)
         if (Math.abs(debitTotal - creditTotal) > 0.01) {
             errors.push(`Debits (${debitTotal.toFixed(2)}) must equal credits (${creditTotal.toFixed(2)})`);
+        }
+
+        // Check if posting to a closed period (unless it's a closing entry)
+        if (window.periodManager && transaction.simDate) {
+            const isClosingEntry = transaction.metadata?.type === 'closing_entry';
+            if (!isClosingEntry && window.periodManager.isDateInClosedPeriod(transaction.simDate)) {
+                const period = window.periodManager.getPeriodForDate(transaction.simDate);
+                errors.push(`Cannot post to closed fiscal period: ${period.startDate} to ${period.endDate}`);
+            }
         }
 
         return {
@@ -566,9 +591,310 @@ class GeneralLedger {
     }
 }
 
+// ====================================
+// PERIOD MANAGER
+// ====================================
+
+class PeriodManager {
+    constructor(appState) {
+        this.appState = appState;
+    }
+
+    /**
+     * Initialize first fiscal period if none exists
+     */
+    initializeFirstPeriod() {
+        if (this.appState.fiscalPeriods.length === 0) {
+            const simMs = getCurrentSimulationTime();
+            const simTime = msToCalendarTime(simMs);
+
+            const period = {
+                id: this.appState.nextFiscalPeriodId++,
+                year: simTime.year,
+                month: simTime.month,
+                startDate: `Y${simTime.year}-M${simTime.month}-D1`,
+                endDate: `Y${simTime.year}-M${simTime.month}-D28`,
+                status: 'open',
+                closedAt: null,
+                closingTransactionId: null,
+                netIncome: null
+            };
+
+            this.appState.fiscalPeriods.push(period);
+            this.appState.currentFiscalPeriod = period.id;
+
+            return period;
+        }
+        return null;
+    }
+
+    /**
+     * Get the current open period
+     */
+    getCurrentPeriod() {
+        if (this.appState.currentFiscalPeriod) {
+            return this.appState.fiscalPeriods.find(p => p.id === this.appState.currentFiscalPeriod);
+        }
+        return null;
+    }
+
+    /**
+     * Check if a date falls within a closed period
+     */
+    isDateInClosedPeriod(dateStr) {
+        return this.appState.fiscalPeriods.some(period => {
+            if (period.status === 'closed') {
+                return dateStr >= period.startDate && dateStr <= period.endDate;
+            }
+            return false;
+        });
+    }
+
+    /**
+     * Get period for a specific date
+     */
+    getPeriodForDate(dateStr) {
+        return this.appState.fiscalPeriods.find(period =>
+            dateStr >= period.startDate && dateStr <= period.endDate
+        );
+    }
+
+    /**
+     * Create next fiscal period (month)
+     */
+    createNextPeriod() {
+        const lastPeriod = this.appState.fiscalPeriods[this.appState.fiscalPeriods.length - 1];
+
+        let nextYear = lastPeriod.year;
+        let nextMonth = lastPeriod.month + 1;
+
+        if (nextMonth > 12) {
+            nextMonth = 1;
+            nextYear++;
+        }
+
+        const period = {
+            id: this.appState.nextFiscalPeriodId++,
+            year: nextYear,
+            month: nextMonth,
+            startDate: `Y${nextYear}-M${nextMonth}-D1`,
+            endDate: `Y${nextYear}-M${nextMonth}-D28`,
+            status: 'open',
+            closedAt: null,
+            closingTransactionId: null,
+            netIncome: null
+        };
+
+        this.appState.fiscalPeriods.push(period);
+
+        return period;
+    }
+
+    /**
+     * Execute month-end closing process
+     */
+    closePeriod(periodId) {
+        const period = this.appState.fiscalPeriods.find(p => p.id === periodId);
+
+        if (!period) {
+            return { success: false, error: 'Period not found' };
+        }
+
+        if (period.status === 'closed') {
+            return { success: false, error: 'Period is already closed' };
+        }
+
+        // Mark as closing
+        period.status = 'closing';
+
+        try {
+            // Step 1: Calculate net income for the period
+            const netIncome = this.calculateNetIncome(period.startDate, period.endDate);
+            period.netIncome = netIncome;
+
+            // Step 2: Get account IDs
+            const incomeSummaryAccount = this.appState.accounts.find(a => a.name === 'Income Summary');
+            const retainedEarningsAccount = this.appState.accounts.find(a => a.name === 'Retained Earnings');
+
+            if (!incomeSummaryAccount || !retainedEarningsAccount) {
+                throw new Error('Required accounts not found (Income Summary or Retained Earnings)');
+            }
+
+            // Step 3: Close revenue accounts to Income Summary
+            const revenueAccounts = this.appState.accounts.filter(a => a.type === 'Revenue');
+            const revenueEntries = [];
+
+            revenueAccounts.forEach(account => {
+                const balances = window.generalLedger.getBalances(period.endDate);
+                const balance = balances[account.id] || 0;
+
+                if (Math.abs(balance) >= 0.01) {
+                    // Debit revenue account (to close it)
+                    revenueEntries.push({ accountId: account.id, type: 'debit', amount: balance });
+                }
+            });
+
+            if (revenueEntries.length > 0) {
+                const totalRevenue = revenueEntries.reduce((sum, e) => sum + e.amount, 0);
+                // Credit Income Summary
+                revenueEntries.push({ accountId: incomeSummaryAccount.id, type: 'credit', amount: totalRevenue });
+
+                const revenueResult = window.transactionManager.createTransaction({
+                    description: `Close revenue accounts for ${period.startDate} to ${period.endDate}`,
+                    entries: revenueEntries,
+                    metadata: {
+                        type: 'closing_entry',
+                        periodId: period.id,
+                        closingStep: 'close_revenue',
+                        fiscalPeriod: `${period.year}-${period.month}`
+                    }
+                });
+
+                if (!revenueResult.success) {
+                    throw new Error('Failed to close revenue accounts: ' + revenueResult.errors.join(', '));
+                }
+            }
+
+            // Step 4: Close expense accounts to Income Summary
+            const expenseAccounts = this.appState.accounts.filter(a => a.type === 'Expense');
+            const expenseEntries = [];
+
+            expenseAccounts.forEach(account => {
+                const balances = window.generalLedger.getBalances(period.endDate);
+                const balance = balances[account.id] || 0;
+
+                if (Math.abs(balance) >= 0.01) {
+                    // Credit expense account (to close it)
+                    expenseEntries.push({ accountId: account.id, type: 'credit', amount: balance });
+                }
+            });
+
+            if (expenseEntries.length > 0) {
+                const totalExpenses = expenseEntries.reduce((sum, e) => sum + e.amount, 0);
+                // Debit Income Summary
+                expenseEntries.push({ accountId: incomeSummaryAccount.id, type: 'debit', amount: totalExpenses });
+
+                const expenseResult = window.transactionManager.createTransaction({
+                    description: `Close expense accounts for ${period.startDate} to ${period.endDate}`,
+                    entries: expenseEntries,
+                    metadata: {
+                        type: 'closing_entry',
+                        periodId: period.id,
+                        closingStep: 'close_expenses',
+                        fiscalPeriod: `${period.year}-${period.month}`
+                    }
+                });
+
+                if (!expenseResult.success) {
+                    throw new Error('Failed to close expense accounts: ' + expenseResult.errors.join(', '));
+                }
+            }
+
+            // Step 5: Close Income Summary to Retained Earnings
+            const finalBalances = window.generalLedger.getBalances(period.endDate);
+            const incomeSummaryBalance = finalBalances[incomeSummaryAccount.id] || 0;
+
+            if (Math.abs(incomeSummaryBalance) >= 0.01) {
+                const finalEntries = [];
+
+                if (incomeSummaryBalance > 0) {
+                    // Net income: Debit Income Summary, Credit Retained Earnings
+                    finalEntries.push({ accountId: incomeSummaryAccount.id, type: 'debit', amount: incomeSummaryBalance });
+                    finalEntries.push({ accountId: retainedEarningsAccount.id, type: 'credit', amount: incomeSummaryBalance });
+                } else {
+                    // Net loss: Debit Retained Earnings, Credit Income Summary
+                    const absBalance = Math.abs(incomeSummaryBalance);
+                    finalEntries.push({ accountId: retainedEarningsAccount.id, type: 'debit', amount: absBalance });
+                    finalEntries.push({ accountId: incomeSummaryAccount.id, type: 'credit', amount: absBalance });
+                }
+
+                const finalResult = window.transactionManager.createTransaction({
+                    description: `Close Income Summary to Retained Earnings for ${period.startDate} to ${period.endDate}`,
+                    entries: finalEntries,
+                    metadata: {
+                        type: 'closing_entry',
+                        periodId: period.id,
+                        closingStep: 'close_income_summary',
+                        netIncome: netIncome,
+                        fiscalPeriod: `${period.year}-${period.month}`
+                    }
+                });
+
+                if (!finalResult.success) {
+                    throw new Error('Failed to close Income Summary: ' + finalResult.errors.join(', '));
+                }
+
+                period.closingTransactionId = finalResult.transaction.id;
+            }
+
+            // Step 6: Mark period as closed
+            period.status = 'closed';
+            period.closedAt = new Date().toISOString();
+
+            // Step 7: Create next period and set as current
+            const nextPeriod = this.createNextPeriod();
+            this.appState.currentFiscalPeriod = nextPeriod.id;
+
+            return {
+                success: true,
+                period: period,
+                nextPeriod: nextPeriod,
+                netIncome: netIncome
+            };
+
+        } catch (error) {
+            // Rollback: reopen the period
+            period.status = 'open';
+            return {
+                success: false,
+                error: error.message
+            };
+        }
+    }
+
+    /**
+     * Calculate net income for a period
+     */
+    calculateNetIncome(startDate, endDate) {
+        const balances = window.generalLedger ? window.generalLedger.getBalances(endDate) : {};
+
+        let totalRevenue = 0;
+        let totalExpenses = 0;
+
+        this.appState.accounts.forEach(account => {
+            const balance = balances[account.id] || 0;
+
+            if (account.type === 'Revenue') {
+                totalRevenue += balance;
+            } else if (account.type === 'Expense') {
+                totalExpenses += balance;
+            }
+        });
+
+        return totalRevenue - totalExpenses;
+    }
+
+    /**
+     * Get period status summary
+     */
+    getPeriodSummary() {
+        const current = this.getCurrentPeriod();
+        const allPeriods = this.appState.fiscalPeriods;
+        const closedCount = allPeriods.filter(p => p.status === 'closed').length;
+
+        return {
+            currentPeriod: current,
+            totalPeriods: allPeriods.length,
+            closedPeriods: closedCount,
+            openPeriods: allPeriods.length - closedCount
+        };
+    }
+}
+
 // Initialize global instances
 let transactionManager = null;
 let generalLedger = null;
+let periodManager = null;
 
 function initializeFinancialSystem() {
     // Migrate legacy transactions to new format
@@ -577,10 +903,15 @@ function initializeFinancialSystem() {
     // Initialize managers
     transactionManager = new TransactionManager(appState);
     generalLedger = new GeneralLedger(appState);
+    periodManager = new PeriodManager(appState);
+
+    // Initialize first fiscal period if needed
+    periodManager.initializeFirstPeriod();
 
     // Make available globally
     window.transactionManager = transactionManager;
     window.generalLedger = generalLedger;
+    window.periodManager = periodManager;
 }
 
 /**
@@ -939,6 +1270,8 @@ function setupTabNavigation() {
                 renderMap();
             } else if (targetTab === 'finance') {
                 renderFinancialManagement();
+            } else if (targetTab === 'admin') {
+                renderPeriodStatus();
             }
         });
     });
@@ -6557,6 +6890,187 @@ function renderTransactionJournal() {
             </p>
         </div>
     `;
+}
+
+// ====================================
+// PERIOD MANAGEMENT UI
+// ====================================
+
+function renderPeriodStatus() {
+    const container = document.getElementById('periodStatus');
+    if (!container) return;
+
+    if (!window.periodManager) {
+        container.innerHTML = '<div style="color: #ef4444;">Period Manager not initialized</div>';
+        return;
+    }
+
+    const summary = window.periodManager.getPeriodSummary();
+    const current = summary.currentPeriod;
+
+    if (!current) {
+        container.innerHTML = '<div style="color: #ef4444;">No fiscal periods found</div>';
+        return;
+    }
+
+    const netIncome = current.netIncome !== null ? formatCurrency(current.netIncome) : 'Not yet calculated';
+    const statusColor = current.status === 'open' ? '#10b981' : current.status === 'closed' ? '#6b7280' : '#f59e0b';
+    const statusIcon = current.status === 'open' ? '✓' : current.status === 'closed' ? '🔒' : '⏳';
+
+    container.innerHTML = `
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+            <div>
+                <div style="font-weight: bold; color: #4b5563; margin-bottom: 0.25rem;">Current Period</div>
+                <div style="font-size: 1.1rem;">${current.startDate} to ${current.endDate}</div>
+                <div style="color: #6b7280; font-size: 0.9rem;">Year ${current.year}, Month ${current.month}</div>
+            </div>
+            <div>
+                <div style="font-weight: bold; color: #4b5563; margin-bottom: 0.25rem;">Status</div>
+                <div style="font-size: 1.1rem; color: ${statusColor};">${statusIcon} ${current.status.toUpperCase()}</div>
+            </div>
+            <div>
+                <div style="font-weight: bold; color: #4b5563; margin-bottom: 0.25rem;">Period Statistics</div>
+                <div style="font-size: 0.9rem;">Total Periods: ${summary.totalPeriods}</div>
+                <div style="font-size: 0.9rem;">Closed: ${summary.closedPeriods} | Open: ${summary.openPeriods}</div>
+            </div>
+            <div>
+                <div style="font-weight: bold; color: #4b5563; margin-bottom: 0.25rem;">Current Period Net Income</div>
+                <div style="font-size: 1.1rem;">${netIncome}</div>
+            </div>
+        </div>
+    `;
+
+    // Enable/disable close button based on status
+    const closeBtn = document.getElementById('closePeriodBtn');
+    if (closeBtn) {
+        closeBtn.disabled = current.status !== 'open';
+        if (current.status !== 'open') {
+            closeBtn.title = 'Period is already closed or in closing state';
+        }
+    }
+}
+
+function closeCurrentPeriod() {
+    if (!window.periodManager) {
+        alert('Period Manager not initialized');
+        return;
+    }
+
+    const current = window.periodManager.getCurrentPeriod();
+    if (!current) {
+        alert('No current period found');
+        return;
+    }
+
+    if (current.status !== 'open') {
+        alert('Current period is not open');
+        return;
+    }
+
+    const confirmation = confirm(
+        `Are you sure you want to close the fiscal period ${current.startDate} to ${current.endDate}?\n\n` +
+        `This will:\n` +
+        `1. Close all revenue accounts to Income Summary\n` +
+        `2. Close all expense accounts to Income Summary\n` +
+        `3. Transfer net income to Retained Earnings\n` +
+        `4. Lock the period (no more transactions can be posted)\n` +
+        `5. Create the next fiscal period\n\n` +
+        `This action cannot be undone.`
+    );
+
+    if (!confirmation) {
+        return;
+    }
+
+    const result = window.periodManager.closePeriod(current.id);
+
+    if (result.success) {
+        alert(
+            `Period closed successfully!\n\n` +
+            `Closed Period: ${result.period.startDate} to ${result.period.endDate}\n` +
+            `Net Income: ${formatCurrency(result.netIncome)}\n\n` +
+            `New Current Period: ${result.nextPeriod.startDate} to ${result.nextPeriod.endDate}`
+        );
+
+        // Refresh displays
+        renderPeriodStatus();
+        renderAccounts();
+        renderTransactions();
+
+        // Refresh financial statements if they're active
+        const activeTab = document.querySelector('.tab-btn.active')?.dataset.tab;
+        if (activeTab === 'balance-sheet') {
+            renderBalanceSheet();
+        } else if (activeTab === 'income-statement') {
+            renderIncomeStatement();
+        } else if (activeTab === 'trial-balance') {
+            renderTrialBalance();
+        } else if (activeTab === 'general-ledger') {
+            renderGeneralLedger();
+        } else if (activeTab === 'transaction-journal') {
+            renderTransactionJournal();
+        }
+    } else {
+        alert(`Failed to close period: ${result.error}`);
+    }
+}
+
+function renderPeriodHistory() {
+    const container = document.getElementById('periodHistory');
+    if (!container) return;
+
+    if (!window.periodManager) {
+        container.innerHTML = '<div style="color: #ef4444;">Period Manager not initialized</div>';
+        container.style.display = 'block';
+        return;
+    }
+
+    const periods = appState.fiscalPeriods.slice().reverse(); // Most recent first
+
+    if (periods.length === 0) {
+        container.innerHTML = '<div style="color: #6b7280;">No periods found</div>';
+        container.style.display = 'block';
+        return;
+    }
+
+    const rows = periods.map(period => {
+        const statusColor = period.status === 'open' ? '#10b981' : period.status === 'closed' ? '#6b7280' : '#f59e0b';
+        const isCurrent = period.id === appState.currentFiscalPeriod;
+        const netIncome = period.netIncome !== null ? formatCurrency(period.netIncome) : '-';
+        const closedDate = period.closedAt ? new Date(period.closedAt).toLocaleString() : '-';
+
+        return `
+            <tr ${isCurrent ? 'style="background: #f0f9ff; font-weight: 500;"' : ''}>
+                <td style="padding: 0.5rem;">Year ${period.year}, Month ${period.month}</td>
+                <td style="padding: 0.5rem;">${period.startDate}</td>
+                <td style="padding: 0.5rem;">${period.endDate}</td>
+                <td style="padding: 0.5rem; color: ${statusColor};">${period.status}</td>
+                <td style="padding: 0.5rem; text-align: right;">${netIncome}</td>
+                <td style="padding: 0.5rem; font-size: 0.85rem;">${closedDate}</td>
+            </tr>
+        `;
+    }).join('');
+
+    container.innerHTML = `
+        <h4>Period History</h4>
+        <table style="width: 100%; border-collapse: collapse; margin-top: 0.5rem;">
+            <thead>
+                <tr style="background: #f3f4f6; border-bottom: 2px solid #d1d5db;">
+                    <th style="padding: 0.5rem; text-align: left;">Period</th>
+                    <th style="padding: 0.5rem; text-align: left;">Start Date</th>
+                    <th style="padding: 0.5rem; text-align: left;">End Date</th>
+                    <th style="padding: 0.5rem; text-align: left;">Status</th>
+                    <th style="padding: 0.5rem; text-align: right;">Net Income</th>
+                    <th style="padding: 0.5rem; text-align: left;">Closed At</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${rows}
+            </tbody>
+        </table>
+    `;
+
+    container.style.display = 'block';
 }
 
 // ====================================

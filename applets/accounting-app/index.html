@@ -306,6 +306,24 @@
             </div>
 
             <div class="admin-subsection">
+                <h3>Fiscal Period Management</h3>
+                <p class="help-text">Manage fiscal periods and execute month-end closing process. Closing a period transfers revenue and expense accounts to Retained Earnings.</p>
+
+                <div id="periodStatus" style="margin: 1rem 0; padding: 1rem; background: #f3f4f6; border-radius: 4px;">
+                    <div><strong>Loading period information...</strong></div>
+                </div>
+
+                <div class="form-actions" style="margin-top: 1rem;">
+                    <button id="closePeriodBtn" class="btn btn-primary" onclick="closeCurrentPeriod()">Close Current Period</button>
+                    <button class="btn" onclick="renderPeriodHistory()">View Period History</button>
+                </div>
+
+                <div id="periodHistory" style="margin-top: 1rem; display: none;">
+                    <!-- Period history will be rendered here -->
+                </div>
+            </div>
+
+            <div class="admin-subsection">
                 <h3>Account Management</h3>
                 <button id="addAccountBtn" class="btn btn-primary">Add Account</button>
             </div>
