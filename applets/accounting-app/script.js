@@ -6338,7 +6338,7 @@ function renderCashFlowStatement() {
 
     const netFinancingCash = totalLoanProceeds + totalEquityProceeds + totalPrincipalPayments + totalInterestPayments;
 
-    const content = document.getElementById('cashFlowStatementContent');
+    const content = document.getElementById('cashFlowContent');
     content.innerHTML = `
         <div class="statement-section">
             <div class="statement-title">CASH FLOW STATEMENT</div>
