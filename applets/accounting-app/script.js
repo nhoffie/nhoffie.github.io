@@ -2020,6 +2020,36 @@ function renderTransactions() {
         });
     }
 
+    // Apply search filter (description)
+    const filterSearch = document.getElementById('filterSearch').value.trim().toLowerCase();
+    if (filterSearch) {
+        filteredTransactions = filteredTransactions.filter(t => {
+            return t.description && t.description.toLowerCase().includes(filterSearch);
+        });
+    }
+
+    // Apply amount range filters
+    const filterMinAmount = parseFloat(document.getElementById('filterMinAmount').value);
+    const filterMaxAmount = parseFloat(document.getElementById('filterMaxAmount').value);
+
+    if (!isNaN(filterMinAmount) || !isNaN(filterMaxAmount)) {
+        filteredTransactions = filteredTransactions.filter(t => {
+            let txAmount;
+            if (t.entries) {
+                // Multi-entry: use total debit amount
+                txAmount = t.entries
+                    .filter(e => e.type === 'debit')
+                    .reduce((sum, e) => sum + e.amount, 0);
+            } else {
+                txAmount = t.amount;
+            }
+
+            if (!isNaN(filterMinAmount) && txAmount < filterMinAmount) return false;
+            if (!isNaN(filterMaxAmount) && txAmount > filterMaxAmount) return false;
+            return true;
+        });
+    }
+
     // Sort by date (newest first)
     filteredTransactions.sort((a, b) => {
         const aDate = a.simDate || a.date;
@@ -2153,6 +2183,269 @@ function changeTransactionPageSize(size) {
     transactionPagination.itemsPerPage = parseInt(size);
     transactionPagination.currentPage = 1; // Reset to first page
     renderTransactions();
+}
+
+// ============================================================================
+// TRANSACTION EXPORT FUNCTIONS
+// ============================================================================
+
+function exportTransactionsCSV() {
+    // Get currently filtered transactions (same logic as renderTransactions)
+    const filterStartDate = document.getElementById('filterStartDate').value;
+    const filterEndDate = document.getElementById('filterEndDate').value;
+    const filterAccount = parseInt(document.getElementById('filterAccount').value);
+    const filterSearch = document.getElementById('filterSearch').value.trim().toLowerCase();
+    const filterMinAmount = parseFloat(document.getElementById('filterMinAmount').value);
+    const filterMaxAmount = parseFloat(document.getElementById('filterMaxAmount').value);
+
+    // Apply same filters as renderTransactions
+    let filteredTransactions;
+
+    if (filterStartDate && filterEndDate && window.transactionIndex) {
+        filteredTransactions = window.transactionIndex.getByDateRange(filterStartDate, filterEndDate);
+    } else {
+        filteredTransactions = [...appState.transactions].filter(t => t.status !== 'void');
+
+        if (filterStartDate) {
+            filteredTransactions = filteredTransactions.filter(t => {
+                const tDate = t.simDate || t.date;
+                return tDate >= filterStartDate;
+            });
+        }
+        if (filterEndDate) {
+            filteredTransactions = filteredTransactions.filter(t => {
+                const tDate = t.simDate || t.date;
+                return tDate <= filterEndDate;
+            });
+        }
+    }
+
+    if (filterAccount && window.transactionIndex) {
+        const accountTxs = window.transactionIndex.getByAccount(filterAccount);
+        const accountTxIds = new Set(accountTxs.map(t => t.id));
+        filteredTransactions = filteredTransactions.filter(t => accountTxIds.has(t.id));
+    } else if (filterAccount) {
+        filteredTransactions = filteredTransactions.filter(t => {
+            if (t.entries) {
+                return t.entries.some(e => e.accountId === filterAccount);
+            }
+            return t.debitAccount === filterAccount || t.creditAccount === filterAccount;
+        });
+    }
+
+    if (filterSearch) {
+        filteredTransactions = filteredTransactions.filter(t => {
+            return t.description && t.description.toLowerCase().includes(filterSearch);
+        });
+    }
+
+    if (!isNaN(filterMinAmount) || !isNaN(filterMaxAmount)) {
+        filteredTransactions = filteredTransactions.filter(t => {
+            let txAmount;
+            if (t.entries) {
+                txAmount = t.entries
+                    .filter(e => e.type === 'debit')
+                    .reduce((sum, e) => sum + e.amount, 0);
+            } else {
+                txAmount = t.amount;
+            }
+
+            if (!isNaN(filterMinAmount) && txAmount < filterMinAmount) return false;
+            if (!isNaN(filterMaxAmount) && txAmount > filterMaxAmount) return false;
+            return true;
+        });
+    }
+
+    // Sort by date (newest first)
+    filteredTransactions.sort((a, b) => {
+        const aDate = a.simDate || a.date;
+        const bDate = b.simDate || b.date;
+        if (aDate !== bDate) return bDate.localeCompare(aDate);
+        return (b.simMs || 0) - (a.simMs || 0);
+    });
+
+    if (filteredTransactions.length === 0) {
+        alert('No transactions to export with current filters.');
+        return;
+    }
+
+    // Build CSV content
+    let csvContent = 'Date,Description,Debit Account,Credit Account,Amount,Transaction Type,Status\n';
+
+    filteredTransactions.forEach(transaction => {
+        const date = transaction.simDate || transaction.date;
+        const description = (transaction.description || '').replace(/"/g, '""'); // Escape quotes
+        const status = transaction.status || 'posted';
+        const txType = transaction.metadata?.type || 'manual';
+
+        if (transaction.entries) {
+            // Multi-entry transaction
+            const debits = transaction.entries.filter(e => e.type === 'debit');
+            const credits = transaction.entries.filter(e => e.type === 'credit');
+
+            const debitAccounts = debits.map(e => {
+                const acc = appState.accounts.find(a => a.id === e.account);
+                return acc ? `${acc.name} (${e.amount.toFixed(2)})` : 'Unknown';
+            }).join('; ');
+
+            const creditAccounts = credits.map(e => {
+                const acc = appState.accounts.find(a => a.id === e.account);
+                return acc ? `${acc.name} (${e.amount.toFixed(2)})` : 'Unknown';
+            }).join('; ');
+
+            const totalAmount = debits.reduce((sum, e) => sum + e.amount, 0);
+
+            csvContent += `"${date}","${description}","${debitAccounts}","${creditAccounts}",${totalAmount.toFixed(2)},${txType},${status}\n`;
+        } else {
+            // Simple transaction
+            const debitAccount = appState.accounts.find(a => a.id === transaction.debitAccount);
+            const creditAccount = appState.accounts.find(a => a.id === transaction.creditAccount);
+
+            const debitName = debitAccount ? debitAccount.name : 'Unknown';
+            const creditName = creditAccount ? creditAccount.name : 'Unknown';
+
+            csvContent += `"${date}","${description}","${debitName}","${creditName}",${transaction.amount.toFixed(2)},${txType},${status}\n`;
+        }
+    });
+
+    // Create download link
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `transactions_${timestamp}.csv`);
+    link.style.visibility = 'hidden';
+
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    alert(`Exported ${filteredTransactions.length} transactions to CSV.`);
+}
+
+function exportTransactionsJSON() {
+    // Get currently filtered transactions (same logic as CSV export)
+    const filterStartDate = document.getElementById('filterStartDate').value;
+    const filterEndDate = document.getElementById('filterEndDate').value;
+    const filterAccount = parseInt(document.getElementById('filterAccount').value);
+    const filterSearch = document.getElementById('filterSearch').value.trim().toLowerCase();
+    const filterMinAmount = parseFloat(document.getElementById('filterMinAmount').value);
+    const filterMaxAmount = parseFloat(document.getElementById('filterMaxAmount').value);
+
+    let filteredTransactions;
+
+    if (filterStartDate && filterEndDate && window.transactionIndex) {
+        filteredTransactions = window.transactionIndex.getByDateRange(filterStartDate, filterEndDate);
+    } else {
+        filteredTransactions = [...appState.transactions].filter(t => t.status !== 'void');
+
+        if (filterStartDate) {
+            filteredTransactions = filteredTransactions.filter(t => {
+                const tDate = t.simDate || t.date;
+                return tDate >= filterStartDate;
+            });
+        }
+        if (filterEndDate) {
+            filteredTransactions = filteredTransactions.filter(t => {
+                const tDate = t.simDate || t.date;
+                return tDate <= filterEndDate;
+            });
+        }
+    }
+
+    if (filterAccount && window.transactionIndex) {
+        const accountTxs = window.transactionIndex.getByAccount(filterAccount);
+        const accountTxIds = new Set(accountTxs.map(t => t.id));
+        filteredTransactions = filteredTransactions.filter(t => accountTxIds.has(t.id));
+    } else if (filterAccount) {
+        filteredTransactions = filteredTransactions.filter(t => {
+            if (t.entries) {
+                return t.entries.some(e => e.accountId === filterAccount);
+            }
+            return t.debitAccount === filterAccount || t.creditAccount === filterAccount;
+        });
+    }
+
+    if (filterSearch) {
+        filteredTransactions = filteredTransactions.filter(t => {
+            return t.description && t.description.toLowerCase().includes(filterSearch);
+        });
+    }
+
+    if (!isNaN(filterMinAmount) || !isNaN(filterMaxAmount)) {
+        filteredTransactions = filteredTransactions.filter(t => {
+            let txAmount;
+            if (t.entries) {
+                txAmount = t.entries
+                    .filter(e => e.type === 'debit')
+                    .reduce((sum, e) => sum + e.amount, 0);
+            } else {
+                txAmount = t.amount;
+            }
+
+            if (!isNaN(filterMinAmount) && txAmount < filterMinAmount) return false;
+            if (!isNaN(filterMaxAmount) && txAmount > filterMaxAmount) return false;
+            return true;
+        });
+    }
+
+    // Sort by date (newest first)
+    filteredTransactions.sort((a, b) => {
+        const aDate = a.simDate || a.date;
+        const bDate = b.simDate || b.date;
+        if (aDate !== bDate) return bDate.localeCompare(aDate);
+        return (b.simMs || 0) - (a.simMs || 0);
+    });
+
+    if (filteredTransactions.length === 0) {
+        alert('No transactions to export with current filters.');
+        return;
+    }
+
+    // Create export object with metadata
+    const exportData = {
+        exportDate: new Date().toISOString(),
+        transactionCount: filteredTransactions.length,
+        filters: {
+            startDate: filterStartDate || null,
+            endDate: filterEndDate || null,
+            account: filterAccount || null,
+            search: filterSearch || null,
+            minAmount: !isNaN(filterMinAmount) ? filterMinAmount : null,
+            maxAmount: !isNaN(filterMaxAmount) ? filterMaxAmount : null
+        },
+        transactions: filteredTransactions.map(t => ({
+            id: t.id,
+            date: t.simDate || t.date,
+            timestamp: t.timestamp,
+            description: t.description,
+            amount: t.amount,
+            debitAccount: t.debitAccount,
+            creditAccount: t.creditAccount,
+            entries: t.entries,
+            status: t.status,
+            metadata: t.metadata
+        }))
+    };
+
+    // Create download link
+    const jsonContent = JSON.stringify(exportData, null, 2);
+    const blob = new Blob([jsonContent], { type: 'application/json;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `transactions_${timestamp}.json`);
+    link.style.visibility = 'hidden';
+
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    alert(`Exported ${filteredTransactions.length} transactions to JSON.`);
 }
 
 function saveTransaction(event) {
@@ -2323,9 +2616,16 @@ function deleteTransaction(transactionId) {
 }
 
 function clearFilters() {
+    document.getElementById('filterSearch').value = '';
     document.getElementById('filterStartDate').value = '';
     document.getElementById('filterEndDate').value = '';
     document.getElementById('filterAccount').value = '';
+    document.getElementById('filterMinAmount').value = '';
+    document.getElementById('filterMaxAmount').value = '';
+
+    // Reset pagination to first page
+    transactionPagination.currentPage = 1;
+
     renderTransactions();
 }
 
@@ -8157,10 +8457,15 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('transactionType').addEventListener('change', onTransactionTypeChange);
 
     // Transaction filters
+    document.getElementById('filterSearch').addEventListener('input', renderTransactions);
     document.getElementById('filterStartDate').addEventListener('change', renderTransactions);
     document.getElementById('filterEndDate').addEventListener('change', renderTransactions);
     document.getElementById('filterAccount').addEventListener('change', renderTransactions);
+    document.getElementById('filterMinAmount').addEventListener('input', renderTransactions);
+    document.getElementById('filterMaxAmount').addEventListener('input', renderTransactions);
     document.getElementById('clearFiltersBtn').addEventListener('click', clearFilters);
+    document.getElementById('exportCsvBtn').addEventListener('click', exportTransactionsCSV);
+    document.getElementById('exportJsonBtn').addEventListener('click', exportTransactionsJSON);
 
     // Financial statement date controls
     document.getElementById('balanceSheetDate').addEventListener('change', renderBalanceSheet);
