@@ -349,6 +349,42 @@
             </div>
 
             <div class="admin-subsection">
+                <h3>Data Validation & Integrity</h3>
+                <p class="help-text">Run comprehensive validation checks to ensure data accuracy and detect potential issues.</p>
+
+                <div class="form-actions">
+                    <button class="btn btn-primary" onclick="runDataValidation()">Run Validation Checks</button>
+                </div>
+
+                <div id="validationResults" style="margin-top: 1rem; display: none;">
+                    <!-- Validation results will be rendered here -->
+                </div>
+            </div>
+
+            <div class="admin-subsection">
+                <h3>Audit Log</h3>
+                <p class="help-text">View transaction audit trail including creation, modification, and voiding history.</p>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Filter by Status:</label>
+                        <select id="auditLogFilter">
+                            <option value="all">All Transactions</option>
+                            <option value="voided">Voided Only</option>
+                            <option value="active">Active Only</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <button class="btn btn-primary" onclick="renderAuditLog()">View Audit Log</button>
+                    </div>
+                </div>
+
+                <div id="auditLogContent" style="margin-top: 1rem; display: none; max-height: 500px; overflow-y: auto;">
+                    <!-- Audit log will be rendered here -->
+                </div>
+            </div>
+
+            <div class="admin-subsection">
                 <h3>Account Management</h3>
                 <button id="addAccountBtn" class="btn btn-primary">Add Account</button>
             </div>

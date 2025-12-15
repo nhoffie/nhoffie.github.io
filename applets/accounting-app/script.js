@@ -2608,8 +2608,46 @@ function cancelTransactionEdit() {
 }
 
 function deleteTransaction(transactionId) {
-    if (confirm('Are you sure you want to delete this transaction?')) {
-        appState.transactions = appState.transactions.filter(t => t.id !== transactionId);
+    const transaction = appState.transactions.find(t => t.id === transactionId);
+    if (!transaction) {
+        alert('Transaction not found.');
+        return;
+    }
+
+    if (transaction.status === 'void') {
+        alert('This transaction is already voided.');
+        return;
+    }
+
+    // Prompt for void reason
+    const reason = prompt('Please enter a reason for voiding this transaction:\n\n(This is required for audit trail purposes)');
+
+    if (reason === null) {
+        // User cancelled
+        return;
+    }
+
+    if (!reason || reason.trim() === '') {
+        alert('Void reason is required. Transaction was not voided.');
+        return;
+    }
+
+    // Use TransactionManager to void the transaction if available
+    if (window.transactionManager) {
+        try {
+            window.transactionManager.voidTransaction(transactionId, 'user', reason.trim());
+            hasUnsavedChanges = true;
+            render();
+        } catch (error) {
+            alert(`Error voiding transaction: ${error.message}`);
+        }
+    } else {
+        // Fallback if TransactionManager not available
+        transaction.status = 'void';
+        transaction.audit = transaction.audit || {};
+        transaction.audit.voidedBy = 'user';
+        transaction.audit.voidedAt = new Date().toISOString();
+        transaction.audit.voidReason = reason.trim();
         hasUnsavedChanges = true;
         render();
     }
@@ -7893,6 +7931,270 @@ function renderPeriodHistory() {
                 ${rows}
             </tbody>
         </table>
+    `;
+
+    container.style.display = 'block';
+}
+
+// ====================================
+// DATA VALIDATION & AUDIT LOG (Phase 7)
+// ====================================
+
+function runDataValidation() {
+    const resultsContainer = document.getElementById('validationResults');
+    if (!resultsContainer) return;
+
+    const errors = [];
+    const warnings = [];
+    const checks = [];
+
+    // Check 1: Balance Sheet Validation
+    checks.push('Balance Sheet Integrity');
+    const balances = calculateAccountBalances();
+    const assets = getAccountsByType('Asset', balances);
+    const liabilities = getAccountsByType('Liability', balances);
+    const equity = getAccountsByType('Equity', balances);
+
+    const totalAssets = assets.reduce((sum, a) => sum + a.balance, 0);
+    const totalLiabilities = liabilities.reduce((sum, a) => sum + a.balance, 0);
+    const totalEquity = equity.reduce((sum, a) => sum + a.balance, 0);
+
+    const difference = Math.abs(totalAssets - (totalLiabilities + totalEquity));
+    if (difference >= 0.01) {
+        errors.push(`Balance Sheet is out of balance by ${formatCurrency(difference)}`);
+    }
+
+    // Check 2: Negative Cash Balance
+    checks.push('Cash Balance Check');
+    const cashAccounts = appState.accounts.filter(a => a.name.toLowerCase().includes('cash'));
+    cashAccounts.forEach(account => {
+        const balance = balances[account.id] || 0;
+        if (balance < 0) {
+            errors.push(`${account.name} has negative balance: ${formatCurrency(balance)}`);
+        }
+    });
+
+    // Check 3: Transaction Integrity
+    checks.push('Transaction Integrity');
+    const activeTransactions = appState.transactions.filter(t => t.status !== 'void');
+    activeTransactions.forEach(tx => {
+        // Check if transaction has required fields
+        if (!tx.description) {
+            errors.push(`Transaction ${tx.id} is missing description`);
+        }
+
+        if (tx.entries) {
+            // Multi-entry transaction validation
+            const debits = tx.entries.filter(e => e.type === 'debit').reduce((sum, e) => sum + e.amount, 0);
+            const credits = tx.entries.filter(e => e.type === 'credit').reduce((sum, e) => sum + e.amount, 0);
+
+            if (Math.abs(debits - credits) > 0.01) {
+                errors.push(`Transaction ${tx.id}: Debits (${formatCurrency(debits)}) ≠ Credits (${formatCurrency(credits)})`);
+            }
+
+            // Check all accounts exist
+            tx.entries.forEach(entry => {
+                const accountExists = appState.accounts.some(a => a.id === (entry.accountId || entry.account));
+                if (!accountExists) {
+                    errors.push(`Transaction ${tx.id} references non-existent account ID: ${entry.accountId || entry.account}`);
+                }
+            });
+        } else {
+            // Simple transaction validation
+            if (!tx.amount || tx.amount <= 0) {
+                errors.push(`Transaction ${tx.id} has invalid amount: ${tx.amount}`);
+            }
+
+            const debitExists = appState.accounts.some(a => a.id === tx.debitAccount);
+            const creditExists = appState.accounts.some(a => a.id === tx.creditAccount);
+
+            if (!debitExists) {
+                errors.push(`Transaction ${tx.id} references non-existent debit account: ${tx.debitAccount}`);
+            }
+            if (!creditExists) {
+                errors.push(`Transaction ${tx.id} references non-existent credit account: ${tx.creditAccount}`);
+            }
+        }
+    });
+
+    // Check 4: Audit Trail Completeness
+    checks.push('Audit Trail Completeness');
+    activeTransactions.forEach(tx => {
+        if (!tx.audit) {
+            warnings.push(`Transaction ${tx.id} is missing audit trail information`);
+        } else {
+            if (!tx.audit.createdBy) {
+                warnings.push(`Transaction ${tx.id} audit trail missing createdBy`);
+            }
+            if (!tx.audit.createdAt) {
+                warnings.push(`Transaction ${tx.id} audit trail missing createdAt`);
+            }
+        }
+    });
+
+    // Check 5: Timestamp Validation
+    checks.push('Timestamp Validation');
+    activeTransactions.forEach(tx => {
+        if (!tx.timestamp && !tx.date) {
+            warnings.push(`Transaction ${tx.id} is missing timestamp/date information`);
+        }
+    });
+
+    // Check 6: Fiscal Period Validation
+    checks.push('Fiscal Period Validation');
+    if (window.periodManager && appState.fiscalPeriods && appState.fiscalPeriods.length > 0) {
+        const closedPeriods = appState.fiscalPeriods.filter(p => p.status === 'closed');
+        closedPeriods.forEach(period => {
+            const periodStart = period.startDate;
+            const periodEnd = period.endDate;
+
+            const transactionsInClosedPeriod = activeTransactions.filter(tx => {
+                const txDate = tx.simDate || tx.date;
+                return compareDates(txDate, periodStart) >= 0 && compareDates(txDate, periodEnd) <= 0;
+            });
+
+            // Exclude closing entries
+            const nonClosingTxs = transactionsInClosedPeriod.filter(tx =>
+                tx.metadata?.type !== 'closing_entry'
+            );
+
+            if (nonClosingTxs.length > 0) {
+                warnings.push(`Found ${nonClosingTxs.length} non-closing transactions in closed period: Year ${period.year}, Month ${period.month}`);
+            }
+        });
+    }
+
+    // Generate Report
+    const errorCount = errors.length;
+    const warningCount = warnings.length;
+    const checksRun = checks.length;
+
+    let resultHTML = `
+        <div style="background: white; padding: 1.5rem; border-radius: 8px; border: 1px solid #e5e7eb;">
+            <h4 style="margin-bottom: 1rem;">Validation Report</h4>
+            <div style="display: flex; gap: 1rem; margin-bottom: 1rem;">
+                <div style="padding: 0.5rem 1rem; background: #f3f4f6; border-radius: 4px;">
+                    <strong>Checks Run:</strong> ${checksRun}
+                </div>
+                <div style="padding: 0.5rem 1rem; background: ${errorCount > 0 ? '#fef2f2' : '#f0fdf4'}; border-radius: 4px; color: ${errorCount > 0 ? '#dc2626' : '#16a34a'};">
+                    <strong>Errors:</strong> ${errorCount}
+                </div>
+                <div style="padding: 0.5rem 1rem; background: ${warningCount > 0 ? '#fef9c3' : '#f3f4f6'}; border-radius: 4px; color: ${warningCount > 0 ? '#ca8a04' : '#6b7280'};">
+                    <strong>Warnings:</strong> ${warningCount}
+                </div>
+            </div>`;
+
+    if (errorCount === 0 && warningCount === 0) {
+        resultHTML += `
+            <div style="padding: 1rem; background: #f0fdf4; border-radius: 4px; border-left: 4px solid #16a34a; color: #15803d;">
+                ✓ All validation checks passed! Your financial data is consistent and accurate.
+            </div>`;
+    }
+
+    if (errors.length > 0) {
+        resultHTML += `
+            <div style="margin-top: 1rem;">
+                <h5 style="color: #dc2626;">Errors (${errors.length})</h5>
+                <ul style="margin: 0.5rem 0; padding-left: 1.5rem; color: #991b1b;">
+                    ${errors.map(err => `<li>${escapeHtml(err)}</li>`).join('')}
+                </ul>
+            </div>`;
+    }
+
+    if (warnings.length > 0) {
+        resultHTML += `
+            <div style="margin-top: 1rem;">
+                <h5 style="color: #ca8a04;">Warnings (${warnings.length})</h5>
+                <ul style="margin: 0.5rem 0; padding-left: 1.5rem; color: #92400e;">
+                    ${warnings.map(warn => `<li>${escapeHtml(warn)}</li>`).join('')}
+                </ul>
+            </div>`;
+    }
+
+    resultHTML += `</div>`;
+
+    resultsContainer.innerHTML = resultHTML;
+    resultsContainer.style.display = 'block';
+}
+
+function renderAuditLog() {
+    const container = document.getElementById('auditLogContent');
+    const filterSelect = document.getElementById('auditLogFilter');
+
+    if (!container || !filterSelect) return;
+
+    const filterValue = filterSelect.value;
+
+    // Get transactions based on filter
+    let transactions = appState.transactions;
+
+    if (filterValue === 'voided') {
+        transactions = transactions.filter(t => t.status === 'void');
+    } else if (filterValue === 'active') {
+        transactions = transactions.filter(t => t.status !== 'void');
+    }
+
+    // Sort by creation date (newest first)
+    const sortedTransactions = [...transactions].sort((a, b) => {
+        const aTime = a.audit?.createdAt || a.timestamp || '';
+        const bTime = b.audit?.createdAt || b.timestamp || '';
+        return bTime.localeCompare(aTime);
+    });
+
+    if (sortedTransactions.length === 0) {
+        container.innerHTML = '<div style="padding: 1rem; color: #6b7280;">No transactions found with current filter.</div>';
+        container.style.display = 'block';
+        return;
+    }
+
+    const rows = sortedTransactions.map(tx => {
+        const audit = tx.audit || {};
+        const createdBy = audit.createdBy || 'unknown';
+        const createdAt = audit.createdAt ? new Date(audit.createdAt).toLocaleString() : 'N/A';
+        const status = tx.status || 'posted';
+        const statusColor = status === 'void' ? '#ef4444' : '#10b981';
+
+        let voidInfo = '';
+        if (status === 'void') {
+            const voidedBy = audit.voidedBy || 'unknown';
+            const voidedAt = audit.voidedAt ? new Date(audit.voidedAt).toLocaleString() : 'N/A';
+            const voidReason = audit.voidReason || 'No reason provided';
+            voidInfo = `
+                <div style="margin-top: 0.5rem; padding: 0.5rem; background: #fef2f2; border-left: 3px solid #ef4444; font-size: 0.85rem;">
+                    <strong>Voided by:</strong> ${escapeHtml(voidedBy)}<br>
+                    <strong>Voided at:</strong> ${voidedAt}<br>
+                    <strong>Reason:</strong> ${escapeHtml(voidReason)}
+                </div>`;
+        }
+
+        return `
+            <div style="padding: 1rem; margin-bottom: 0.5rem; background: white; border: 1px solid #e5e7eb; border-radius: 4px;">
+                <div style="display: flex; justify-content: space-between; align-items: start;">
+                    <div style="flex: 1;">
+                        <div style="font-weight: 600; color: #1f2937;">
+                            ${escapeHtml(tx.description || 'No description')}
+                        </div>
+                        <div style="font-size: 0.85rem; color: #6b7280; margin-top: 0.25rem;">
+                            ID: ${tx.id} | Date: ${tx.simDate || tx.date || 'N/A'}
+                        </div>
+                    </div>
+                    <div style="padding: 0.25rem 0.75rem; background: ${statusColor}20; color: ${statusColor}; border-radius: 4px; font-size: 0.85rem; font-weight: 600;">
+                        ${status.toUpperCase()}
+                    </div>
+                </div>
+                <div style="margin-top: 0.5rem; font-size: 0.85rem; color: #6b7280;">
+                    <strong>Created by:</strong> ${escapeHtml(createdBy)} on ${createdAt}
+                </div>
+                ${voidInfo}
+            </div>
+        `;
+    }).join('');
+
+    container.innerHTML = `
+        <div style="margin-bottom: 1rem; padding: 0.75rem; background: #f3f4f6; border-radius: 4px;">
+            <strong>Total Transactions:</strong> ${sortedTransactions.length}
+        </div>
+        ${rows}
     `;
 
     container.style.display = 'block';
