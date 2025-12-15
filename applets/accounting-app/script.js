@@ -6766,13 +6766,13 @@ function renderIncomeStatement() {
         <div class="statement-section">
             <div class="statement-category">REVENUE</div>
             ${salesRevenue.map(account => `
-                <div class="statement-item">
+                <div class="statement-item clickable" onclick="showAccountDetail(${account.id}, '${escapeHtml(endDate)}')">
                     <span>${escapeHtml(account.name)}</span>
                     <span>${formatCurrency(account.balance)}</span>
                 </div>
             `).join('')}
             ${otherRevenue.map(account => `
-                <div class="statement-item">
+                <div class="statement-item clickable" onclick="showAccountDetail(${account.id}, '${escapeHtml(endDate)}')">
                     <span>${escapeHtml(account.name)}</span>
                     <span>${formatCurrency(account.balance)}</span>
                 </div>
@@ -6787,7 +6787,7 @@ function renderIncomeStatement() {
             <div class="statement-section">
                 <div class="statement-subcategory">Cost of Goods Sold</div>
                 ${cogs.map(account => `
-                    <div class="statement-item">
+                    <div class="statement-item clickable" onclick="showAccountDetail(${account.id}, '${escapeHtml(endDate)}')">
                         <span>${escapeHtml(account.name)}</span>
                         <span>${formatCurrency(account.balance)}</span>
                     </div>
@@ -6803,7 +6803,7 @@ function renderIncomeStatement() {
             <div class="statement-section">
                 <div class="statement-category">OPERATING EXPENSES</div>
                 ${operatingExpenses.map(account => `
-                    <div class="statement-item">
+                    <div class="statement-item clickable" onclick="showAccountDetail(${account.id}, '${escapeHtml(endDate)}')">
                         <span>${escapeHtml(account.name)}</span>
                         <span>${formatCurrency(account.balance)}</span>
                     </div>
@@ -6823,7 +6823,7 @@ function renderIncomeStatement() {
             <div class="statement-section">
                 <div class="statement-category">OTHER EXPENSES</div>
                 ${nonOperatingExpenses.map(account => `
-                    <div class="statement-item">
+                    <div class="statement-item clickable" onclick="showAccountDetail(${account.id}, '${escapeHtml(endDate)}')">
                         <span>${escapeHtml(account.name)}</span>
                         <span>${formatCurrency(account.balance)}</span>
                     </div>
