@@ -1500,6 +1500,8 @@ function setupTabNavigation() {
             } else if (targetTab === 'transaction-journal') {
                 updateStatementEndDates();
                 renderTransactionJournal();
+            } else if (targetTab === 'dashboard') {
+                renderDashboard();
             } else if (targetTab === 'commodities') {
                 renderCommoditiesMarket();
             } else if (targetTab === 'map') {
@@ -7225,6 +7227,194 @@ function renderTransactionJournal() {
             </p>
         </div>
     `;
+}
+
+// ====================================
+// FINANCIAL DASHBOARD
+// ====================================
+
+function renderDashboard() {
+    const container = document.getElementById('dashboardContent');
+    if (!container) return;
+
+    // Get current balances
+    const balances = window.generalLedger ? window.generalLedger.getBalances() : calculateAccountBalances();
+
+    // Calculate key metrics
+    let cash = 0;
+    let totalAssets = 0;
+    let totalLiabilities = 0;
+    let totalEquity = 0;
+
+    appState.accounts.forEach(account => {
+        const balance = balances[account.id] || 0;
+
+        if (account.type === 'Asset') {
+            totalAssets += balance;
+            if (account.name.toLowerCase().includes('cash')) {
+                cash += balance;
+            }
+        } else if (account.type === 'Liability') {
+            totalLiabilities += balance;
+        } else if (account.type === 'Equity') {
+            totalEquity += balance;
+        }
+    });
+
+    // Calculate net worth
+    const netWorth = totalAssets - totalLiabilities;
+
+    // Calculate current period net income
+    const currentPeriod = window.periodManager ? window.periodManager.getCurrentPeriod() : null;
+    let netIncome = 0;
+    let revenueTotal = 0;
+    let expenseTotal = 0;
+
+    appState.accounts.forEach(account => {
+        const balance = balances[account.id] || 0;
+        if (account.type === 'Revenue') {
+            revenueTotal += balance;
+        } else if (account.type === 'Expense') {
+            expenseTotal += balance;
+        }
+    });
+
+    netIncome = revenueTotal - expenseTotal;
+
+    // Calculate profit margin
+    const profitMargin = revenueTotal > 0 ? (netIncome / revenueTotal) * 100 : 0;
+
+    // Check balance sheet health
+    const balanceCheck = window.generalLedger ? window.generalLedger.validateBalanceSheet() : { balanced: true, difference: 0 };
+    const isBalanced = balanceCheck.balanced;
+    const imbalance = balanceCheck.difference || 0;
+
+    // Determine trend indicators (simplified - would need historical data for real trends)
+    const cashTrend = cash > 0 ? '↑' : cash < 0 ? '↓' : '→';
+    const netWorthTrend = netWorth > 0 ? '↑' : netWorth < 0 ? '↓' : '→';
+    const incomeTrend = netIncome > 0 ? '↑' : netIncome < 0 ? '↓' : '→';
+
+    container.innerHTML = `
+        <div class="dashboard-grid">
+            <!-- Cash Card -->
+            <div class="dashboard-card">
+                <div class="card-header">
+                    <span class="card-title">Cash</span>
+                    <span class="card-trend ${cash >= 0 ? 'trend-up' : 'trend-down'}">${cashTrend}</span>
+                </div>
+                <div class="card-value">${formatCurrency(cash)}</div>
+                <div class="card-footer">Available funds</div>
+            </div>
+
+            <!-- Total Assets Card -->
+            <div class="dashboard-card">
+                <div class="card-header">
+                    <span class="card-title">Total Assets</span>
+                    <span class="card-trend ${totalAssets >= 0 ? 'trend-up' : 'trend-down'}">↑</span>
+                </div>
+                <div class="card-value">${formatCurrency(totalAssets)}</div>
+                <div class="card-footer">All assets owned</div>
+            </div>
+
+            <!-- Total Liabilities Card -->
+            <div class="dashboard-card">
+                <div class="card-header">
+                    <span class="card-title">Total Liabilities</span>
+                    <span class="card-trend ${totalLiabilities > 0 ? 'trend-down' : 'trend-neutral'}">↓</span>
+                </div>
+                <div class="card-value">${formatCurrency(totalLiabilities)}</div>
+                <div class="card-footer">All debts owed</div>
+            </div>
+
+            <!-- Net Worth Card -->
+            <div class="dashboard-card card-highlight">
+                <div class="card-header">
+                    <span class="card-title">Net Worth</span>
+                    <span class="card-trend ${netWorth >= 0 ? 'trend-up' : 'trend-down'}">${netWorthTrend}</span>
+                </div>
+                <div class="card-value">${formatCurrency(netWorth)}</div>
+                <div class="card-footer">Assets - Liabilities</div>
+            </div>
+
+            <!-- Revenue Card -->
+            <div class="dashboard-card">
+                <div class="card-header">
+                    <span class="card-title">Total Revenue</span>
+                    <span class="card-trend ${revenueTotal > 0 ? 'trend-up' : 'trend-neutral'}">↑</span>
+                </div>
+                <div class="card-value">${formatCurrency(revenueTotal)}</div>
+                <div class="card-footer">${currentPeriod ? `Period: ${currentPeriod.year}-${currentPeriod.month}` : 'Current period'}</div>
+            </div>
+
+            <!-- Expenses Card -->
+            <div class="dashboard-card">
+                <div class="card-header">
+                    <span class="card-title">Total Expenses</span>
+                    <span class="card-trend ${expenseTotal > 0 ? 'trend-down' : 'trend-neutral'}">↓</span>
+                </div>
+                <div class="card-value">${formatCurrency(expenseTotal)}</div>
+                <div class="card-footer">${currentPeriod ? `Period: ${currentPeriod.year}-${currentPeriod.month}` : 'Current period'}</div>
+            </div>
+
+            <!-- Net Income Card -->
+            <div class="dashboard-card ${netIncome >= 0 ? 'card-success' : 'card-warning'}">
+                <div class="card-header">
+                    <span class="card-title">Net Income</span>
+                    <span class="card-trend ${netIncome >= 0 ? 'trend-up' : 'trend-down'}">${incomeTrend}</span>
+                </div>
+                <div class="card-value">${formatCurrency(netIncome)}</div>
+                <div class="card-footer">Revenue - Expenses</div>
+            </div>
+
+            <!-- Profit Margin Card -->
+            <div class="dashboard-card">
+                <div class="card-header">
+                    <span class="card-title">Profit Margin</span>
+                    <span class="card-trend ${profitMargin >= 0 ? 'trend-up' : 'trend-down'}">${profitMargin >= 0 ? '↑' : '↓'}</span>
+                </div>
+                <div class="card-value">${profitMargin.toFixed(1)}%</div>
+                <div class="card-footer">Net Income / Revenue</div>
+            </div>
+
+            <!-- Balance Sheet Health Card -->
+            <div class="dashboard-card ${isBalanced ? 'card-success' : 'card-error'}">
+                <div class="card-header">
+                    <span class="card-title">Balance Sheet</span>
+                    <span class="card-trend">${isBalanced ? '✓' : '⚠'}</span>
+                </div>
+                <div class="card-value" style="font-size: 1.5rem;">${isBalanced ? 'Balanced' : 'Out of Balance'}</div>
+                <div class="card-footer">${isBalanced ? 'All accounts balanced' : `Difference: ${formatCurrency(imbalance)}`}</div>
+            </div>
+
+            <!-- Fiscal Period Card -->
+            <div class="dashboard-card">
+                <div class="card-header">
+                    <span class="card-title">Fiscal Period</span>
+                    <span class="card-trend">${currentPeriod && currentPeriod.status === 'open' ? '✓' : '🔒'}</span>
+                </div>
+                <div class="card-value" style="font-size: 1.2rem;">${currentPeriod ? `Year ${currentPeriod.year}, Month ${currentPeriod.month}` : 'Not set'}</div>
+                <div class="card-footer">${currentPeriod ? `Status: ${currentPeriod.status}` : 'Initialize in Admin'}</div>
+            </div>
+        </div>
+
+        <div style="margin-top: 2rem; padding: 1.5rem; background: #f9fafb; border-radius: 8px; border-left: 4px solid #3b82f6;">
+            <h3 style="margin: 0 0 1rem 0; color: #1f2937;">Quick Links</h3>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+                <button class="btn" onclick="switchTab('balance-sheet')">View Balance Sheet</button>
+                <button class="btn" onclick="switchTab('income-statement')">View Income Statement</button>
+                <button class="btn" onclick="switchTab('cash-flow')">View Cash Flow</button>
+                <button class="btn" onclick="switchTab('transactions')">Browse Transactions</button>
+                ${!isBalanced ? '<button class="btn btn-danger" onclick="switchTab(\'admin\')">Fix Balance Sheet</button>' : ''}
+            </div>
+        </div>
+    `;
+}
+
+function switchTab(tabName) {
+    const button = document.querySelector(`[data-tab="${tabName}"]`);
+    if (button) {
+        button.click();
+    }
 }
 
 // ====================================

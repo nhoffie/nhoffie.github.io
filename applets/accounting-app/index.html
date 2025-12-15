@@ -43,7 +43,8 @@
 
     <main>
         <nav class="tab-navigation">
-            <button class="tab-btn active" data-tab="accounts">Chart of Accounts</button>
+            <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
+            <button class="tab-btn" data-tab="accounts">Chart of Accounts</button>
             <button class="tab-btn" data-tab="commodities">Commodities Market</button>
             <button class="tab-btn" data-tab="map">Real Estate Map</button>
             <button class="tab-btn" data-tab="finance">Financial Management</button>
@@ -57,8 +58,16 @@
             <button class="tab-btn" data-tab="transaction-journal">Transaction Journal</button>
         </nav>
 
+        <!-- Dashboard Section -->
+        <section id="dashboard" class="tab-content active">
+            <h2>Financial Dashboard</h2>
+            <div id="dashboardContent">
+                <!-- Dashboard will be rendered here -->
+            </div>
+        </section>
+
         <!-- Chart of Accounts Section -->
-        <section id="accounts" class="tab-content active">
+        <section id="accounts" class="tab-content">
             <h2>Chart of Accounts</h2>
 
             <div id="accountFormContainer" class="form-container hidden admin-only">
@@ -185,8 +194,12 @@
             <p class="help-text">All transactions are automatically recorded from simulation activities. Enable Admin Mode to manually add transactions.</p>
 
             <div class="filter-container">
-                <h3>Filter Transactions</h3>
+                <h3>Search & Filter Transactions</h3>
                 <div class="form-row">
+                    <div class="form-group" style="flex: 2;">
+                        <label for="filterSearch">Search Description:</label>
+                        <input type="text" id="filterSearch" placeholder="Search by description...">
+                    </div>
                     <div class="form-group">
                         <label for="filterStartDate">From (Y#-M#-D#):</label>
                         <input type="text" id="filterStartDate" placeholder="Y1-M1-D1">
@@ -195,6 +208,8 @@
                         <label for="filterEndDate">To (Y#-M#-D#):</label>
                         <input type="text" id="filterEndDate" placeholder="Y1-M12-D28">
                     </div>
+                </div>
+                <div class="form-row">
                     <div class="form-group">
                         <label for="filterAccount">Account:</label>
                         <select id="filterAccount">
@@ -202,7 +217,17 @@
                         </select>
                     </div>
                     <div class="form-group">
+                        <label for="filterMinAmount">Min Amount:</label>
+                        <input type="number" id="filterMinAmount" placeholder="0.00" step="0.01">
+                    </div>
+                    <div class="form-group">
+                        <label for="filterMaxAmount">Max Amount:</label>
+                        <input type="number" id="filterMaxAmount" placeholder="999999.99" step="0.01">
+                    </div>
+                    <div class="form-group" style="display: flex; gap: 0.5rem; align-items: flex-end;">
                         <button id="clearFiltersBtn" class="btn">Clear Filters</button>
+                        <button id="exportCsvBtn" class="btn btn-primary">Export CSV</button>
+                        <button id="exportJsonBtn" class="btn">Export JSON</button>
                     </div>
                 </div>
             </div>
