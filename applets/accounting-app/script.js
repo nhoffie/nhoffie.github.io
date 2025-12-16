@@ -3723,19 +3723,45 @@ function showBuildingManagement(x, y) {
         const steelQty = portfolio[4] && portfolio[4].lots ? portfolio[4].lots.reduce((s, l) => s + l.quantity, 0) : 0;
         const concreteQty = portfolio[5] && portfolio[5].lots ? portfolio[5].lots.reduce((s, l) => s + l.quantity, 0) : 0;
 
+        const hasMaterials = lumberQty >= materials.lumber && steelQty >= materials.steel && concreteQty >= materials.concrete;
+
+        // Prepare materials dict for Quick Buy
+        const warehouseMaterials = {
+            'Lumber': materials.lumber,
+            'Steel': materials.steel,
+            'Concrete': materials.concrete
+        };
+
         content += `
             <h4>Build Warehouse</h4>
             <div class="construction-requirements">
                 <p><strong>Required Materials:</strong></p>
                 <ul>
-                    <li>Lumber: ${materials.lumber} (Have: ${lumberQty})</li>
-                    <li>Steel: ${materials.steel} (Have: ${steelQty})</li>
-                    <li>Concrete: ${materials.concrete} (Have: ${concreteQty})</li>
+                    <li style="color: ${lumberQty >= materials.lumber ? '#28a745' : '#dc3545'};">Lumber: ${materials.lumber} (Have: ${lumberQty})</li>
+                    <li style="color: ${steelQty >= materials.steel ? '#28a745' : '#dc3545'};">Steel: ${materials.steel} (Have: ${steelQty})</li>
+                    <li style="color: ${concreteQty >= materials.concrete ? '#28a745' : '#dc3545'};">Concrete: ${materials.concrete} (Have: ${concreteQty})</li>
                 </ul>
                 <p><strong>Construction Time:</strong> ${BUILDING_TYPES.WAREHOUSE.constructionDays} days</p>
-                <button class="btn btn-primary" onclick="if(startConstruction(${x}, ${y}, 'WAREHOUSE')) { closeBuildingDialog(); render(); }">
-                    Start Construction
-                </button>
+                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                    <button class="btn btn-primary" onclick="if(startConstruction(${x}, ${y}, 'WAREHOUSE')) { closeBuildingDialog(); render(); }">
+                        Start Construction
+                    </button>
+        `;
+
+        // Add Quick Buy button if materials are missing
+        if (!hasMaterials) {
+            const missingInfo = getMissingMaterialsInfo(warehouseMaterials);
+            if (!missingInfo.allAvailable) {
+                content += `
+                    <button class="btn" onclick="handleQuickBuyMaterials(null, ${JSON.stringify(warehouseMaterials).replace(/"/g, '&quot;')}, 'Warehouse Construction'); closeBuildingDialog(); showBuildingManagement(${x}, ${y});" style="background: #007bff; color: white;">
+                        💰 Quick Buy Materials (${formatCurrency(missingInfo.totalCost)})
+                    </button>
+                `;
+            }
+        }
+
+        content += `
+                </div>
             </div>
         `;
     }
