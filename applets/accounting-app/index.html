@@ -385,6 +385,27 @@
             </div>
 
             <div class="admin-subsection">
+                <h3>Reconciliation Tools</h3>
+                <p class="help-text">Reconcile accounts, verify inventory, and check loan balances for accuracy.</p>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <button class="btn btn-primary" onclick="showAccountReconciliation()">Account Reconciliation</button>
+                    </div>
+                    <div class="form-group">
+                        <button class="btn btn-primary" onclick="showInventoryReconciliation()">Inventory Reconciliation</button>
+                    </div>
+                    <div class="form-group">
+                        <button class="btn btn-primary" onclick="showLoanReconciliation()">Loan Reconciliation</button>
+                    </div>
+                </div>
+
+                <div id="reconciliationContent" style="margin-top: 1rem; display: none;">
+                    <!-- Reconciliation interfaces will be rendered here -->
+                </div>
+            </div>
+
+            <div class="admin-subsection">
                 <h3>Account Management</h3>
                 <button id="addAccountBtn" class="btn btn-primary">Add Account</button>
             </div>

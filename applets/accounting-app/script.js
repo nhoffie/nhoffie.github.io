@@ -8201,6 +8201,660 @@ function renderAuditLog() {
 }
 
 // ====================================
+// RECONCILIATION TOOLS (Phase 7.3)
+// ====================================
+
+function showAccountReconciliation() {
+    const container = document.getElementById('reconciliationContent');
+    if (!container) return;
+
+    // Get all asset and liability accounts (typically reconciled)
+    const reconcilableAccounts = appState.accounts.filter(a =>
+        ['Asset', 'Liability'].includes(a.type)
+    );
+
+    container.innerHTML = `
+        <div style="background: white; padding: 1.5rem; border-radius: 8px; border: 1px solid #e5e7eb;">
+            <h4>Account Reconciliation</h4>
+            <p class="help-text">Select an account to reconcile transactions against bank/external statements.</p>
+
+            <div class="form-row">
+                <div class="form-group" style="flex: 2;">
+                    <label for="reconcileAccount">Select Account:</label>
+                    <select id="reconcileAccount" onchange="loadReconciliationData()">
+                        <option value="">-- Select Account --</option>
+                        ${reconcilableAccounts.map(acc =>
+                            `<option value="${acc.id}">${acc.name} (${acc.number})</option>`
+                        ).join('')}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="reconcileEndDate">Statement End Date:</label>
+                    <input type="text" id="reconcileEndDate" placeholder="Y1-M1-D28" value="${getTodayDate()}">
+                </div>
+                <div class="form-group">
+                    <label for="reconcileStatementBalance">Statement Balance:</label>
+                    <input type="number" id="reconcileStatementBalance" step="0.01" placeholder="0.00">
+                </div>
+            </div>
+
+            <div id="reconciliationData" style="margin-top: 1rem;">
+                <!-- Reconciliation data will appear here -->
+            </div>
+        </div>
+    `;
+
+    container.style.display = 'block';
+}
+
+function loadReconciliationData() {
+    const accountId = parseInt(document.getElementById('reconcileAccount').value);
+    const endDate = document.getElementById('reconcileEndDate').value;
+    const dataContainer = document.getElementById('reconciliationData');
+
+    if (!accountId || !dataContainer) return;
+
+    const account = appState.accounts.find(a => a.id === accountId);
+    if (!account) return;
+
+    // Get all transactions for this account up to end date
+    const accountTransactions = appState.transactions.filter(t => {
+        if (t.status === 'void') return false;
+
+        const txDate = t.simDate || t.date;
+        if (endDate && compareDates(txDate, endDate) > 0) return false;
+
+        if (t.entries) {
+            return t.entries.some(e => (e.accountId || e.account) === accountId);
+        }
+        return t.debitAccount === accountId || t.creditAccount === accountId;
+    }).sort((a, b) => {
+        const aDate = a.simDate || a.date;
+        const bDate = b.simDate || b.date;
+        return aDate.localeCompare(bDate);
+    });
+
+    // Calculate balances
+    const balances = calculateAccountBalances(endDate);
+    const bookBalance = balances[accountId] || 0;
+
+    // Separate reconciled and unreconciled
+    const reconciled = accountTransactions.filter(t => t.reconciled);
+    const unreconciled = accountTransactions.filter(t => !t.reconciled);
+
+    const reconciledBalance = reconciled.reduce((sum, t) => {
+        let amount = 0;
+        if (t.entries) {
+            t.entries.forEach(e => {
+                if ((e.accountId || e.account) === accountId) {
+                    amount += e.type === 'debit' ? e.amount : -e.amount;
+                }
+            });
+        } else {
+            if (t.debitAccount === accountId) amount += t.amount;
+            if (t.creditAccount === accountId) amount -= t.amount;
+        }
+        return sum + amount;
+    }, 0);
+
+    const unreconciledBalance = bookBalance - reconciledBalance;
+
+    dataContainer.innerHTML = `
+        <div style="background: #f9fafb; padding: 1rem; border-radius: 4px; margin-bottom: 1rem;">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+                <div>
+                    <strong>Book Balance:</strong>
+                    <div style="font-size: 1.25rem; color: #1f2937;">${formatCurrency(bookBalance)}</div>
+                </div>
+                <div>
+                    <strong>Reconciled Balance:</strong>
+                    <div style="font-size: 1.25rem; color: #059669;">${formatCurrency(reconciledBalance)}</div>
+                </div>
+                <div>
+                    <strong>Unreconciled:</strong>
+                    <div style="font-size: 1.25rem; color: #dc2626;">${formatCurrency(unreconciledBalance)}</div>
+                </div>
+                <div>
+                    <strong>Total Transactions:</strong>
+                    <div style="font-size: 1.25rem; color: #6b7280;">${accountTransactions.length}</div>
+                </div>
+            </div>
+        </div>
+
+        <div style="margin-bottom: 1rem;">
+            <button class="btn" onclick="markAllAsReconciled(${accountId}, '${endDate}')">Mark All as Reconciled</button>
+            <button class="btn" onclick="clearAllReconciled(${accountId})">Clear All Reconciliation Marks</button>
+        </div>
+
+        <h5 style="margin-bottom: 0.5rem;">Unreconciled Transactions (${unreconciled.length})</h5>
+        <div style="max-height: 400px; overflow-y: auto; margin-bottom: 1rem;">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Description</th>
+                        <th>Debit</th>
+                        <th>Credit</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${unreconciled.length === 0 ? '<tr><td colspan="5" style="text-align: center;">All transactions reconciled</td></tr>' :
+                        unreconciled.map(t => {
+                            let debit = '', credit = '';
+                            if (t.entries) {
+                                const entry = t.entries.find(e => (e.accountId || e.account) === accountId);
+                                if (entry) {
+                                    if (entry.type === 'debit') debit = formatCurrency(entry.amount);
+                                    else credit = formatCurrency(entry.amount);
+                                }
+                            } else {
+                                if (t.debitAccount === accountId) debit = formatCurrency(t.amount);
+                                if (t.creditAccount === accountId) credit = formatCurrency(t.amount);
+                            }
+                            return `
+                                <tr>
+                                    <td>${t.simDate || t.date}</td>
+                                    <td>${escapeHtml(t.description)}</td>
+                                    <td>${debit}</td>
+                                    <td>${credit}</td>
+                                    <td>
+                                        <button class="btn btn-sm" onclick="markTransactionReconciled(${t.id}, true)">✓ Reconcile</button>
+                                    </td>
+                                </tr>
+                            `;
+                        }).join('')
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        ${reconciled.length > 0 ? `
+            <h5 style="margin-bottom: 0.5rem;">Reconciled Transactions (${reconciled.length})</h5>
+            <div style="max-height: 300px; overflow-y: auto;">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Description</th>
+                            <th>Debit</th>
+                            <th>Credit</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${reconciled.map(t => {
+                            let debit = '', credit = '';
+                            if (t.entries) {
+                                const entry = t.entries.find(e => (e.accountId || e.account) === accountId);
+                                if (entry) {
+                                    if (entry.type === 'debit') debit = formatCurrency(entry.amount);
+                                    else credit = formatCurrency(entry.amount);
+                                }
+                            } else {
+                                if (t.debitAccount === accountId) debit = formatCurrency(t.amount);
+                                if (t.creditAccount === accountId) credit = formatCurrency(t.amount);
+                            }
+                            return `
+                                <tr style="background: #f0fdf4;">
+                                    <td>${t.simDate || t.date}</td>
+                                    <td>${escapeHtml(t.description)}</td>
+                                    <td>${debit}</td>
+                                    <td>${credit}</td>
+                                    <td>
+                                        <button class="btn btn-sm" onclick="markTransactionReconciled(${t.id}, false)">✗ Unreconcile</button>
+                                    </td>
+                                </tr>
+                            `;
+                        }).join('')}
+                    </tbody>
+                </table>
+            </div>
+        ` : ''}
+    `;
+}
+
+function markTransactionReconciled(transactionId, reconciled) {
+    const transaction = appState.transactions.find(t => t.id === transactionId);
+    if (!transaction) return;
+
+    transaction.reconciled = reconciled;
+    if (reconciled) {
+        transaction.reconciledAt = new Date().toISOString();
+        transaction.reconciledBy = 'user';
+    }
+
+    hasUnsavedChanges = true;
+    loadReconciliationData(); // Reload to update display
+}
+
+function markAllAsReconciled(accountId, endDate) {
+    if (!confirm('Mark all unreconciled transactions for this account as reconciled?')) {
+        return;
+    }
+
+    appState.transactions.forEach(t => {
+        if (t.status === 'void' || t.reconciled) return;
+
+        const txDate = t.simDate || t.date;
+        if (endDate && compareDates(txDate, endDate) > 0) return;
+
+        let affectsAccount = false;
+        if (t.entries) {
+            affectsAccount = t.entries.some(e => (e.accountId || e.account) === accountId);
+        } else {
+            affectsAccount = t.debitAccount === accountId || t.creditAccount === accountId;
+        }
+
+        if (affectsAccount) {
+            t.reconciled = true;
+            t.reconciledAt = new Date().toISOString();
+            t.reconciledBy = 'user';
+        }
+    });
+
+    hasUnsavedChanges = true;
+    loadReconciliationData();
+}
+
+function clearAllReconciled(accountId) {
+    if (!confirm('Clear all reconciliation marks for this account?')) {
+        return;
+    }
+
+    appState.transactions.forEach(t => {
+        let affectsAccount = false;
+        if (t.entries) {
+            affectsAccount = t.entries.some(e => (e.accountId || e.account) === accountId);
+        } else {
+            affectsAccount = t.debitAccount === accountId || t.creditAccount === accountId;
+        }
+
+        if (affectsAccount) {
+            t.reconciled = false;
+            delete t.reconciledAt;
+            delete t.reconciledBy;
+        }
+    });
+
+    hasUnsavedChanges = true;
+    loadReconciliationData();
+}
+
+function showInventoryReconciliation() {
+    const container = document.getElementById('reconciliationContent');
+    if (!container) return;
+
+    // Get inventory account
+    const inventoryAccount = appState.accounts.find(a => a.name.toLowerCase().includes('inventory'));
+    if (!inventoryAccount) {
+        container.innerHTML = `
+            <div style="background: white; padding: 1.5rem; border-radius: 8px; border: 1px solid #e5e7eb;">
+                <h4>Inventory Reconciliation</h4>
+                <p style="color: #dc2626;">No inventory account found. Please create an inventory account first.</p>
+            </div>
+        `;
+        container.style.display = 'block';
+        return;
+    }
+
+    // Calculate current book value
+    const balances = calculateAccountBalances();
+    const bookValue = balances[inventoryAccount.id] || 0;
+
+    // Get commodities portfolio for physical count reference
+    const commoditiesInPortfolio = appState.commodityPortfolio || [];
+    const totalPhysicalValue = commoditiesInPortfolio.reduce((sum, item) =>
+        sum + (item.quantity * item.avgCost), 0
+    );
+
+    container.innerHTML = `
+        <div style="background: white; padding: 1.5rem; border-radius: 8px; border: 1px solid #e5e7eb;">
+            <h4>Inventory Reconciliation</h4>
+            <p class="help-text">Compare physical inventory count to book value and generate adjustment entries.</p>
+
+            <div style="background: #f9fafb; padding: 1rem; border-radius: 4px; margin-bottom: 1rem;">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+                    <div>
+                        <strong>Book Value:</strong>
+                        <div style="font-size: 1.25rem; color: #1f2937;">${formatCurrency(bookValue)}</div>
+                    </div>
+                    <div>
+                        <strong>Portfolio Value:</strong>
+                        <div style="font-size: 1.25rem; color: #6b7280;">${formatCurrency(totalPhysicalValue)}</div>
+                    </div>
+                    <div>
+                        <strong>Difference:</strong>
+                        <div style="font-size: 1.25rem; color: ${Math.abs(bookValue - totalPhysicalValue) < 0.01 ? '#059669' : '#dc2626'};">
+                            ${formatCurrency(bookValue - totalPhysicalValue)}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            ${Math.abs(bookValue - totalPhysicalValue) >= 0.01 ? `
+                <div style="background: #fef9c3; border-left: 4px solid #f59e0b; padding: 1rem; margin-bottom: 1rem;">
+                    <strong>⚠ Discrepancy Detected</strong>
+                    <p style="margin: 0.5rem 0 0 0;">
+                        There is a ${formatCurrency(Math.abs(bookValue - totalPhysicalValue))} difference between
+                        book value and portfolio value. This may indicate:
+                    </p>
+                    <ul style="margin: 0.5rem 0 0 1.5rem;">
+                        <li>Inventory shrinkage or loss</li>
+                        <li>Unrecorded transactions</li>
+                        <li>Data entry errors</li>
+                    </ul>
+                </div>
+            ` : `
+                <div style="background: #f0fdf4; border-left: 4px solid #10b981; padding: 1rem; margin-bottom: 1rem;">
+                    ✓ Inventory is reconciled. Book value matches portfolio value.
+                </div>
+            `}
+
+            <h5>Commodity Portfolio Details</h5>
+            <div style="max-height: 300px; overflow-y: auto; margin-bottom: 1rem;">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Commodity</th>
+                            <th>Quantity</th>
+                            <th>Avg Cost</th>
+                            <th>Total Value</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${commoditiesInPortfolio.length === 0 ?
+                            '<tr><td colspan="4" style="text-align: center;">No commodities in portfolio</td></tr>' :
+                            commoditiesInPortfolio.map(item => {
+                                const commodity = appState.commodities.find(c => c.id === item.commodityId);
+                                return `
+                                    <tr>
+                                        <td>${commodity ? escapeHtml(commodity.name) : 'Unknown'}</td>
+                                        <td>${item.quantity}</td>
+                                        <td>${formatCurrency(item.avgCost)}</td>
+                                        <td>${formatCurrency(item.quantity * item.avgCost)}</td>
+                                    </tr>
+                                `;
+                            }).join('')
+                        }
+                    </tbody>
+                    <tfoot>
+                        <tr style="font-weight: bold; background: #f3f4f6;">
+                            <td colspan="3">Total Portfolio Value</td>
+                            <td>${formatCurrency(totalPhysicalValue)}</td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+
+            ${Math.abs(bookValue - totalPhysicalValue) >= 0.01 ? `
+                <div class="form-row">
+                    <div class="form-group" style="flex: 2;">
+                        <label for="adjustmentReason">Adjustment Reason:</label>
+                        <input type="text" id="adjustmentReason" placeholder="e.g., Shrinkage, spoilage, damaged goods">
+                    </div>
+                    <div class="form-group">
+                        <button class="btn btn-primary" onclick="generateInventoryAdjustment(${inventoryAccount.id}, ${bookValue}, ${totalPhysicalValue})">
+                            Generate Adjustment Entry
+                        </button>
+                    </div>
+                </div>
+            ` : ''}
+        </div>
+    `;
+
+    container.style.display = 'block';
+}
+
+function generateInventoryAdjustment(inventoryAccountId, bookValue, physicalValue) {
+    const reason = document.getElementById('adjustmentReason')?.value;
+
+    if (!reason || reason.trim() === '') {
+        alert('Please enter a reason for the adjustment.');
+        return;
+    }
+
+    const difference = bookValue - physicalValue;
+
+    if (Math.abs(difference) < 0.01) {
+        alert('No adjustment needed - values are already reconciled.');
+        return;
+    }
+
+    // Find COGS or expense account for adjustment
+    const cogsAccount = appState.accounts.find(a => a.name.includes('Cost of Goods Sold'));
+    const expenseAccount = appState.accounts.find(a => a.name.includes('Operating Expenses'));
+    const adjustmentAccount = cogsAccount || expenseAccount;
+
+    if (!adjustmentAccount) {
+        alert('No COGS or expense account found to post adjustment. Please create one first.');
+        return;
+    }
+
+    if (!confirm(`Generate adjustment entry of ${formatCurrency(Math.abs(difference))} to reconcile inventory?\n\nThis will ${difference > 0 ? 'decrease' : 'increase'} inventory and ${difference > 0 ? 'increase' : 'decrease'} ${adjustmentAccount.name}.`)) {
+        return;
+    }
+
+    // Create adjustment transaction
+    if (window.transactionManager) {
+        try {
+            let entries;
+            if (difference > 0) {
+                // Book value > Physical value = inventory decreased
+                entries = [
+                    { accountId: adjustmentAccount.id, type: 'debit', amount: difference },
+                    { accountId: inventoryAccountId, type: 'credit', amount: difference }
+                ];
+            } else {
+                // Physical value > Book value = inventory increased (unusual, but possible)
+                entries = [
+                    { accountId: inventoryAccountId, type: 'debit', amount: Math.abs(difference) },
+                    { accountId: adjustmentAccount.id, type: 'credit', amount: Math.abs(difference) }
+                ];
+            }
+
+            window.transactionManager.createTransaction({
+                description: `Inventory adjustment - ${reason.trim()}`,
+                entries: entries,
+                metadata: {
+                    type: 'inventory_adjustment',
+                    createdBy: 'user',
+                    reason: reason.trim(),
+                    bookValue: bookValue,
+                    physicalValue: physicalValue
+                }
+            });
+
+            alert('Inventory adjustment entry created successfully!');
+            hasUnsavedChanges = true;
+            render();
+            showInventoryReconciliation(); // Reload to show updated values
+        } catch (error) {
+            alert(`Error creating adjustment: ${error.message}`);
+        }
+    } else {
+        alert('Transaction manager not available.');
+    }
+}
+
+function showLoanReconciliation() {
+    const container = document.getElementById('reconciliationContent');
+    if (!container) return;
+
+    // Get all loan-related accounts
+    const loanPrincipalAccounts = appState.accounts.filter(a =>
+        a.name.toLowerCase().includes('loan') && a.name.toLowerCase().includes('principal')
+    );
+    const loanInterestAccounts = appState.accounts.filter(a =>
+        a.name.toLowerCase().includes('loan') && a.name.toLowerCase().includes('interest')
+    );
+
+    if (loanPrincipalAccounts.length === 0) {
+        container.innerHTML = `
+            <div style="background: white; padding: 1.5rem; border-radius: 8px; border: 1px solid #e5e7eb;">
+                <h4>Loan Reconciliation</h4>
+                <p style="color: #dc2626;">No loan accounts found. Loan accounts will appear here once you take out loans.</p>
+            </div>
+        `;
+        container.style.display = 'block';
+        return;
+    }
+
+    const balances = calculateAccountBalances();
+
+    // Calculate total loan balances
+    const totalPrincipal = loanPrincipalAccounts.reduce((sum, acc) =>
+        sum + (balances[acc.id] || 0), 0
+    );
+    const totalInterestPayable = loanInterestAccounts.reduce((sum, acc) =>
+        sum + (balances[acc.id] || 0), 0
+    );
+
+    // Get loan data from appState if available
+    const loans = appState.loans || [];
+    const expectedPrincipal = loans.reduce((sum, loan) => sum + loan.remainingPrincipal, 0);
+    const expectedInterest = loans.reduce((sum, loan) => sum + (loan.accruedInterest || 0), 0);
+
+    const principalDiff = Math.abs(totalPrincipal - expectedPrincipal);
+    const interestDiff = Math.abs(totalInterestPayable - expectedInterest);
+    const isReconciled = principalDiff < 0.01 && interestDiff < 0.01;
+
+    container.innerHTML = `
+        <div style="background: white; padding: 1.5rem; border-radius: 8px; border: 1px solid #e5e7eb;">
+            <h4>Loan Reconciliation</h4>
+            <p class="help-text">Verify loan balances match expected amortization schedule.</p>
+
+            <div style="background: #f9fafb; padding: 1rem; border-radius: 4px; margin-bottom: 1rem;">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+                    <div>
+                        <strong>Account Principal:</strong>
+                        <div style="font-size: 1.25rem; color: #1f2937;">${formatCurrency(totalPrincipal)}</div>
+                    </div>
+                    <div>
+                        <strong>Expected Principal:</strong>
+                        <div style="font-size: 1.25rem; color: #6b7280;">${formatCurrency(expectedPrincipal)}</div>
+                    </div>
+                    <div>
+                        <strong>Principal Difference:</strong>
+                        <div style="font-size: 1.25rem; color: ${principalDiff < 0.01 ? '#059669' : '#dc2626'};">
+                            ${formatCurrency(principalDiff)}
+                        </div>
+                    </div>
+                </div>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-top: 1rem;">
+                    <div>
+                        <strong>Account Interest:</strong>
+                        <div style="font-size: 1.25rem; color: #1f2937;">${formatCurrency(totalInterestPayable)}</div>
+                    </div>
+                    <div>
+                        <strong>Expected Interest:</strong>
+                        <div style="font-size: 1.25rem; color: #6b7280;">${formatCurrency(expectedInterest)}</div>
+                    </div>
+                    <div>
+                        <strong>Interest Difference:</strong>
+                        <div style="font-size: 1.25rem; color: ${interestDiff < 0.01 ? '#059669' : '#dc2626'};">
+                            ${formatCurrency(interestDiff)}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            ${isReconciled ? `
+                <div style="background: #f0fdf4; border-left: 4px solid #10b981; padding: 1rem; margin-bottom: 1rem;">
+                    ✓ Loan balances are reconciled. Accounting records match expected amortization.
+                </div>
+            ` : `
+                <div style="background: #fef2f2; border-left: 4px solid #dc2626; padding: 1rem; margin-bottom: 1rem;">
+                    <strong>⚠ Discrepancy Detected</strong>
+                    <p style="margin: 0.5rem 0 0 0;">
+                        Loan balances do not match expected values. This may indicate:
+                    </p>
+                    <ul style="margin: 0.5rem 0 0 1.5rem;">
+                        <li>Missing payment transactions</li>
+                        <li>Interest accrual errors</li>
+                        <li>Manual entry mistakes</li>
+                    </ul>
+                </div>
+            `}
+
+            <h5>Individual Loan Details</h5>
+            <div style="max-height: 400px; overflow-y: auto;">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Loan ID</th>
+                            <th>Amount</th>
+                            <th>Interest Rate</th>
+                            <th>Remaining Principal</th>
+                            <th>Accrued Interest</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${loans.length === 0 ?
+                            '<tr><td colspan="6" style="text-align: center;">No active loans</td></tr>' :
+                            loans.map(loan => {
+                                const status = loan.remainingPrincipal <= 0 ? 'Paid Off' : 'Active';
+                                const statusColor = status === 'Paid Off' ? '#059669' : '#3b82f6';
+                                return `
+                                    <tr>
+                                        <td>${loan.id}</td>
+                                        <td>${formatCurrency(loan.amount)}</td>
+                                        <td>${(loan.interestRate * 100).toFixed(2)}%</td>
+                                        <td>${formatCurrency(loan.remainingPrincipal)}</td>
+                                        <td>${formatCurrency(loan.accruedInterest || 0)}</td>
+                                        <td style="color: ${statusColor}; font-weight: 600;">${status}</td>
+                                    </tr>
+                                `;
+                            }).join('')
+                        }
+                    </tbody>
+                    <tfoot>
+                        <tr style="font-weight: bold; background: #f3f4f6;">
+                            <td colspan="3">Totals</td>
+                            <td>${formatCurrency(expectedPrincipal)}</td>
+                            <td>${formatCurrency(expectedInterest)}</td>
+                            <td></td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+
+            <h5 style="margin-top: 1.5rem;">Loan Account Balances</h5>
+            <div style="max-height: 300px; overflow-y: auto;">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Account</th>
+                            <th>Type</th>
+                            <th>Balance</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${loanPrincipalAccounts.map(acc => `
+                            <tr>
+                                <td>${escapeHtml(acc.name)}</td>
+                                <td>Principal</td>
+                                <td>${formatCurrency(balances[acc.id] || 0)}</td>
+                            </tr>
+                        `).join('')}
+                        ${loanInterestAccounts.map(acc => `
+                            <tr>
+                                <td>${escapeHtml(acc.name)}</td>
+                                <td>Interest Payable</td>
+                                <td>${formatCurrency(balances[acc.id] || 0)}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    `;
+
+    container.style.display = 'block';
+}
+
+// ====================================
 // UTILITY FUNCTIONS
 // ====================================
 
