@@ -3849,11 +3849,17 @@ function showBuildingInterior(buildingId) {
         content += `<span style="font-size: 12px; color: #666;">Materials: 10 Lumber (You have: ${lumberQty})</span><br/>`;
         content += `<span style="font-size: 12px; color: #666;">Base time: 4 hours | Employees: ${employees.length} (avg skill: ${calculateAverageSkill(employees).toFixed(1)})</span>`;
         content += `</div>`;
-        content += `<div>`;
+        content += `<div style="display: flex; gap: 5px;">`;
         if (hasLumber) {
             content += `<button class="btn" onclick="handleCraftWorkbench(${buildingId})" style="background: #28a745; color: white;">Craft Workbench</button>`;
         } else {
             content += `<button class="btn" disabled style="background: #ccc;">Need More Lumber</button>`;
+            // Add Quick Buy button for missing lumber
+            const workbenchMaterials = { 'Lumber': 10 };
+            const missingInfo = getMissingMaterialsInfo(workbenchMaterials);
+            if (!missingInfo.allAvailable) {
+                content += `<button class="btn" onclick="handleQuickBuyMaterials(${buildingId}, ${JSON.stringify(workbenchMaterials).replace(/"/g, '&quot;')}, 'Workbench')" style="background: #007bff; color: white; font-size: 11px;">💰 Quick Buy (${formatCurrency(missingInfo.totalCost)})</button>`;
+            }
         }
         content += `</div>`;
         content += `</div>`;
@@ -3927,12 +3933,20 @@ function showBuildingInterior(buildingId) {
             }
 
             content += `</div>`;
-            content += `<div>`;
+            content += `<div style="display: flex; flex-direction: column; gap: 5px;">`;
 
             if (canProduce) {
                 content += `<button class="btn" onclick="handleCraftEquipment(${buildingId}, '${equipDef.id}')" style="background: #28a745; color: white; font-size: 12px;">Craft</button>`;
             } else {
                 content += `<button class="btn" disabled style="background: #ccc; font-size: 12px;">Cannot Craft</button>`;
+
+                // Add Quick Buy button if only materials are missing (prerequisites and producers are available)
+                if (meetsPrereqs && availableProducers.length > 0 && !hasMaterials) {
+                    const missingInfo = getMissingMaterialsInfo(equipDef.materials);
+                    if (!missingInfo.allAvailable) {
+                        content += `<button class="btn" onclick="handleQuickBuyMaterials(${buildingId}, ${JSON.stringify(equipDef.materials).replace(/"/g, '&quot;')}, '${equipDef.name}')" style="background: #007bff; color: white; font-size: 11px;">💰 Quick Buy (${formatCurrency(missingInfo.totalCost)})</button>`;
+                    }
+                }
             }
 
             content += `</div>`;
@@ -4038,6 +4052,14 @@ function showBuildingInterior(buildingId) {
                                 content += `<button class="btn" onclick="handleStartCommodityProduction(${buildingId}, ${equip.id}, '${recipe.id}', true)" style="background: #28a745; color: white; font-size: 10px; padding: 5px 10px; white-space: nowrap;">🔄 Continuous</button>`;
                             } else {
                                 content += `<button class="btn" disabled style="background: #ccc; font-size: 10px; padding: 5px 10px;">❌ Need Materials</button>`;
+
+                                // Add Quick Buy button for missing recipe inputs
+                                if (Object.keys(recipe.inputs).length > 0) {
+                                    const missingInfo = getMissingMaterialsInfo(recipe.inputs);
+                                    if (!missingInfo.allAvailable) {
+                                        content += `<button class="btn" onclick="handleQuickBuyMaterials(${buildingId}, ${JSON.stringify(recipe.inputs).replace(/"/g, '&quot;')}, '${recipe.name}')" style="background: #007bff; color: white; font-size: 9px; padding: 4px 8px; white-space: nowrap;">💰 Buy (${formatCurrency(missingInfo.totalCost)})</button>`;
+                                    }
+                                }
                             }
 
                             content += `</div>`;
@@ -4894,6 +4916,110 @@ function hasRequiredMaterials(materialsDict) {
         if (totalQty < quantity) return false;
     }
     return true;
+}
+
+// Calculate missing materials and their costs for quick buying
+function getMissingMaterialsInfo(materialsDict) {
+    const missingMaterials = [];
+    let totalCost = 0;
+    let allAvailable = true;
+
+    for (const [materialName, quantityNeeded] of Object.entries(materialsDict)) {
+        const commodityId = getCommodityIdByName(materialName);
+        if (!commodityId) {
+            console.error(`Commodity not found: ${materialName}`);
+            continue;
+        }
+
+        const commodity = appState.commodities.find(c => c.id === commodityId);
+        if (!commodity) continue;
+
+        const currentQty = getTotalQuantity(commodityId);
+        const missing = Math.max(0, quantityNeeded - currentQty);
+
+        if (missing > 0) {
+            allAvailable = false;
+            const cost = missing * commodity.buyPrice;
+            missingMaterials.push({
+                name: materialName,
+                commodityId: commodityId,
+                needed: quantityNeeded,
+                have: currentQty,
+                missing: missing,
+                unitPrice: commodity.buyPrice,
+                totalCost: cost
+            });
+            totalCost += cost;
+        }
+    }
+
+    return {
+        missingMaterials,
+        totalCost,
+        allAvailable
+    };
+}
+
+// Quick buy missing materials for construction/production
+function handleQuickBuyMaterials(buildingId, materialsDict, itemName) {
+    const missingInfo = getMissingMaterialsInfo(materialsDict);
+
+    if (missingInfo.allAvailable) {
+        alert('You already have all the materials needed!');
+        return false;
+    }
+
+    // Check if player has enough cash
+    const cashBalance = getCashBalance();
+    if (missingInfo.totalCost > cashBalance) {
+        alert(`Insufficient cash!\n\nYou need ${formatCurrency(missingInfo.totalCost)} to buy the missing materials, but only have ${formatCurrency(cashBalance)}.`);
+        return false;
+    }
+
+    // Show confirmation dialog with breakdown
+    let confirmMsg = `Quick Buy Materials for ${itemName}?\n\n`;
+    confirmMsg += `Missing materials:\n`;
+    missingInfo.missingMaterials.forEach(mat => {
+        confirmMsg += `  • ${mat.missing} ${mat.name} @ ${formatCurrency(mat.unitPrice)} each = ${formatCurrency(mat.totalCost)}\n`;
+    });
+    confirmMsg += `\nTotal cost: ${formatCurrency(missingInfo.totalCost)}\n`;
+    confirmMsg += `Cash balance after: ${formatCurrency(cashBalance - missingInfo.totalCost)}\n\n`;
+    confirmMsg += `Proceed with purchase?`;
+
+    if (!confirm(confirmMsg)) {
+        return false;
+    }
+
+    // Purchase each missing material
+    let allPurchasesSuccessful = true;
+    const purchasedItems = [];
+
+    for (const mat of missingInfo.missingMaterials) {
+        const success = buyCommodity(mat.commodityId, mat.missing);
+        if (success) {
+            purchasedItems.push(`${mat.missing} ${mat.name}`);
+        } else {
+            allPurchasesSuccessful = false;
+            break;
+        }
+    }
+
+    // Show result and refresh UI
+    if (allPurchasesSuccessful) {
+        alert(`✅ Successfully purchased:\n${purchasedItems.join('\n')}\n\nTotal: ${formatCurrency(missingInfo.totalCost)}`);
+        render(); // Refresh the entire UI
+        if (buildingId) {
+            showBuildingInterior(buildingId); // Refresh building interior view
+        }
+        return true;
+    } else {
+        alert('⚠️ Some purchases failed. Please check your cash balance and try again.');
+        render();
+        if (buildingId) {
+            showBuildingInterior(buildingId);
+        }
+        return false;
+    }
 }
 
 // Consume materials from inventory using FIFO
