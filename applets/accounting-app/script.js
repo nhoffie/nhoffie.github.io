@@ -25,7 +25,8 @@ let appState = {
         { id: 16, number: '5300', name: 'Salaries Expense', type: 'Expense', openingBalance: 0 },
         { id: 17, number: '5400', name: 'Supplies Expense', type: 'Expense', openingBalance: 0 },
         { id: 18, number: '5500', name: 'Losses on Commodity Sales', type: 'Expense', openingBalance: 0 },
-        { id: 20, number: '5600', name: 'Interest Expense', type: 'Expense', openingBalance: 0 }
+        { id: 20, number: '5600', name: 'Interest Expense', type: 'Expense', openingBalance: 0 },
+        { id: 23, number: '3200', name: 'Income Summary', type: 'Equity', openingBalance: 0 }
     ],
     transactions: [],
     transactionTypes: [
@@ -156,7 +157,7 @@ let appState = {
     // Structure: { id, name, wage, skillLevel, assignedBuildingId, hireDate, nextPaymentDate }
     productionQueue: [],
     // Structure: { id, buildingId, equipmentId, productType, productId, recipeId, quantity, startTime, estimatedCompletionTime, actualCompletionTime, status, materialsConsumed, outputs, assignedEmployees, continuous, transactionId }
-    nextAccountId: 23,
+    nextAccountId: 24,
     nextTransactionId: 1,
     nextTransactionTypeId: 11,
     nextCommodityId: 13,
@@ -166,10 +167,1083 @@ let appState = {
     nextBuildingId: 1,
     nextEmployeeId: 1,
     nextProductionId: 1,
-    nextEquipmentId: 1
+    nextEquipmentId: 1,
+    // Fiscal Period Management
+    fiscalPeriods: [],
+    /* Structure: {
+        id: number,
+        year: number,
+        month: number,
+        startDate: string (Y#-M#-D#),
+        endDate: string (Y#-M#-D#),
+        status: 'open' | 'closing' | 'closed',
+        closedAt: timestamp | null,
+        closingTransactionId: number | null,
+        netIncome: number | null
+    } */
+    currentFiscalPeriod: null,
+    nextFiscalPeriodId: 1
 };
 
 let hasUnsavedChanges = false;
+
+// Pagination state
+let transactionPagination = {
+    currentPage: 1,
+    itemsPerPage: 50,
+    totalItems: 0,
+    totalPages: 0
+};
+
+// ====================================
+// TRANSACTION MANAGER & GENERAL LEDGER
+// ====================================
+
+/**
+ * TransactionManager - Centralized transaction creation and validation
+ * Ensures all transactions follow double-entry rules and have proper timestamps
+ */
+class TransactionManager {
+    constructor(appState) {
+        this.appState = appState;
+    }
+
+    /**
+     * Create and post a transaction
+     * @param {Object} params - Transaction parameters
+     * @param {string} params.description - Transaction description
+     * @param {Array} params.entries - Array of {accountId, type, amount}
+     * @param {Object} params.metadata - Optional metadata for traceability
+     * @returns {Object} Posted transaction or null if validation failed
+     */
+    createTransaction({ description, entries, metadata = {} }) {
+        // Generate timestamp
+        const timestamp = new Date().toISOString();
+        const simMs = getCurrentSimulationTime();
+        const simTime = msToCalendarTime(simMs);
+        const simDate = `Y${simTime.year}-M${simTime.month}-D${simTime.day}`;
+        const simTimeStr = `${String(simTime.hour).padStart(2, '0')}:${String(simTime.minute).padStart(2, '0')}:${String(simTime.second).padStart(2, '0')}`;
+
+        // Create transaction object
+        const transaction = {
+            id: this.appState.nextTransactionId++,
+            timestamp: timestamp,
+            simDate: simDate,
+            simTime: simTimeStr,
+            simMs: simMs, // Store milliseconds for sorting
+            description: description,
+            status: 'posted',
+            entries: entries,
+            metadata: metadata,
+            audit: {
+                createdBy: metadata.createdBy || 'system',
+                createdAt: timestamp,
+                voidedBy: null,
+                voidedAt: null,
+                voidReason: null
+            }
+        };
+
+        // Validate transaction
+        const validation = this.validateTransaction(transaction);
+        if (!validation.valid) {
+            console.error('Transaction validation failed:', validation.errors);
+            return { success: false, errors: validation.errors };
+        }
+
+        // Post transaction
+        this.appState.transactions.push(transaction);
+
+        // Update transaction index
+        if (window.transactionIndex) {
+            window.transactionIndex.addTransaction(transaction);
+        }
+
+        // Update general ledger
+        if (window.generalLedger) {
+            window.generalLedger.postTransaction(transaction);
+        }
+
+        // Validate balance sheet
+        if (window.generalLedger) {
+            const balanceCheck = window.generalLedger.validateBalanceSheet();
+            if (!balanceCheck.balanced) {
+                console.warn('Balance sheet is out of balance after transaction!', balanceCheck);
+            }
+        }
+
+        hasUnsavedChanges = true;
+        return { success: true, transaction: transaction };
+    }
+
+    /**
+     * Create a simple two-account transaction
+     * @param {string} description - Transaction description
+     * @param {number} debitAccountId - Account to debit
+     * @param {number} creditAccountId - Account to credit
+     * @param {number} amount - Transaction amount
+     * @param {Object} metadata - Optional metadata
+     */
+    createSimpleTransaction(description, debitAccountId, creditAccountId, amount, metadata = {}) {
+        return this.createTransaction({
+            description: description,
+            entries: [
+                { accountId: debitAccountId, type: 'debit', amount: amount },
+                { accountId: creditAccountId, type: 'credit', amount: amount }
+            ],
+            metadata: metadata
+        });
+    }
+
+    /**
+     * Validate a transaction
+     * @param {Object} transaction - Transaction to validate
+     * @returns {Object} Validation result with valid flag and errors array
+     */
+    validateTransaction(transaction) {
+        const errors = [];
+
+        // Check required fields
+        if (!transaction.description) {
+            errors.push('Description is required');
+        }
+
+        if (!transaction.entries || transaction.entries.length < 2) {
+            errors.push('Transaction must have at least 2 entries');
+        }
+
+        // Validate entries
+        let debitTotal = 0;
+        let creditTotal = 0;
+
+        transaction.entries.forEach((entry, index) => {
+            // Check account exists
+            const account = this.appState.accounts.find(a => a.id === entry.accountId);
+            if (!account) {
+                errors.push(`Entry ${index + 1}: Account ID ${entry.accountId} not found`);
+            }
+
+            // Check amount is positive
+            if (!entry.amount || entry.amount <= 0) {
+                errors.push(`Entry ${index + 1}: Amount must be positive`);
+            }
+
+            // Check type is valid
+            if (entry.type !== 'debit' && entry.type !== 'credit') {
+                errors.push(`Entry ${index + 1}: Type must be 'debit' or 'credit'`);
+            }
+
+            // Sum debits and credits
+            if (entry.type === 'debit') {
+                debitTotal += entry.amount;
+            } else if (entry.type === 'credit') {
+                creditTotal += entry.amount;
+            }
+        });
+
+        // Check debits = credits (allow small rounding difference)
+        if (Math.abs(debitTotal - creditTotal) > 0.01) {
+            errors.push(`Debits (${debitTotal.toFixed(2)}) must equal credits (${creditTotal.toFixed(2)})`);
+        }
+
+        // Check if posting to a closed period (unless it's a closing entry)
+        if (window.periodManager && transaction.simDate) {
+            const isClosingEntry = transaction.metadata?.type === 'closing_entry';
+            if (!isClosingEntry && window.periodManager.isDateInClosedPeriod(transaction.simDate)) {
+                const period = window.periodManager.getPeriodForDate(transaction.simDate);
+                errors.push(`Cannot post to closed fiscal period: ${period.startDate} to ${period.endDate}`);
+            }
+        }
+
+        return {
+            valid: errors.length === 0,
+            errors: errors
+        };
+    }
+
+    /**
+     * Void a transaction (mark as void, don't delete)
+     * @param {number} transactionId - ID of transaction to void
+     * @param {string} reason - Reason for voiding
+     * @param {string} voidedBy - Who voided it (user/system)
+     */
+    voidTransaction(transactionId, reason, voidedBy = 'user') {
+        const transaction = this.appState.transactions.find(t => t.id === transactionId);
+        if (!transaction) {
+            return { success: false, error: 'Transaction not found' };
+        }
+
+        if (transaction.status === 'void') {
+            return { success: false, error: 'Transaction already voided' };
+        }
+
+        transaction.status = 'void';
+        transaction.audit.voidedBy = voidedBy;
+        transaction.audit.voidedAt = new Date().toISOString();
+        transaction.audit.voidReason = reason;
+
+        // Update general ledger
+        if (window.generalLedger) {
+            window.generalLedger.invalidateCache();
+        }
+
+        hasUnsavedChanges = true;
+        return { success: true };
+    }
+
+    /**
+     * Get transactions by date range
+     * @param {string} startDate - Start date (simDate format)
+     * @param {string} endDate - End date (simDate format)
+     * @param {boolean} includeVoided - Whether to include voided transactions
+     */
+    getTransactionsByDateRange(startDate, endDate, includeVoided = false) {
+        return this.appState.transactions.filter(t => {
+            if (!includeVoided && t.status === 'void') return false;
+            if (startDate && compareDates(t.simDate, startDate) < 0) return false;
+            if (endDate && compareDates(t.simDate, endDate) > 0) return false;
+            return true;
+        });
+    }
+}
+
+/**
+ * GeneralLedger - Manages account balances with caching and incremental updates
+ */
+class GeneralLedger {
+    constructor(appState) {
+        this.appState = appState;
+        this.balanceCache = null;
+        this.cacheTimestamp = null;
+        this.lastProcessedTransactionId = 0;
+    }
+
+    /**
+     * Get account balances as of a specific date
+     * @param {string} asOfDate - Date in simDate format (null for current)
+     * @returns {Object} Balances by account ID
+     */
+    getBalances(asOfDate = null) {
+        // If requesting current balances and cache is valid, use cache
+        if (!asOfDate && this.balanceCache && this.isCacheValid()) {
+            return { ...this.balanceCache };
+        }
+
+        // Calculate balances
+        const balances = this.calculateBalances(asOfDate);
+
+        // Cache if current balances
+        if (!asOfDate) {
+            this.balanceCache = balances;
+            this.cacheTimestamp = Date.now();
+            this.lastProcessedTransactionId = this.appState.nextTransactionId - 1;
+        }
+
+        return balances;
+    }
+
+    /**
+     * Calculate balances from scratch
+     * @param {string} asOfDate - Date in simDate format (null for all transactions)
+     */
+    calculateBalances(asOfDate = null) {
+        const balances = {};
+
+        // Initialize with opening balances
+        this.appState.accounts.forEach(account => {
+            balances[account.id] = account.openingBalance || 0;
+        });
+
+        // Filter transactions
+        const transactions = asOfDate
+            ? this.appState.transactions.filter(t => {
+                return t.status !== 'void' && compareDates(t.simDate || t.date, asOfDate) <= 0;
+            })
+            : this.appState.transactions.filter(t => t.status !== 'void');
+
+        // Apply transactions
+        transactions.forEach(transaction => {
+            this.applyTransactionToBalances(transaction, balances);
+        });
+
+        return balances;
+    }
+
+    /**
+     * Apply a single transaction to balance object
+     * @param {Object} transaction - Transaction to apply
+     * @param {Object} balances - Balances object to update
+     */
+    applyTransactionToBalances(transaction, balances) {
+        // Handle new format with entries array
+        if (transaction.entries) {
+            transaction.entries.forEach(entry => {
+                const account = this.appState.accounts.find(a => a.id === entry.accountId);
+                if (!account) return;
+
+                if (!balances[entry.accountId]) balances[entry.accountId] = 0;
+
+                const amount = entry.amount;
+
+                if (entry.type === 'debit') {
+                    // Debit increases: Assets, Expenses
+                    // Debit decreases: Liabilities, Equity, Revenue
+                    if (account.type === 'Asset' || account.type === 'Expense') {
+                        balances[entry.accountId] += amount;
+                    } else {
+                        balances[entry.accountId] -= amount;
+                    }
+                } else {
+                    // Credit increases: Liabilities, Equity, Revenue
+                    // Credit decreases: Assets, Expenses
+                    if (account.type === 'Liability' || account.type === 'Equity' || account.type === 'Revenue') {
+                        balances[entry.accountId] += amount;
+                    } else {
+                        balances[entry.accountId] -= amount;
+                    }
+                }
+            });
+        }
+        // Handle legacy format
+        else if (transaction.debitAccount && transaction.creditAccount) {
+            const debitAccount = this.appState.accounts.find(a => a.id === transaction.debitAccount);
+            const creditAccount = this.appState.accounts.find(a => a.id === transaction.creditAccount);
+
+            if (!debitAccount || !creditAccount) return;
+
+            if (!balances[transaction.debitAccount]) balances[transaction.debitAccount] = 0;
+            if (!balances[transaction.creditAccount]) balances[transaction.creditAccount] = 0;
+
+            // Apply debit
+            if (debitAccount.type === 'Asset' || debitAccount.type === 'Expense') {
+                balances[transaction.debitAccount] += transaction.amount;
+            } else {
+                balances[transaction.debitAccount] -= transaction.amount;
+            }
+
+            // Apply credit
+            if (creditAccount.type === 'Liability' || creditAccount.type === 'Equity' || creditAccount.type === 'Revenue') {
+                balances[transaction.creditAccount] += transaction.amount;
+            } else {
+                balances[transaction.creditAccount] -= transaction.amount;
+            }
+        }
+    }
+
+    /**
+     * Post a transaction and update cache incrementally
+     * @param {Object} transaction - Transaction that was just posted
+     */
+    postTransaction(transaction) {
+        if (this.balanceCache) {
+            this.applyTransactionToBalances(transaction, this.balanceCache);
+            this.lastProcessedTransactionId = transaction.id;
+        }
+    }
+
+    /**
+     * Check if cache is still valid
+     */
+    isCacheValid() {
+        // Cache is valid if no transactions were added, edited, or voided
+        return this.lastProcessedTransactionId === this.appState.nextTransactionId - 1;
+    }
+
+    /**
+     * Invalidate cache (call when transactions are modified)
+     */
+    invalidateCache() {
+        this.balanceCache = null;
+        this.cacheTimestamp = null;
+        this.lastProcessedTransactionId = 0;
+    }
+
+    /**
+     * Validate that the balance sheet balances
+     * @returns {Object} Validation result with balanced flag and totals
+     */
+    validateBalanceSheet() {
+        const balances = this.getBalances();
+
+        let totalAssets = 0;
+        let totalLiabilities = 0;
+        let totalEquity = 0;
+
+        this.appState.accounts.forEach(account => {
+            const balance = balances[account.id] || 0;
+
+            if (account.type === 'Asset') {
+                totalAssets += balance;
+            } else if (account.type === 'Liability') {
+                totalLiabilities += balance;
+            } else if (account.type === 'Equity') {
+                totalEquity += balance;
+            }
+        });
+
+        const difference = Math.abs(totalAssets - (totalLiabilities + totalEquity));
+        const balanced = difference < 0.01; // Allow 1 cent rounding error
+
+        return {
+            balanced: balanced,
+            totalAssets: totalAssets,
+            totalLiabilities: totalLiabilities,
+            totalEquity: totalEquity,
+            difference: difference
+        };
+    }
+
+    /**
+     * Get balance for a specific account
+     * @param {number} accountId - Account ID
+     * @param {string} asOfDate - Optional date
+     */
+    getAccountBalance(accountId, asOfDate = null) {
+        const balances = this.getBalances(asOfDate);
+        return balances[accountId] || 0;
+    }
+}
+
+// ====================================
+// PERIOD MANAGER
+// ====================================
+
+class PeriodManager {
+    constructor(appState) {
+        this.appState = appState;
+    }
+
+    /**
+     * Initialize first fiscal period if none exists
+     */
+    initializeFirstPeriod() {
+        if (this.appState.fiscalPeriods.length === 0) {
+            const simMs = getCurrentSimulationTime();
+            const simTime = msToCalendarTime(simMs);
+
+            const period = {
+                id: this.appState.nextFiscalPeriodId++,
+                year: simTime.year,
+                month: simTime.month,
+                startDate: `Y${simTime.year}-M${simTime.month}-D1`,
+                endDate: `Y${simTime.year}-M${simTime.month}-D28`,
+                status: 'open',
+                closedAt: null,
+                closingTransactionId: null,
+                netIncome: null
+            };
+
+            this.appState.fiscalPeriods.push(period);
+            this.appState.currentFiscalPeriod = period.id;
+
+            return period;
+        }
+        return null;
+    }
+
+    /**
+     * Get the current open period
+     */
+    getCurrentPeriod() {
+        if (this.appState.currentFiscalPeriod) {
+            return this.appState.fiscalPeriods.find(p => p.id === this.appState.currentFiscalPeriod);
+        }
+        return null;
+    }
+
+    /**
+     * Check if a date falls within a closed period
+     */
+    isDateInClosedPeriod(dateStr) {
+        return this.appState.fiscalPeriods.some(period => {
+            if (period.status === 'closed') {
+                return dateStr >= period.startDate && dateStr <= period.endDate;
+            }
+            return false;
+        });
+    }
+
+    /**
+     * Get period for a specific date
+     */
+    getPeriodForDate(dateStr) {
+        return this.appState.fiscalPeriods.find(period =>
+            dateStr >= period.startDate && dateStr <= period.endDate
+        );
+    }
+
+    /**
+     * Create next fiscal period (month)
+     */
+    createNextPeriod() {
+        const lastPeriod = this.appState.fiscalPeriods[this.appState.fiscalPeriods.length - 1];
+
+        let nextYear = lastPeriod.year;
+        let nextMonth = lastPeriod.month + 1;
+
+        if (nextMonth > 12) {
+            nextMonth = 1;
+            nextYear++;
+        }
+
+        const period = {
+            id: this.appState.nextFiscalPeriodId++,
+            year: nextYear,
+            month: nextMonth,
+            startDate: `Y${nextYear}-M${nextMonth}-D1`,
+            endDate: `Y${nextYear}-M${nextMonth}-D28`,
+            status: 'open',
+            closedAt: null,
+            closingTransactionId: null,
+            netIncome: null
+        };
+
+        this.appState.fiscalPeriods.push(period);
+
+        return period;
+    }
+
+    /**
+     * Execute month-end closing process
+     */
+    closePeriod(periodId) {
+        const period = this.appState.fiscalPeriods.find(p => p.id === periodId);
+
+        if (!period) {
+            return { success: false, error: 'Period not found' };
+        }
+
+        if (period.status === 'closed') {
+            return { success: false, error: 'Period is already closed' };
+        }
+
+        // Mark as closing
+        period.status = 'closing';
+
+        try {
+            // Step 1: Calculate net income for the period
+            const netIncome = this.calculateNetIncome(period.startDate, period.endDate);
+            period.netIncome = netIncome;
+
+            // Step 2: Get account IDs
+            const incomeSummaryAccount = this.appState.accounts.find(a => a.name === 'Income Summary');
+            const retainedEarningsAccount = this.appState.accounts.find(a => a.name === 'Retained Earnings');
+
+            if (!incomeSummaryAccount || !retainedEarningsAccount) {
+                throw new Error('Required accounts not found (Income Summary or Retained Earnings)');
+            }
+
+            // Step 3: Close revenue accounts to Income Summary
+            const revenueAccounts = this.appState.accounts.filter(a => a.type === 'Revenue');
+            const revenueEntries = [];
+
+            revenueAccounts.forEach(account => {
+                const balances = window.generalLedger.getBalances(period.endDate);
+                const balance = balances[account.id] || 0;
+
+                if (Math.abs(balance) >= 0.01) {
+                    // Debit revenue account (to close it)
+                    revenueEntries.push({ accountId: account.id, type: 'debit', amount: balance });
+                }
+            });
+
+            if (revenueEntries.length > 0) {
+                const totalRevenue = revenueEntries.reduce((sum, e) => sum + e.amount, 0);
+                // Credit Income Summary
+                revenueEntries.push({ accountId: incomeSummaryAccount.id, type: 'credit', amount: totalRevenue });
+
+                const revenueResult = window.transactionManager.createTransaction({
+                    description: `Close revenue accounts for ${period.startDate} to ${period.endDate}`,
+                    entries: revenueEntries,
+                    metadata: {
+                        type: 'closing_entry',
+                        periodId: period.id,
+                        closingStep: 'close_revenue',
+                        fiscalPeriod: `${period.year}-${period.month}`
+                    }
+                });
+
+                if (!revenueResult.success) {
+                    throw new Error('Failed to close revenue accounts: ' + revenueResult.errors.join(', '));
+                }
+            }
+
+            // Step 4: Close expense accounts to Income Summary
+            const expenseAccounts = this.appState.accounts.filter(a => a.type === 'Expense');
+            const expenseEntries = [];
+
+            expenseAccounts.forEach(account => {
+                const balances = window.generalLedger.getBalances(period.endDate);
+                const balance = balances[account.id] || 0;
+
+                if (Math.abs(balance) >= 0.01) {
+                    // Credit expense account (to close it)
+                    expenseEntries.push({ accountId: account.id, type: 'credit', amount: balance });
+                }
+            });
+
+            if (expenseEntries.length > 0) {
+                const totalExpenses = expenseEntries.reduce((sum, e) => sum + e.amount, 0);
+                // Debit Income Summary
+                expenseEntries.push({ accountId: incomeSummaryAccount.id, type: 'debit', amount: totalExpenses });
+
+                const expenseResult = window.transactionManager.createTransaction({
+                    description: `Close expense accounts for ${period.startDate} to ${period.endDate}`,
+                    entries: expenseEntries,
+                    metadata: {
+                        type: 'closing_entry',
+                        periodId: period.id,
+                        closingStep: 'close_expenses',
+                        fiscalPeriod: `${period.year}-${period.month}`
+                    }
+                });
+
+                if (!expenseResult.success) {
+                    throw new Error('Failed to close expense accounts: ' + expenseResult.errors.join(', '));
+                }
+            }
+
+            // Step 5: Close Income Summary to Retained Earnings
+            const finalBalances = window.generalLedger.getBalances(period.endDate);
+            const incomeSummaryBalance = finalBalances[incomeSummaryAccount.id] || 0;
+
+            if (Math.abs(incomeSummaryBalance) >= 0.01) {
+                const finalEntries = [];
+
+                if (incomeSummaryBalance > 0) {
+                    // Net income: Debit Income Summary, Credit Retained Earnings
+                    finalEntries.push({ accountId: incomeSummaryAccount.id, type: 'debit', amount: incomeSummaryBalance });
+                    finalEntries.push({ accountId: retainedEarningsAccount.id, type: 'credit', amount: incomeSummaryBalance });
+                } else {
+                    // Net loss: Debit Retained Earnings, Credit Income Summary
+                    const absBalance = Math.abs(incomeSummaryBalance);
+                    finalEntries.push({ accountId: retainedEarningsAccount.id, type: 'debit', amount: absBalance });
+                    finalEntries.push({ accountId: incomeSummaryAccount.id, type: 'credit', amount: absBalance });
+                }
+
+                const finalResult = window.transactionManager.createTransaction({
+                    description: `Close Income Summary to Retained Earnings for ${period.startDate} to ${period.endDate}`,
+                    entries: finalEntries,
+                    metadata: {
+                        type: 'closing_entry',
+                        periodId: period.id,
+                        closingStep: 'close_income_summary',
+                        netIncome: netIncome,
+                        fiscalPeriod: `${period.year}-${period.month}`
+                    }
+                });
+
+                if (!finalResult.success) {
+                    throw new Error('Failed to close Income Summary: ' + finalResult.errors.join(', '));
+                }
+
+                period.closingTransactionId = finalResult.transaction.id;
+            }
+
+            // Step 6: Mark period as closed
+            period.status = 'closed';
+            period.closedAt = new Date().toISOString();
+
+            // Step 7: Create next period and set as current
+            const nextPeriod = this.createNextPeriod();
+            this.appState.currentFiscalPeriod = nextPeriod.id;
+
+            return {
+                success: true,
+                period: period,
+                nextPeriod: nextPeriod,
+                netIncome: netIncome
+            };
+
+        } catch (error) {
+            // Rollback: reopen the period
+            period.status = 'open';
+            return {
+                success: false,
+                error: error.message
+            };
+        }
+    }
+
+    /**
+     * Calculate net income for a period
+     */
+    calculateNetIncome(startDate, endDate) {
+        const balances = window.generalLedger ? window.generalLedger.getBalances(endDate) : {};
+
+        let totalRevenue = 0;
+        let totalExpenses = 0;
+
+        this.appState.accounts.forEach(account => {
+            const balance = balances[account.id] || 0;
+
+            if (account.type === 'Revenue') {
+                totalRevenue += balance;
+            } else if (account.type === 'Expense') {
+                totalExpenses += balance;
+            }
+        });
+
+        return totalRevenue - totalExpenses;
+    }
+
+    /**
+     * Get period status summary
+     */
+    getPeriodSummary() {
+        const current = this.getCurrentPeriod();
+        const allPeriods = this.appState.fiscalPeriods;
+        const closedCount = allPeriods.filter(p => p.status === 'closed').length;
+
+        return {
+            currentPeriod: current,
+            totalPeriods: allPeriods.length,
+            closedPeriods: closedCount,
+            openPeriods: allPeriods.length - closedCount
+        };
+    }
+}
+
+// ====================================
+// TRANSACTION INDEX
+// ====================================
+
+class TransactionIndex {
+    constructor(appState) {
+        this.appState = appState;
+        this.byDate = new Map(); // Map<dateString, Set<transactionId>>
+        this.byAccount = new Map(); // Map<accountId, Set<transactionId>>
+        this.byType = new Map(); // Map<metadataType, Set<transactionId>>
+        this.byPeriod = new Map(); // Map<periodId, Set<transactionId>>
+        this.sortedByDate = []; // Array of transaction IDs sorted by date
+        this.needsRebuild = true;
+    }
+
+    /**
+     * Build all indexes from scratch
+     */
+    buildIndexes() {
+        this.byDate.clear();
+        this.byAccount.clear();
+        this.byType.clear();
+        this.byPeriod.clear();
+        this.sortedByDate = [];
+
+        const sortedTransactions = [...this.appState.transactions]
+            .filter(t => t.status !== 'void')
+            .sort((a, b) => {
+                const aDate = a.simDate || a.date;
+                const bDate = b.simDate || b.date;
+                if (aDate !== bDate) return aDate.localeCompare(bDate);
+                return (a.simMs || 0) - (b.simMs || 0);
+            });
+
+        sortedTransactions.forEach(transaction => {
+            this.sortedByDate.push(transaction.id);
+            this.indexTransaction(transaction);
+        });
+
+        this.needsRebuild = false;
+    }
+
+    /**
+     * Index a single transaction
+     */
+    indexTransaction(transaction) {
+        const txId = transaction.id;
+        const date = transaction.simDate || transaction.date;
+
+        // Index by date
+        if (!this.byDate.has(date)) {
+            this.byDate.set(date, new Set());
+        }
+        this.byDate.get(date).add(txId);
+
+        // Index by account
+        if (transaction.entries) {
+            transaction.entries.forEach(entry => {
+                if (!this.byAccount.has(entry.accountId)) {
+                    this.byAccount.set(entry.accountId, new Set());
+                }
+                this.byAccount.get(entry.accountId).add(txId);
+            });
+        } else {
+            // Legacy format
+            if (transaction.debitAccount) {
+                if (!this.byAccount.has(transaction.debitAccount)) {
+                    this.byAccount.set(transaction.debitAccount, new Set());
+                }
+                this.byAccount.get(transaction.debitAccount).add(txId);
+            }
+            if (transaction.creditAccount) {
+                if (!this.byAccount.has(transaction.creditAccount)) {
+                    this.byAccount.set(transaction.creditAccount, new Set());
+                }
+                this.byAccount.get(transaction.creditAccount).add(txId);
+            }
+        }
+
+        // Index by metadata type
+        if (transaction.metadata?.type) {
+            const type = transaction.metadata.type;
+            if (!this.byType.has(type)) {
+                this.byType.set(type, new Set());
+            }
+            this.byType.get(type).add(txId);
+        }
+
+        // Index by period
+        if (transaction.metadata?.periodId) {
+            const periodId = transaction.metadata.periodId;
+            if (!this.byPeriod.has(periodId)) {
+                this.byPeriod.set(periodId, new Set());
+            }
+            this.byPeriod.get(periodId).add(txId);
+        }
+    }
+
+    /**
+     * Add transaction to indexes
+     */
+    addTransaction(transaction) {
+        // Add to sorted array (maintain sort order)
+        const date = transaction.simDate || transaction.date;
+        const simMs = transaction.simMs || 0;
+
+        // Binary search for insertion point
+        let left = 0;
+        let right = this.sortedByDate.length;
+
+        while (left < right) {
+            const mid = Math.floor((left + right) / 2);
+            const midTx = this.appState.transactions.find(t => t.id === this.sortedByDate[mid]);
+            const midDate = midTx.simDate || midTx.date;
+            const midMs = midTx.simMs || 0;
+
+            if (midDate < date || (midDate === date && midMs < simMs)) {
+                left = mid + 1;
+            } else {
+                right = mid;
+            }
+        }
+
+        this.sortedByDate.splice(left, 0, transaction.id);
+        this.indexTransaction(transaction);
+    }
+
+    /**
+     * Get transactions by date range (optimized)
+     */
+    getByDateRange(startDate, endDate) {
+        if (this.needsRebuild) this.buildIndexes();
+
+        const result = [];
+
+        // Binary search for start position
+        let startIdx = 0;
+        let left = 0;
+        let right = this.sortedByDate.length;
+
+        while (left < right) {
+            const mid = Math.floor((left + right) / 2);
+            const tx = this.appState.transactions.find(t => t.id === this.sortedByDate[mid]);
+            const txDate = tx.simDate || tx.date;
+
+            if (txDate < startDate) {
+                left = mid + 1;
+            } else {
+                right = mid;
+            }
+        }
+        startIdx = left;
+
+        // Collect transactions in range
+        for (let i = startIdx; i < this.sortedByDate.length; i++) {
+            const tx = this.appState.transactions.find(t => t.id === this.sortedByDate[i]);
+            const txDate = tx.simDate || tx.date;
+
+            if (txDate > endDate) break;
+            if (tx.status !== 'void') {
+                result.push(tx);
+            }
+        }
+
+        return result;
+    }
+
+    /**
+     * Get transactions by account (optimized)
+     */
+    getByAccount(accountId) {
+        if (this.needsRebuild) this.buildIndexes();
+
+        const txIds = this.byAccount.get(accountId);
+        if (!txIds) return [];
+
+        return Array.from(txIds)
+            .map(id => this.appState.transactions.find(t => t.id === id))
+            .filter(t => t && t.status !== 'void');
+    }
+
+    /**
+     * Get transactions by metadata type
+     */
+    getByType(metadataType) {
+        if (this.needsRebuild) this.buildIndexes();
+
+        const txIds = this.byType.get(metadataType);
+        if (!txIds) return [];
+
+        return Array.from(txIds)
+            .map(id => this.appState.transactions.find(t => t.id === id))
+            .filter(t => t && t.status !== 'void');
+    }
+
+    /**
+     * Get transactions by period
+     */
+    getByPeriod(periodId) {
+        if (this.needsRebuild) this.buildIndexes();
+
+        const txIds = this.byPeriod.get(periodId);
+        if (!txIds) return [];
+
+        return Array.from(txIds)
+            .map(id => this.appState.transactions.find(t => t.id === id))
+            .filter(t => t && t.status !== 'void');
+    }
+
+    /**
+     * Mark index as needing rebuild
+     */
+    invalidate() {
+        this.needsRebuild = true;
+    }
+}
+
+// Initialize global instances
+let transactionManager = null;
+let generalLedger = null;
+let periodManager = null;
+let transactionIndex = null;
+
+function initializeFinancialSystem() {
+    // Migrate legacy transactions to new format
+    migrateLegacyTransactions();
+
+    // Initialize managers
+    transactionManager = new TransactionManager(appState);
+    generalLedger = new GeneralLedger(appState);
+    periodManager = new PeriodManager(appState);
+    transactionIndex = new TransactionIndex(appState);
+
+    // Initialize first fiscal period if needed
+    periodManager.initializeFirstPeriod();
+
+    // Build transaction indexes
+    transactionIndex.buildIndexes();
+
+    // Make available globally
+    window.transactionManager = transactionManager;
+    window.generalLedger = generalLedger;
+    window.periodManager = periodManager;
+    window.transactionIndex = transactionIndex;
+}
+
+/**
+ * Migrate legacy transactions to new format with timestamps and status
+ */
+function migrateLegacyTransactions() {
+    let migrationCount = 0;
+
+    appState.transactions.forEach(transaction => {
+        let needsMigration = false;
+
+        // Add timestamp if missing
+        if (!transaction.timestamp) {
+            transaction.timestamp = new Date().toISOString();
+            needsMigration = true;
+        }
+
+        // Add simulation date/time if missing
+        if (!transaction.simDate && transaction.date) {
+            transaction.simDate = transaction.date;
+            needsMigration = true;
+        }
+
+        // Add simTime if missing
+        if (!transaction.simTime) {
+            transaction.simTime = '00:00:00';
+            needsMigration = true;
+        }
+
+        // Add simMs if missing (try to parse from simDate)
+        if (!transaction.simMs && transaction.simDate) {
+            const parts = transaction.simDate.match(/Y(\d+)-M(\d+)-D(\d+)/);
+            if (parts) {
+                const year = parseInt(parts[1]);
+                const month = parseInt(parts[2]);
+                const day = parseInt(parts[3]);
+                transaction.simMs = calendarTimeToMs(year, month, day, 0, 0, 0);
+                needsMigration = true;
+            }
+        }
+
+        // Add status if missing
+        if (!transaction.status) {
+            transaction.status = 'posted';
+            needsMigration = true;
+        }
+
+        // Convert simple format to entries format
+        if (transaction.debitAccount && transaction.creditAccount && !transaction.entries) {
+            transaction.entries = [
+                { accountId: transaction.debitAccount, type: 'debit', amount: transaction.amount },
+                { accountId: transaction.creditAccount, type: 'credit', amount: transaction.amount }
+            ];
+            needsMigration = true;
+        }
+
+        // Convert old entry format (account) to new format (accountId)
+        if (transaction.entries) {
+            transaction.entries.forEach(entry => {
+                if (entry.account && !entry.accountId) {
+                    entry.accountId = entry.account;
+                    needsMigration = true;
+                }
+            });
+        }
+
+        // Add audit trail if missing
+        if (!transaction.audit) {
+            transaction.audit = {
+                createdBy: 'system',
+                createdAt: transaction.timestamp || new Date().toISOString(),
+                voidedBy: null,
+                voidedAt: null,
+                voidReason: null
+            };
+            needsMigration = true;
+        }
+
+        // Add metadata if missing
+        if (!transaction.metadata) {
+            transaction.metadata = {
+                source: 'legacy'
+            };
+            needsMigration = true;
+        }
+
+        if (needsMigration) {
+            migrationCount++;
+        }
+    });
+
+    if (migrationCount > 0) {
+        console.log(`Migrated ${migrationCount} legacy transactions to new format`);
+        hasUnsavedChanges = true;
+    }
+}
 
 // ====================================
 // SESSION KEY MANAGEMENT
@@ -334,6 +1408,9 @@ function restoreSessionKey() {
         keyInput.value = '';
         showStatus('restoreStatus', 'Data restored successfully!', 'success');
 
+        // Reinitialize financial system with restored data
+        initializeFinancialSystem();
+
         // Restart the clock with the updated time
         startSimulationClock();
         render();
@@ -414,12 +1491,25 @@ function setupTabNavigation() {
             } else if (targetTab === 'cash-flow') {
                 updateStatementEndDates();
                 renderCashFlowStatement();
+            } else if (targetTab === 'trial-balance') {
+                updateStatementEndDates();
+                renderTrialBalance();
+            } else if (targetTab === 'general-ledger') {
+                updateStatementEndDates();
+                renderGeneralLedger();
+            } else if (targetTab === 'transaction-journal') {
+                updateStatementEndDates();
+                renderTransactionJournal();
+            } else if (targetTab === 'dashboard') {
+                renderDashboard();
             } else if (targetTab === 'commodities') {
                 renderCommoditiesMarket();
             } else if (targetTab === 'map') {
                 renderMap();
             } else if (targetTab === 'finance') {
                 renderFinancialManagement();
+            } else if (targetTab === 'admin') {
+                renderPeriodStatus();
             }
         });
     });
@@ -892,25 +1982,97 @@ function renderTransactions() {
     const filterEndDate = document.getElementById('filterEndDate').value;
     const filterAccount = parseInt(document.getElementById('filterAccount').value);
 
-    // Filter transactions
-    let filteredTransactions = [...appState.transactions];
+    // Filter transactions using optimized index when possible
+    let filteredTransactions;
 
-    if (filterStartDate) {
-        filteredTransactions = filteredTransactions.filter(t => t.date >= filterStartDate);
+    if (filterStartDate && filterEndDate && window.transactionIndex) {
+        // Use optimized date range query
+        filteredTransactions = window.transactionIndex.getByDateRange(filterStartDate, filterEndDate);
+    } else {
+        filteredTransactions = [...appState.transactions].filter(t => t.status !== 'void');
+
+        if (filterStartDate) {
+            filteredTransactions = filteredTransactions.filter(t => {
+                const tDate = t.simDate || t.date;
+                return tDate >= filterStartDate;
+            });
+        }
+        if (filterEndDate) {
+            filteredTransactions = filteredTransactions.filter(t => {
+                const tDate = t.simDate || t.date;
+                return tDate <= filterEndDate;
+            });
+        }
     }
-    if (filterEndDate) {
-        filteredTransactions = filteredTransactions.filter(t => t.date <= filterEndDate);
+
+    // Apply account filter
+    if (filterAccount && window.transactionIndex) {
+        // Use optimized account query
+        const accountTxs = window.transactionIndex.getByAccount(filterAccount);
+        const accountTxIds = new Set(accountTxs.map(t => t.id));
+        filteredTransactions = filteredTransactions.filter(t => accountTxIds.has(t.id));
+    } else if (filterAccount) {
+        filteredTransactions = filteredTransactions.filter(t => {
+            if (t.entries) {
+                return t.entries.some(e => e.accountId === filterAccount);
+            }
+            return t.debitAccount === filterAccount || t.creditAccount === filterAccount;
+        });
     }
-    if (filterAccount) {
-        filteredTransactions = filteredTransactions.filter(
-            t => t.debitAccount === filterAccount || t.creditAccount === filterAccount
-        );
+
+    // Apply search filter (description)
+    const filterSearch = document.getElementById('filterSearch').value.trim().toLowerCase();
+    if (filterSearch) {
+        filteredTransactions = filteredTransactions.filter(t => {
+            return t.description && t.description.toLowerCase().includes(filterSearch);
+        });
+    }
+
+    // Apply amount range filters
+    const filterMinAmount = parseFloat(document.getElementById('filterMinAmount').value);
+    const filterMaxAmount = parseFloat(document.getElementById('filterMaxAmount').value);
+
+    if (!isNaN(filterMinAmount) || !isNaN(filterMaxAmount)) {
+        filteredTransactions = filteredTransactions.filter(t => {
+            let txAmount;
+            if (t.entries) {
+                // Multi-entry: use total debit amount
+                txAmount = t.entries
+                    .filter(e => e.type === 'debit')
+                    .reduce((sum, e) => sum + e.amount, 0);
+            } else {
+                txAmount = t.amount;
+            }
+
+            if (!isNaN(filterMinAmount) && txAmount < filterMinAmount) return false;
+            if (!isNaN(filterMaxAmount) && txAmount > filterMaxAmount) return false;
+            return true;
+        });
     }
 
     // Sort by date (newest first)
-    filteredTransactions.sort((a, b) => new Date(b.date) - new Date(a.date));
+    filteredTransactions.sort((a, b) => {
+        const aDate = a.simDate || a.date;
+        const bDate = b.simDate || b.date;
+        if (aDate !== bDate) return bDate.localeCompare(aDate);
+        return (b.simMs || 0) - (a.simMs || 0);
+    });
 
-    filteredTransactions.forEach(transaction => {
+    // Update pagination
+    transactionPagination.totalItems = filteredTransactions.length;
+    transactionPagination.totalPages = Math.ceil(filteredTransactions.length / transactionPagination.itemsPerPage);
+
+    // Ensure current page is valid
+    if (transactionPagination.currentPage > transactionPagination.totalPages) {
+        transactionPagination.currentPage = Math.max(1, transactionPagination.totalPages);
+    }
+
+    // Calculate pagination slice
+    const startIdx = (transactionPagination.currentPage - 1) * transactionPagination.itemsPerPage;
+    const endIdx = startIdx + transactionPagination.itemsPerPage;
+    const paginatedTransactions = filteredTransactions.slice(startIdx, endIdx);
+
+    paginatedTransactions.forEach(transaction => {
         let debitDisplay, creditDisplay, amountDisplay;
 
         if (transaction.entries) {
@@ -959,11 +2121,331 @@ function renderTransactions() {
         tbody.appendChild(row);
     });
 
-    if (filteredTransactions.length === 0) {
+    if (paginatedTransactions.length === 0) {
         const row = document.createElement('tr');
         row.innerHTML = '<td colspan="6" style="text-align: center;">No transactions found</td>';
         tbody.appendChild(row);
     }
+
+    // Render pagination controls
+    renderTransactionPagination();
+}
+
+function renderTransactionPagination() {
+    let paginationContainer = document.getElementById('transactionPagination');
+
+    if (!paginationContainer) {
+        // Create pagination container if it doesn't exist
+        const table = document.getElementById('transactionsTableBody').closest('table');
+        paginationContainer = document.createElement('div');
+        paginationContainer.id = 'transactionPagination';
+        paginationContainer.style.cssText = 'margin-top: 1rem; display: flex; justify-content: space-between; align-items: center;';
+        table.parentNode.insertBefore(paginationContainer, table.nextSibling);
+    }
+
+    if (transactionPagination.totalPages <= 1) {
+        paginationContainer.innerHTML = '';
+        return;
+    }
+
+    const { currentPage, totalPages, totalItems, itemsPerPage } = transactionPagination;
+    const startItem = (currentPage - 1) * itemsPerPage + 1;
+    const endItem = Math.min(currentPage * itemsPerPage, totalItems);
+
+    let paginationHtml = `
+        <div>
+            Showing ${startItem}-${endItem} of ${totalItems} transactions
+        </div>
+        <div style="display: flex; gap: 0.5rem; align-items: center;">
+            <button class="btn btn-sm" onclick="changeTransactionPage(1)" ${currentPage === 1 ? 'disabled' : ''}>«</button>
+            <button class="btn btn-sm" onclick="changeTransactionPage(${currentPage - 1})" ${currentPage === 1 ? 'disabled' : ''}>‹</button>
+            <span style="padding: 0 1rem;">Page ${currentPage} of ${totalPages}</span>
+            <button class="btn btn-sm" onclick="changeTransactionPage(${currentPage + 1})" ${currentPage === totalPages ? 'disabled' : ''}>›</button>
+            <button class="btn btn-sm" onclick="changeTransactionPage(${totalPages})" ${currentPage === totalPages ? 'disabled' : ''}>»</button>
+            <select onchange="changeTransactionPageSize(this.value)" style="margin-left: 1rem;">
+                <option value="25" ${itemsPerPage === 25 ? 'selected' : ''}>25 per page</option>
+                <option value="50" ${itemsPerPage === 50 ? 'selected' : ''}>50 per page</option>
+                <option value="100" ${itemsPerPage === 100 ? 'selected' : ''}>100 per page</option>
+                <option value="250" ${itemsPerPage === 250 ? 'selected' : ''}>250 per page</option>
+            </select>
+        </div>
+    `;
+
+    paginationContainer.innerHTML = paginationHtml;
+}
+
+function changeTransactionPage(page) {
+    transactionPagination.currentPage = page;
+    renderTransactions();
+}
+
+function changeTransactionPageSize(size) {
+    transactionPagination.itemsPerPage = parseInt(size);
+    transactionPagination.currentPage = 1; // Reset to first page
+    renderTransactions();
+}
+
+// ============================================================================
+// TRANSACTION EXPORT FUNCTIONS
+// ============================================================================
+
+function exportTransactionsCSV() {
+    // Get currently filtered transactions (same logic as renderTransactions)
+    const filterStartDate = document.getElementById('filterStartDate').value;
+    const filterEndDate = document.getElementById('filterEndDate').value;
+    const filterAccount = parseInt(document.getElementById('filterAccount').value);
+    const filterSearch = document.getElementById('filterSearch').value.trim().toLowerCase();
+    const filterMinAmount = parseFloat(document.getElementById('filterMinAmount').value);
+    const filterMaxAmount = parseFloat(document.getElementById('filterMaxAmount').value);
+
+    // Apply same filters as renderTransactions
+    let filteredTransactions;
+
+    if (filterStartDate && filterEndDate && window.transactionIndex) {
+        filteredTransactions = window.transactionIndex.getByDateRange(filterStartDate, filterEndDate);
+    } else {
+        filteredTransactions = [...appState.transactions].filter(t => t.status !== 'void');
+
+        if (filterStartDate) {
+            filteredTransactions = filteredTransactions.filter(t => {
+                const tDate = t.simDate || t.date;
+                return tDate >= filterStartDate;
+            });
+        }
+        if (filterEndDate) {
+            filteredTransactions = filteredTransactions.filter(t => {
+                const tDate = t.simDate || t.date;
+                return tDate <= filterEndDate;
+            });
+        }
+    }
+
+    if (filterAccount && window.transactionIndex) {
+        const accountTxs = window.transactionIndex.getByAccount(filterAccount);
+        const accountTxIds = new Set(accountTxs.map(t => t.id));
+        filteredTransactions = filteredTransactions.filter(t => accountTxIds.has(t.id));
+    } else if (filterAccount) {
+        filteredTransactions = filteredTransactions.filter(t => {
+            if (t.entries) {
+                return t.entries.some(e => e.accountId === filterAccount);
+            }
+            return t.debitAccount === filterAccount || t.creditAccount === filterAccount;
+        });
+    }
+
+    if (filterSearch) {
+        filteredTransactions = filteredTransactions.filter(t => {
+            return t.description && t.description.toLowerCase().includes(filterSearch);
+        });
+    }
+
+    if (!isNaN(filterMinAmount) || !isNaN(filterMaxAmount)) {
+        filteredTransactions = filteredTransactions.filter(t => {
+            let txAmount;
+            if (t.entries) {
+                txAmount = t.entries
+                    .filter(e => e.type === 'debit')
+                    .reduce((sum, e) => sum + e.amount, 0);
+            } else {
+                txAmount = t.amount;
+            }
+
+            if (!isNaN(filterMinAmount) && txAmount < filterMinAmount) return false;
+            if (!isNaN(filterMaxAmount) && txAmount > filterMaxAmount) return false;
+            return true;
+        });
+    }
+
+    // Sort by date (newest first)
+    filteredTransactions.sort((a, b) => {
+        const aDate = a.simDate || a.date;
+        const bDate = b.simDate || b.date;
+        if (aDate !== bDate) return bDate.localeCompare(aDate);
+        return (b.simMs || 0) - (a.simMs || 0);
+    });
+
+    if (filteredTransactions.length === 0) {
+        alert('No transactions to export with current filters.');
+        return;
+    }
+
+    // Build CSV content
+    let csvContent = 'Date,Description,Debit Account,Credit Account,Amount,Transaction Type,Status\n';
+
+    filteredTransactions.forEach(transaction => {
+        const date = transaction.simDate || transaction.date;
+        const description = (transaction.description || '').replace(/"/g, '""'); // Escape quotes
+        const status = transaction.status || 'posted';
+        const txType = transaction.metadata?.type || 'manual';
+
+        if (transaction.entries) {
+            // Multi-entry transaction
+            const debits = transaction.entries.filter(e => e.type === 'debit');
+            const credits = transaction.entries.filter(e => e.type === 'credit');
+
+            const debitAccounts = debits.map(e => {
+                const acc = appState.accounts.find(a => a.id === e.account);
+                return acc ? `${acc.name} (${e.amount.toFixed(2)})` : 'Unknown';
+            }).join('; ');
+
+            const creditAccounts = credits.map(e => {
+                const acc = appState.accounts.find(a => a.id === e.account);
+                return acc ? `${acc.name} (${e.amount.toFixed(2)})` : 'Unknown';
+            }).join('; ');
+
+            const totalAmount = debits.reduce((sum, e) => sum + e.amount, 0);
+
+            csvContent += `"${date}","${description}","${debitAccounts}","${creditAccounts}",${totalAmount.toFixed(2)},${txType},${status}\n`;
+        } else {
+            // Simple transaction
+            const debitAccount = appState.accounts.find(a => a.id === transaction.debitAccount);
+            const creditAccount = appState.accounts.find(a => a.id === transaction.creditAccount);
+
+            const debitName = debitAccount ? debitAccount.name : 'Unknown';
+            const creditName = creditAccount ? creditAccount.name : 'Unknown';
+
+            csvContent += `"${date}","${description}","${debitName}","${creditName}",${transaction.amount.toFixed(2)},${txType},${status}\n`;
+        }
+    });
+
+    // Create download link
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `transactions_${timestamp}.csv`);
+    link.style.visibility = 'hidden';
+
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    alert(`Exported ${filteredTransactions.length} transactions to CSV.`);
+}
+
+function exportTransactionsJSON() {
+    // Get currently filtered transactions (same logic as CSV export)
+    const filterStartDate = document.getElementById('filterStartDate').value;
+    const filterEndDate = document.getElementById('filterEndDate').value;
+    const filterAccount = parseInt(document.getElementById('filterAccount').value);
+    const filterSearch = document.getElementById('filterSearch').value.trim().toLowerCase();
+    const filterMinAmount = parseFloat(document.getElementById('filterMinAmount').value);
+    const filterMaxAmount = parseFloat(document.getElementById('filterMaxAmount').value);
+
+    let filteredTransactions;
+
+    if (filterStartDate && filterEndDate && window.transactionIndex) {
+        filteredTransactions = window.transactionIndex.getByDateRange(filterStartDate, filterEndDate);
+    } else {
+        filteredTransactions = [...appState.transactions].filter(t => t.status !== 'void');
+
+        if (filterStartDate) {
+            filteredTransactions = filteredTransactions.filter(t => {
+                const tDate = t.simDate || t.date;
+                return tDate >= filterStartDate;
+            });
+        }
+        if (filterEndDate) {
+            filteredTransactions = filteredTransactions.filter(t => {
+                const tDate = t.simDate || t.date;
+                return tDate <= filterEndDate;
+            });
+        }
+    }
+
+    if (filterAccount && window.transactionIndex) {
+        const accountTxs = window.transactionIndex.getByAccount(filterAccount);
+        const accountTxIds = new Set(accountTxs.map(t => t.id));
+        filteredTransactions = filteredTransactions.filter(t => accountTxIds.has(t.id));
+    } else if (filterAccount) {
+        filteredTransactions = filteredTransactions.filter(t => {
+            if (t.entries) {
+                return t.entries.some(e => e.accountId === filterAccount);
+            }
+            return t.debitAccount === filterAccount || t.creditAccount === filterAccount;
+        });
+    }
+
+    if (filterSearch) {
+        filteredTransactions = filteredTransactions.filter(t => {
+            return t.description && t.description.toLowerCase().includes(filterSearch);
+        });
+    }
+
+    if (!isNaN(filterMinAmount) || !isNaN(filterMaxAmount)) {
+        filteredTransactions = filteredTransactions.filter(t => {
+            let txAmount;
+            if (t.entries) {
+                txAmount = t.entries
+                    .filter(e => e.type === 'debit')
+                    .reduce((sum, e) => sum + e.amount, 0);
+            } else {
+                txAmount = t.amount;
+            }
+
+            if (!isNaN(filterMinAmount) && txAmount < filterMinAmount) return false;
+            if (!isNaN(filterMaxAmount) && txAmount > filterMaxAmount) return false;
+            return true;
+        });
+    }
+
+    // Sort by date (newest first)
+    filteredTransactions.sort((a, b) => {
+        const aDate = a.simDate || a.date;
+        const bDate = b.simDate || b.date;
+        if (aDate !== bDate) return bDate.localeCompare(aDate);
+        return (b.simMs || 0) - (a.simMs || 0);
+    });
+
+    if (filteredTransactions.length === 0) {
+        alert('No transactions to export with current filters.');
+        return;
+    }
+
+    // Create export object with metadata
+    const exportData = {
+        exportDate: new Date().toISOString(),
+        transactionCount: filteredTransactions.length,
+        filters: {
+            startDate: filterStartDate || null,
+            endDate: filterEndDate || null,
+            account: filterAccount || null,
+            search: filterSearch || null,
+            minAmount: !isNaN(filterMinAmount) ? filterMinAmount : null,
+            maxAmount: !isNaN(filterMaxAmount) ? filterMaxAmount : null
+        },
+        transactions: filteredTransactions.map(t => ({
+            id: t.id,
+            date: t.simDate || t.date,
+            timestamp: t.timestamp,
+            description: t.description,
+            amount: t.amount,
+            debitAccount: t.debitAccount,
+            creditAccount: t.creditAccount,
+            entries: t.entries,
+            status: t.status,
+            metadata: t.metadata
+        }))
+    };
+
+    // Create download link
+    const jsonContent = JSON.stringify(exportData, null, 2);
+    const blob = new Blob([jsonContent], { type: 'application/json;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `transactions_${timestamp}.json`);
+    link.style.visibility = 'hidden';
+
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    alert(`Exported ${filteredTransactions.length} transactions to JSON.`);
 }
 
 function saveTransaction(event) {
@@ -1039,20 +2521,59 @@ function saveTransaction(event) {
     }
 
     if (transactionId) {
-        // Edit existing transaction
+        // Edit existing transaction (legacy mode)
         const transaction = appState.transactions.find(t => t.id === parseInt(transactionId));
         if (transaction) {
             Object.assign(transaction, transactionData);
+            // Invalidate cache since we modified a transaction
+            if (window.generalLedger) {
+                window.generalLedger.invalidateCache();
+            }
         }
+        hasUnsavedChanges = true;
     } else {
-        // Add new transaction
-        appState.transactions.push({
-            id: appState.nextTransactionId++,
-            ...transactionData
-        });
+        // Add new transaction using TransactionManager
+        if (window.transactionManager) {
+            // Convert to new format with accountId
+            let entries;
+            if (transactionData.entries) {
+                // Multi-entry transaction - convert account to accountId
+                entries = transactionData.entries.map(e => ({
+                    accountId: e.account,
+                    type: e.type,
+                    amount: e.amount
+                }));
+            } else {
+                // Simple transaction - convert to entries format
+                entries = [
+                    { accountId: transactionData.debitAccount, type: 'debit', amount: transactionData.amount },
+                    { accountId: transactionData.creditAccount, type: 'credit', amount: transactionData.amount }
+                ];
+            }
+
+            const result = window.transactionManager.createTransaction({
+                description: description,
+                entries: entries,
+                metadata: {
+                    createdBy: 'user',
+                    source: 'manual_entry'
+                }
+            });
+
+            if (!result.success) {
+                alert('Transaction validation failed:\n' + result.errors.join('\n'));
+                return;
+            }
+        } else {
+            // Fallback to legacy mode if TransactionManager not available
+            appState.transactions.push({
+                id: appState.nextTransactionId++,
+                ...transactionData
+            });
+            hasUnsavedChanges = true;
+        }
     }
 
-    hasUnsavedChanges = true;
     cancelTransactionEdit();
     render();
 }
@@ -1087,17 +2608,62 @@ function cancelTransactionEdit() {
 }
 
 function deleteTransaction(transactionId) {
-    if (confirm('Are you sure you want to delete this transaction?')) {
-        appState.transactions = appState.transactions.filter(t => t.id !== transactionId);
+    const transaction = appState.transactions.find(t => t.id === transactionId);
+    if (!transaction) {
+        alert('Transaction not found.');
+        return;
+    }
+
+    if (transaction.status === 'void') {
+        alert('This transaction is already voided.');
+        return;
+    }
+
+    // Prompt for void reason
+    const reason = prompt('Please enter a reason for voiding this transaction:\n\n(This is required for audit trail purposes)');
+
+    if (reason === null) {
+        // User cancelled
+        return;
+    }
+
+    if (!reason || reason.trim() === '') {
+        alert('Void reason is required. Transaction was not voided.');
+        return;
+    }
+
+    // Use TransactionManager to void the transaction if available
+    if (window.transactionManager) {
+        try {
+            window.transactionManager.voidTransaction(transactionId, 'user', reason.trim());
+            hasUnsavedChanges = true;
+            render();
+        } catch (error) {
+            alert(`Error voiding transaction: ${error.message}`);
+        }
+    } else {
+        // Fallback if TransactionManager not available
+        transaction.status = 'void';
+        transaction.audit = transaction.audit || {};
+        transaction.audit.voidedBy = 'user';
+        transaction.audit.voidedAt = new Date().toISOString();
+        transaction.audit.voidReason = reason.trim();
         hasUnsavedChanges = true;
         render();
     }
 }
 
 function clearFilters() {
+    document.getElementById('filterSearch').value = '';
     document.getElementById('filterStartDate').value = '';
     document.getElementById('filterEndDate').value = '';
     document.getElementById('filterAccount').value = '';
+    document.getElementById('filterMinAmount').value = '';
+    document.getElementById('filterMaxAmount').value = '';
+
+    // Reset pagination to first page
+    transactionPagination.currentPage = 1;
+
     renderTransactions();
 }
 
@@ -1204,17 +2770,25 @@ function buyCommodity(commodityId, quantity) {
         return false;
     }
 
-    // Create transaction: Debit Inventory, Credit Cash
-    const transaction = {
-        id: appState.nextTransactionId++,
-        date: getTodayDate(),
-        description: `Purchase ${quantity} units of ${commodity.name} @ ${formatCurrency(commodity.buyPrice)}/unit`,
-        debitAccount: inventoryAccount.id,
-        creditAccount: cashAccount.id,
-        amount: totalCost
-    };
+    // Create transaction using TransactionManager: Debit Inventory, Credit Cash
+    const result = window.transactionManager.createSimpleTransaction(
+        `Purchase ${quantity} units of ${commodity.name} @ ${formatCurrency(commodity.buyPrice)}/unit`,
+        inventoryAccount.id,  // debit
+        cashAccount.id,       // credit
+        totalCost,
+        {
+            type: 'commodity_purchase',
+            commodityId: commodityId,
+            quantity: quantity,
+            unitPrice: commodity.buyPrice,
+            tradeId: appState.nextTradeId
+        }
+    );
 
-    appState.transactions.push(transaction);
+    if (!result.success) {
+        alert('Failed to create transaction: ' + result.errors.join(', '));
+        return false;
+    }
 
     // Add to portfolio using FIFO (create new lot)
     const portfolio = getPortfolioCommodity(commodityId);
@@ -1234,7 +2808,7 @@ function buyCommodity(commodityId, quantity) {
         price: commodity.buyPrice,
         totalValue: totalCost,
         date: getTodayDate(),
-        transactionId: transaction.id
+        transactionId: result.transaction.id
     });
 
     hasUnsavedChanges = true;
@@ -1292,33 +2866,44 @@ function sellCommodity(commodityId, quantity) {
     const gainLoss = totalProceeds - totalCostBasis;
     const isGain = gainLoss >= 0;
 
-    // Create multi-entry transaction
+    // Create multi-entry transaction using TransactionManager
     const entries = [
         // Debit Cash for proceeds
-        { account: cashAccount.id, type: 'debit', amount: totalProceeds },
+        { accountId: cashAccount.id, type: 'debit', amount: totalProceeds },
         // Credit Inventory for cost basis
-        { account: inventoryAccount.id, type: 'credit', amount: totalCostBasis }
+        { accountId: inventoryAccount.id, type: 'credit', amount: totalCostBasis }
     ];
 
     // Add gain or loss entry
     if (Math.abs(gainLoss) > 0.01) {
         if (isGain) {
             // Credit Gains
-            entries.push({ account: gainsAccount.id, type: 'credit', amount: Math.abs(gainLoss) });
+            entries.push({ accountId: gainsAccount.id, type: 'credit', amount: Math.abs(gainLoss) });
         } else {
             // Debit Losses
-            entries.push({ account: lossesAccount.id, type: 'debit', amount: Math.abs(gainLoss) });
+            entries.push({ accountId: lossesAccount.id, type: 'debit', amount: Math.abs(gainLoss) });
         }
     }
 
-    const transaction = {
-        id: appState.nextTransactionId++,
-        date: getTodayDate(),
+    const result = window.transactionManager.createTransaction({
         description: `Sale ${quantity} units of ${commodity.name} @ ${formatCurrency(commodity.sellPrice)}/unit (${isGain ? 'Gain' : 'Loss'}: ${formatCurrency(Math.abs(gainLoss))})`,
-        entries: entries
-    };
+        entries: entries,
+        metadata: {
+            type: 'commodity_sale',
+            commodityId: commodityId,
+            quantity: quantity,
+            unitPrice: commodity.sellPrice,
+            totalProceeds: totalProceeds,
+            costBasis: totalCostBasis,
+            gainLoss: gainLoss,
+            tradeId: appState.nextTradeId
+        }
+    });
 
-    appState.transactions.push(transaction);
+    if (!result.success) {
+        alert('Failed to create transaction: ' + result.errors.join(', '));
+        return false;
+    }
 
     // Update portfolio - remove sold quantities using FIFO
     soldLots.forEach(sold => {
@@ -1340,7 +2925,7 @@ function sellCommodity(commodityId, quantity) {
         costBasis: totalCostBasis,
         gainLoss: gainLoss,
         date: getTodayDate(),
-        transactionId: transaction.id
+        transactionId: result.transaction.id
     });
 
     hasUnsavedChanges = true;
@@ -1817,17 +3402,23 @@ function purchaseProperty(x, y) {
         return false;
     }
 
-    // Create transaction: Debit Real Estate, Credit Cash
-    const transaction = {
-        id: appState.nextTransactionId++,
-        date: getTodayDate(),
-        description: `Purchase property at (${x}, ${y}) for ${formatCurrency(price)}`,
-        debitAccount: realEstateAccount.id,
-        creditAccount: cashAccount.id,
-        amount: price
-    };
+    // Create transaction using TransactionManager: Debit Real Estate, Credit Cash
+    const result = window.transactionManager.createSimpleTransaction(
+        `Purchase property at (${x}, ${y}) for ${formatCurrency(price)}`,
+        realEstateAccount.id,  // debit
+        cashAccount.id,        // credit
+        price,
+        {
+            type: 'property_purchase',
+            coordinates: { x, y },
+            pricePerSquare: price
+        }
+    );
 
-    appState.transactions.push(transaction);
+    if (!result.success) {
+        alert('Failed to create transaction: ' + result.errors.join(', '));
+        return false;
+    }
 
     // Add to owned squares
     appState.map.ownedSquares.push({
@@ -1835,7 +3426,7 @@ function purchaseProperty(x, y) {
         y: y,
         purchaseDate: getTodayDate(),
         purchasePrice: price,
-        transactionId: transaction.id
+        transactionId: result.transaction.id
     });
 
     hasUnsavedChanges = true;
@@ -2669,17 +4260,29 @@ function applyForLoan(principal, termMonths) {
 
     appState.loans.push(loan);
 
-    // Record transaction: Debit Cash, Credit Bank Loans Payable
-    const transaction = {
-        id: appState.nextTransactionId++,
-        date: issueDate,
-        description: `Bank loan received - ${termMonths} months @ ${creditInfo.interestRate}% APR`,
-        debitAccount: cashAccount.id,
-        creditAccount: loansPayableAccount.id,
-        amount: principal
-    };
+    // Record transaction using TransactionManager: Debit Cash, Credit Bank Loans Payable
+    const result = window.transactionManager.createSimpleTransaction(
+        `Bank loan received - ${termMonths} months @ ${creditInfo.interestRate}% APR`,
+        cashAccount.id,            // debit Cash
+        loansPayableAccount.id,    // credit Bank Loans Payable
+        principal,
+        {
+            type: 'loan_disbursement',
+            loanId: loan.id,
+            principal: principal,
+            interestRate: creditInfo.interestRate,
+            termMonths: termMonths,
+            maturityDate: loan.maturityDate
+        }
+    );
 
-    appState.transactions.push(transaction);
+    if (!result.success) {
+        // Rollback loan creation
+        appState.loans = appState.loans.filter(l => l.id !== loan.id);
+        alert('Failed to create transaction: ' + result.errors.join(', '));
+        return false;
+    }
+
     hasUnsavedChanges = true;
 
     return true;
@@ -2715,17 +4318,25 @@ function accrueInterestOnLoan(loanId) {
         const interestAmount = outstandingBalance * monthlyRate;
         const accrualDate = addMonthsToDate(lastAccrual, i + 1);
 
-        // Record transaction: Debit Interest Expense, Credit Bank Loans Payable - Interest
-        const transaction = {
-            id: appState.nextTransactionId++,
-            date: accrualDate,
-            description: `Loan #${loanId} - Interest accrued for month`,
-            debitAccount: interestExpenseAccount.id,
-            creditAccount: loansInterestAccount.id,
-            amount: parseFloat(interestAmount.toFixed(2))
-        };
+        // Record transaction using TransactionManager: Debit Interest Expense, Credit Bank Loans Payable - Interest
+        const result = window.transactionManager.createSimpleTransaction(
+            `Loan #${loanId} - Interest accrued for month`,
+            interestExpenseAccount.id,  // debit Interest Expense
+            loansInterestAccount.id,    // credit Bank Loans Payable - Interest
+            parseFloat(interestAmount.toFixed(2)),
+            {
+                type: 'interest_accrual',
+                loanId: loanId,
+                outstandingBalance: outstandingBalance,
+                monthlyRate: monthlyRate,
+                accrualDate: accrualDate
+            }
+        );
 
-        appState.transactions.push(transaction);
+        if (!result.success) {
+            console.error('Failed to record interest accrual:', result.errors);
+            // Continue with other months even if one fails
+        }
 
         // Add interest to accrued interest balance (compound)
         loan.accruedInterestBalance += interestAmount;
@@ -2773,17 +4384,25 @@ function makeLoanPayment(loanId, paymentAmount) {
     if (loan.accruedInterestBalance > 0 && remainingPayment > 0) {
         const interestPayment = Math.min(remainingPayment, loan.accruedInterestBalance);
 
-        // Record transaction: Debit Bank Loans Payable - Interest, Credit Cash
-        const interestTransaction = {
-            id: appState.nextTransactionId++,
-            date: paymentDate,
-            description: `Loan #${loanId} payment - Interest paid`,
-            debitAccount: loansInterestAccount.id,
-            creditAccount: cashAccount.id,
-            amount: parseFloat(interestPayment.toFixed(2))
-        };
+        // Record transaction using TransactionManager: Debit Bank Loans Payable - Interest, Credit Cash
+        const result = window.transactionManager.createSimpleTransaction(
+            `Loan #${loanId} payment - Interest paid`,
+            loansInterestAccount.id,  // debit Bank Loans Payable - Interest
+            cashAccount.id,           // credit Cash
+            parseFloat(interestPayment.toFixed(2)),
+            {
+                type: 'loan_payment_interest',
+                loanId: loanId,
+                interestPaid: interestPayment,
+                paymentDate: paymentDate
+            }
+        );
 
-        appState.transactions.push(interestTransaction);
+        if (!result.success) {
+            alert('Failed to record interest payment: ' + result.errors.join(', '));
+            return false;
+        }
+
         loan.accruedInterestBalance -= interestPayment;
         remainingPayment -= interestPayment;
     }
@@ -2792,17 +4411,25 @@ function makeLoanPayment(loanId, paymentAmount) {
     if (loan.principalBalance > 0 && remainingPayment > 0) {
         const principalPayment = Math.min(remainingPayment, loan.principalBalance);
 
-        // Record transaction: Debit Bank Loans Payable - Principal, Credit Cash
-        const principalTransaction = {
-            id: appState.nextTransactionId++,
-            date: paymentDate,
-            description: `Loan #${loanId} payment - Principal reduction`,
-            debitAccount: loansPrincipalAccount.id,
-            creditAccount: cashAccount.id,
-            amount: parseFloat(principalPayment.toFixed(2))
-        };
+        // Record transaction using TransactionManager: Debit Bank Loans Payable - Principal, Credit Cash
+        const result = window.transactionManager.createSimpleTransaction(
+            `Loan #${loanId} payment - Principal reduction`,
+            loansPrincipalAccount.id,  // debit Bank Loans Payable - Principal
+            cashAccount.id,            // credit Cash
+            parseFloat(principalPayment.toFixed(2)),
+            {
+                type: 'loan_payment_principal',
+                loanId: loanId,
+                principalPaid: principalPayment,
+                paymentDate: paymentDate
+            }
+        );
 
-        appState.transactions.push(principalTransaction);
+        if (!result.success) {
+            alert('Failed to record principal payment: ' + result.errors.join(', '));
+            return false;
+        }
+
         loan.principalBalance -= principalPayment;
     }
 
@@ -3984,20 +5611,32 @@ function startConstruction(x, y, buildingType) {
     appState.buildings.push(building);
     appState.constructionQueue.push({ buildingId: building.id, completionDate: building.completionDate });
 
-    // Record transactions: consume inventory, add to construction-in-progress
+    // Record transaction using TransactionManager: consume inventory, add to buildings
     const inventoryAccount = appState.accounts.find(a => a.number === '1200');
     const buildingsAccount = appState.accounts.find(a => a.number === '1400');
 
-    const transaction = {
-        id: appState.nextTransactionId++,
-        date: getTodayDate(),
-        description: `Started construction: ${buildingDef.name} at (${x}, ${y})`,
-        debitAccount: buildingsAccount.id,
-        creditAccount: inventoryAccount.id,
-        amount: parseFloat(totalCost.toFixed(2))
-    };
+    const result = window.transactionManager.createSimpleTransaction(
+        `Started construction: ${buildingDef.name} at (${x}, ${y})`,
+        buildingsAccount.id,   // debit Buildings
+        inventoryAccount.id,   // credit Inventory
+        parseFloat(totalCost.toFixed(2)),
+        {
+            type: 'building_construction',
+            buildingId: building.id,
+            buildingType: buildingType,
+            coordinates: { x, y },
+            materials: materialsUsed,
+            completionDate: building.completionDate
+        }
+    );
 
-    appState.transactions.push(transaction);
+    if (!result.success) {
+        // Rollback building creation
+        appState.buildings = appState.buildings.filter(b => b.id !== building.id);
+        appState.constructionQueue = appState.constructionQueue.filter(c => c.buildingId !== building.id);
+        alert('Failed to create transaction: ' + result.errors.join(', '));
+        return false;
+    }
     hasUnsavedChanges = true;
 
     return true;
@@ -4300,17 +5939,31 @@ function processWagePayments() {
             const cashBalance = getCashBalance();
 
             if (cashBalance >= employee.wage) {
-                // Pay the employee
-                const transaction = {
-                    id: appState.nextTransactionId++,
-                    date: getTodayDate(),
-                    description: `Wage payment - ${employee.name} (${formatCurrency(employee.wage)}/24hrs)`,
-                    debitAccount: salariesAccount.id,
-                    creditAccount: cashAccount.id,
-                    amount: employee.wage
-                };
+                // Pay the employee using TransactionManager
+                const result = window.transactionManager.createSimpleTransaction(
+                    `Wage payment - ${employee.name} (${formatCurrency(employee.wage)}/24hrs)`,
+                    salariesAccount.id,  // debit Salaries Expense
+                    cashAccount.id,      // credit Cash
+                    employee.wage,
+                    {
+                        type: 'wage_payment',
+                        employeeId: employee.id,
+                        employeeName: employee.name,
+                        wage: employee.wage,
+                        paymentPeriod: '24hrs'
+                    }
+                );
 
-                appState.transactions.push(transaction);
+                if (!result.success) {
+                    console.error(`Failed to record wage payment for ${employee.name}:`, result.errors);
+                    // Employee quits due to payment system failure
+                    const employeeIndex = appState.employees.findIndex(e => e.id === employee.id);
+                    if (employeeIndex !== -1) {
+                        appState.employees.splice(employeeIndex, 1);
+                        hasUnsavedChanges = true;
+                    }
+                    continue;
+                }
 
                 // Schedule next payment (24 hours later)
                 employee.nextPaymentDate = addTime(employee.nextPaymentDate, 24 * 60 * 60 * 1000);
@@ -4367,17 +6020,28 @@ function issueShares(numberOfShares, pricePerShare, holder = 'Owner') {
     const cashAccount = appState.accounts.find(a => a.number === '1000');
     const commonStockAccount = appState.accounts.find(a => a.number === '3000');
 
-    // Record transaction: Debit Cash, Credit Common Stock
-    const transaction = {
-        id: appState.nextTransactionId++,
-        date: issueDate,
-        description: `Issued ${numberOfShares} shares at ${formatCurrency(pricePerShare)} per share to ${holder}`,
-        debitAccount: cashAccount.id,
-        creditAccount: commonStockAccount.id,
-        amount: totalValue
-    };
+    // Record transaction using TransactionManager: Debit Cash, Credit Common Stock
+    const result = window.transactionManager.createSimpleTransaction(
+        `Issued ${numberOfShares} shares at ${formatCurrency(pricePerShare)} per share to ${holder}`,
+        cashAccount.id,        // debit Cash
+        commonStockAccount.id, // credit Common Stock
+        totalValue,
+        {
+            type: 'equity_issuance',
+            shareIssuanceId: shareIssuance.id,
+            numberOfShares: numberOfShares,
+            pricePerShare: pricePerShare,
+            holder: holder
+        }
+    );
 
-    appState.transactions.push(transaction);
+    if (!result.success) {
+        // Rollback share issuance
+        appState.shares = appState.shares.filter(s => s.id !== shareIssuance.id);
+        alert('Failed to create transaction: ' + result.errors.join(', '));
+        return false;
+    }
+
     hasUnsavedChanges = true;
     return true;
 }
@@ -4749,6 +6413,12 @@ function renderEquityManagement() {
 // ====================================
 
 function calculateAccountBalances(asOfDate = null) {
+    // Use GeneralLedger if available (new system), otherwise fall back to legacy calculation
+    if (window.generalLedger) {
+        return window.generalLedger.getBalances(asOfDate);
+    }
+
+    // Legacy calculation (for backward compatibility during migration)
     const balances = {};
 
     // Initialize with opening balances
@@ -4758,7 +6428,7 @@ function calculateAccountBalances(asOfDate = null) {
 
     // Filter transactions by date if specified
     const relevantTransactions = asOfDate
-        ? appState.transactions.filter(t => compareDates(t.date, asOfDate) <= 0)
+        ? appState.transactions.filter(t => compareDates(t.date || t.simDate, asOfDate) <= 0)
         : appState.transactions;
 
     // Apply transactions
@@ -4766,26 +6436,27 @@ function calculateAccountBalances(asOfDate = null) {
         if (transaction.entries) {
             // Multi-entry transaction
             transaction.entries.forEach(entry => {
-                const account = appState.accounts.find(a => a.id === entry.account);
+                const account = appState.accounts.find(a => a.id === entry.account || a.id === entry.accountId);
                 if (!account) return;
 
-                if (!balances[entry.account]) balances[entry.account] = 0;
+                const accountId = entry.account || entry.accountId;
+                if (!balances[accountId]) balances[accountId] = 0;
 
                 if (entry.type === 'debit') {
                     // Debit increases: Assets, Expenses
                     // Debit decreases: Liabilities, Equity, Revenue
                     if (account.type === 'Asset' || account.type === 'Expense') {
-                        balances[entry.account] += entry.amount;
+                        balances[accountId] += entry.amount;
                     } else {
-                        balances[entry.account] -= entry.amount;
+                        balances[accountId] -= entry.amount;
                     }
                 } else {
                     // Credit increases: Liabilities, Equity, Revenue
                     // Credit decreases: Assets, Expenses
                     if (account.type === 'Liability' || account.type === 'Equity' || account.type === 'Revenue') {
-                        balances[entry.account] += entry.amount;
+                        balances[accountId] += entry.amount;
                     } else {
-                        balances[entry.account] -= entry.amount;
+                        balances[accountId] -= entry.amount;
                     }
                 }
             });
@@ -4838,29 +6509,81 @@ function renderBalanceSheet() {
     const asOfDate = document.getElementById('balanceSheetDate').value || getTodayDate();
     const balances = calculateAccountBalances(asOfDate);
 
-    const assets = getAccountsByType('Asset', balances);
-    const liabilities = getAccountsByType('Liability', balances);
+    // Categorize assets
+    const currentAssets = getAccountsByType('Asset', balances).filter(a =>
+        ['Cash', 'Accounts Receivable', 'Inventory'].includes(a.name)
+    );
+    const longTermAssets = getAccountsByType('Asset', balances).filter(a =>
+        !['Cash', 'Accounts Receivable', 'Inventory'].includes(a.name)
+    );
+
+    // Categorize liabilities
+    const currentLiabilities = getAccountsByType('Liability', balances).filter(a =>
+        ['Accounts Payable', 'Bank Loans Payable - Interest'].includes(a.name)
+    );
+    const longTermLiabilities = getAccountsByType('Liability', balances).filter(a =>
+        !['Accounts Payable', 'Bank Loans Payable - Interest'].includes(a.name)
+    );
+
     const equity = getAccountsByType('Equity', balances);
 
-    const totalAssets = assets.reduce((sum, a) => sum + a.balance, 0);
-    const totalLiabilities = liabilities.reduce((sum, a) => sum + a.balance, 0);
+    // Calculate subtotals
+    const totalCurrentAssets = currentAssets.reduce((sum, a) => sum + a.balance, 0);
+    const totalLongTermAssets = longTermAssets.reduce((sum, a) => sum + a.balance, 0);
+    const totalAssets = totalCurrentAssets + totalLongTermAssets;
+
+    const totalCurrentLiabilities = currentLiabilities.reduce((sum, a) => sum + a.balance, 0);
+    const totalLongTermLiabilities = longTermLiabilities.reduce((sum, a) => sum + a.balance, 0);
+    const totalLiabilities = totalCurrentLiabilities + totalLongTermLiabilities;
+
     const totalEquity = equity.reduce((sum, a) => sum + a.balance, 0);
+
+    // Calculate balance sheet validation
+    const difference = Math.abs(totalAssets - (totalLiabilities + totalEquity));
+    const balanced = difference < 0.01;
+    const balanceIndicator = balanced
+        ? '<span style="color: #28a745; font-weight: bold;">✓ Balanced</span>'
+        : `<span style="color: #dc3545; font-weight: bold;">✗ Out of Balance (${formatCurrency(difference)})</span>`;
 
     const content = document.getElementById('balanceSheetContent');
     content.innerHTML = `
         <div class="statement-section">
             <div class="statement-title">BALANCE SHEET</div>
             <div>As of ${formatDate(asOfDate)}</div>
+            <div style="margin-top: 0.5rem; font-size: 0.9rem;">Status: ${balanceIndicator}</div>
         </div>
 
         <div class="statement-section">
             <div class="statement-category">ASSETS</div>
-            ${assets.map(account => `
-                <div class="statement-item">
-                    <span>${escapeHtml(account.name)}</span>
-                    <span>${formatCurrency(account.balance)}</span>
+
+            ${currentAssets.length > 0 ? `
+                <div class="statement-subcategory">Current Assets</div>
+                ${currentAssets.map(account => `
+                    <div class="statement-item clickable" onclick="showAccountDetail(${account.id}, '${escapeHtml(asOfDate)}')">
+                        <span>${escapeHtml(account.name)}</span>
+                        <span>${formatCurrency(account.balance)}</span>
+                    </div>
+                `).join('')}
+                <div class="statement-subsubtotal">
+                    <span>Total Current Assets</span>
+                    <span>${formatCurrency(totalCurrentAssets)}</span>
                 </div>
-            `).join('')}
+            ` : ''}
+
+            ${longTermAssets.length > 0 ? `
+                <div class="statement-subcategory">Long-Term Assets</div>
+                ${longTermAssets.map(account => `
+                    <div class="statement-item clickable" onclick="showAccountDetail(${account.id}, '${escapeHtml(asOfDate)}')">
+                        <span>${escapeHtml(account.name)}</span>
+                        <span>${formatCurrency(account.balance)}</span>
+                    </div>
+                `).join('')}
+                <div class="statement-subsubtotal">
+                    <span>Total Long-Term Assets</span>
+                    <span>${formatCurrency(totalLongTermAssets)}</span>
+                </div>
+            ` : ''}
+
             <div class="statement-subtotal">
                 <span>Total Assets</span>
                 <span>${formatCurrency(totalAssets)}</span>
@@ -4869,12 +6592,35 @@ function renderBalanceSheet() {
 
         <div class="statement-section">
             <div class="statement-category">LIABILITIES</div>
-            ${liabilities.map(account => `
-                <div class="statement-item">
-                    <span>${escapeHtml(account.name)}</span>
-                    <span>${formatCurrency(account.balance)}</span>
+
+            ${currentLiabilities.length > 0 ? `
+                <div class="statement-subcategory">Current Liabilities</div>
+                ${currentLiabilities.map(account => `
+                    <div class="statement-item clickable" onclick="showAccountDetail(${account.id}, '${escapeHtml(asOfDate)}')">
+                        <span>${escapeHtml(account.name)}</span>
+                        <span>${formatCurrency(account.balance)}</span>
+                    </div>
+                `).join('')}
+                <div class="statement-subsubtotal">
+                    <span>Total Current Liabilities</span>
+                    <span>${formatCurrency(totalCurrentLiabilities)}</span>
                 </div>
-            `).join('')}
+            ` : ''}
+
+            ${longTermLiabilities.length > 0 ? `
+                <div class="statement-subcategory">Long-Term Liabilities</div>
+                ${longTermLiabilities.map(account => `
+                    <div class="statement-item clickable" onclick="showAccountDetail(${account.id}, '${escapeHtml(asOfDate)}')">
+                        <span>${escapeHtml(account.name)}</span>
+                        <span>${formatCurrency(account.balance)}</span>
+                    </div>
+                `).join('')}
+                <div class="statement-subsubtotal">
+                    <span>Total Long-Term Liabilities</span>
+                    <span>${formatCurrency(totalLongTermLiabilities)}</span>
+                </div>
+            ` : ''}
+
             <div class="statement-subtotal">
                 <span>Total Liabilities</span>
                 <span>${formatCurrency(totalLiabilities)}</span>
@@ -4882,24 +6628,107 @@ function renderBalanceSheet() {
         </div>
 
         <div class="statement-section">
-            <div class="statement-category">EQUITY</div>
+            <div class="statement-category">STOCKHOLDERS' EQUITY</div>
             ${equity.map(account => `
-                <div class="statement-item">
+                <div class="statement-item clickable" onclick="showAccountDetail(${account.id}, '${escapeHtml(asOfDate)}')">
                     <span>${escapeHtml(account.name)}</span>
                     <span>${formatCurrency(account.balance)}</span>
                 </div>
             `).join('')}
             <div class="statement-subtotal">
-                <span>Total Equity</span>
+                <span>Total Stockholders' Equity</span>
                 <span>${formatCurrency(totalEquity)}</span>
             </div>
         </div>
 
         <div class="statement-total">
-            <span>Total Liabilities & Equity</span>
+            <span>Total Liabilities & Stockholders' Equity</span>
             <span>${formatCurrency(totalLiabilities + totalEquity)}</span>
         </div>
     `;
+}
+
+// Show account detail drill-down
+function showAccountDetail(accountId, asOfDate) {
+    const account = appState.accounts.find(a => a.id === accountId);
+    if (!account) return;
+
+    // Get all transactions affecting this account
+    const transactions = appState.transactions.filter(t => {
+        if (t.status === 'void') return false;
+        if (asOfDate && compareDates(t.simDate || t.date, asOfDate) > 0) return false;
+
+        if (t.entries) {
+            return t.entries.some(e => (e.accountId || e.account) === accountId);
+        } else {
+            return t.debitAccount === accountId || t.creditAccount === accountId;
+        }
+    });
+
+    const transactionsHtml = transactions.map(t => {
+        let debit = '';
+        let credit = '';
+
+        if (t.entries) {
+            const entry = t.entries.find(e => (e.accountId || e.account) === accountId);
+            if (entry) {
+                if (entry.type === 'debit') debit = formatCurrency(entry.amount);
+                else credit = formatCurrency(entry.amount);
+            }
+        } else {
+            if (t.debitAccount === accountId) debit = formatCurrency(t.amount);
+            if (t.creditAccount === accountId) credit = formatCurrency(t.amount);
+        }
+
+        return `
+            <tr>
+                <td>${t.simDate || t.date}</td>
+                <td>${escapeHtml(t.description)}</td>
+                <td>${debit}</td>
+                <td>${credit}</td>
+            </tr>
+        `;
+    }).join('');
+
+    const balances = calculateAccountBalances(asOfDate);
+    const currentBalance = balances[accountId] || 0;
+
+    const modal = `
+        <div class="modal-overlay" onclick="closeAccountDetail(event)">
+            <div class="modal-content" onclick="event.stopPropagation()">
+                <h3>Account Detail: ${escapeHtml(account.name)} (${account.number})</h3>
+                <p><strong>Account Type:</strong> ${account.type}</p>
+                <p><strong>Current Balance:</strong> ${formatCurrency(currentBalance)}</p>
+                <p><strong>Transactions (${transactions.length}):</strong></p>
+
+                <div style="max-height: 400px; overflow-y: auto;">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Description</th>
+                                <th>Debit</th>
+                                <th>Credit</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${transactionsHtml || '<tr><td colspan="4">No transactions</td></tr>'}
+                        </tbody>
+                    </table>
+                </div>
+
+                <button class="btn btn-secondary" onclick="closeAccountDetail()">Close</button>
+            </div>
+        </div>
+    `;
+
+    document.body.insertAdjacentHTML('beforeend', modal);
+}
+
+function closeAccountDetail(event) {
+    if (event && event.target.className !== 'modal-overlay') return;
+    const modal = document.querySelector('.modal-overlay');
+    if (modal) modal.remove();
 }
 
 // ====================================
@@ -4914,26 +6743,56 @@ function renderIncomeStatement() {
     const startBalances = calculateAccountBalances(getPreviousDay(startDate));
     const endBalances = calculateAccountBalances(endDate);
 
-    // Calculate change in balances for revenue and expense accounts
-    const revenues = appState.accounts
-        .filter(a => a.type === 'Revenue')
+    // Get revenue accounts with period changes
+    const salesRevenue = appState.accounts.filter(a => a.name === 'Sales Revenue' || a.name === 'Service Revenue')
         .map(account => ({
             ...account,
             balance: (endBalances[account.id] || 0) - (startBalances[account.id] || 0)
-        }))
-        .sort((a, b) => a.number.localeCompare(b.number));
+        }));
 
-    const expenses = appState.accounts
-        .filter(a => a.type === 'Expense')
+    const otherRevenue = appState.accounts.filter(a => a.type === 'Revenue' && a.name !== 'Sales Revenue' && a.name !== 'Service Revenue')
         .map(account => ({
             ...account,
             balance: (endBalances[account.id] || 0) - (startBalances[account.id] || 0)
-        }))
-        .sort((a, b) => a.number.localeCompare(b.number));
+        }));
 
-    const totalRevenue = revenues.reduce((sum, a) => sum + a.balance, 0);
-    const totalExpenses = expenses.reduce((sum, a) => sum + a.balance, 0);
-    const netIncome = totalRevenue - totalExpenses;
+    // Get expense accounts categorized
+    const cogs = appState.accounts.filter(a => a.name === 'Cost of Goods Sold')
+        .map(account => ({
+            ...account,
+            balance: (endBalances[account.id] || 0) - (startBalances[account.id] || 0)
+        }));
+
+    const operatingExpenses = appState.accounts.filter(a =>
+        a.type === 'Expense' &&
+        !['Cost of Goods Sold', 'Interest Expense', 'Losses on Commodity Sales'].includes(a.name)
+    ).map(account => ({
+        ...account,
+        balance: (endBalances[account.id] || 0) - (startBalances[account.id] || 0)
+    }));
+
+    const nonOperatingExpenses = appState.accounts.filter(a =>
+        a.name === 'Interest Expense' || a.name === 'Losses on Commodity Sales'
+    ).map(account => ({
+        ...account,
+        balance: (endBalances[account.id] || 0) - (startBalances[account.id] || 0)
+    }));
+
+    // Calculate totals and subtotals
+    const totalSalesRevenue = salesRevenue.reduce((sum, a) => sum + a.balance, 0);
+    const totalOtherRevenue = otherRevenue.reduce((sum, a) => sum + a.balance, 0);
+    const totalRevenue = totalSalesRevenue + totalOtherRevenue;
+    const totalCOGS = cogs.reduce((sum, a) => sum + a.balance, 0);
+    const grossProfit = totalSalesRevenue - totalCOGS;
+    const totalOperatingExpenses = operatingExpenses.reduce((sum, a) => sum + a.balance, 0);
+    const operatingIncome = grossProfit + totalOtherRevenue - totalOperatingExpenses;
+    const totalNonOperatingExpenses = nonOperatingExpenses.reduce((sum, a) => sum + a.balance, 0);
+    const netIncome = operatingIncome - totalNonOperatingExpenses;
+
+    // Calculate percentages (as % of total revenue)
+    const grossMargin = totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0;
+    const operatingMargin = totalRevenue > 0 ? (operatingIncome / totalRevenue) * 100 : 0;
+    const netMargin = totalRevenue > 0 ? (netIncome / totalRevenue) * 100 : 0;
 
     const content = document.getElementById('incomeStatementContent');
     content.innerHTML = `
@@ -4944,8 +6803,14 @@ function renderIncomeStatement() {
 
         <div class="statement-section">
             <div class="statement-category">REVENUE</div>
-            ${revenues.map(account => `
-                <div class="statement-item">
+            ${salesRevenue.map(account => `
+                <div class="statement-item clickable" onclick="showAccountDetail(${account.id}, '${escapeHtml(endDate)}')">
+                    <span>${escapeHtml(account.name)}</span>
+                    <span>${formatCurrency(account.balance)}</span>
+                </div>
+            `).join('')}
+            ${otherRevenue.map(account => `
+                <div class="statement-item clickable" onclick="showAccountDetail(${account.id}, '${escapeHtml(endDate)}')">
                     <span>${escapeHtml(account.name)}</span>
                     <span>${formatCurrency(account.balance)}</span>
                 </div>
@@ -4956,23 +6821,61 @@ function renderIncomeStatement() {
             </div>
         </div>
 
-        <div class="statement-section">
-            <div class="statement-category">EXPENSES</div>
-            ${expenses.map(account => `
-                <div class="statement-item">
-                    <span>${escapeHtml(account.name)}</span>
-                    <span>${formatCurrency(account.balance)}</span>
+        ${cogs.length > 0 && totalCOGS > 0 ? `
+            <div class="statement-section">
+                <div class="statement-subcategory">Cost of Goods Sold</div>
+                ${cogs.map(account => `
+                    <div class="statement-item clickable" onclick="showAccountDetail(${account.id}, '${escapeHtml(endDate)}')">
+                        <span>${escapeHtml(account.name)}</span>
+                        <span>${formatCurrency(account.balance)}</span>
+                    </div>
+                `).join('')}
+                <div class="statement-subsubtotal">
+                    <span>Gross Profit</span>
+                    <span>${formatCurrency(grossProfit)} <span class="percentage-column">(${grossMargin.toFixed(1)}%)</span></span>
                 </div>
-            `).join('')}
-            <div class="statement-subtotal">
-                <span>Total Expenses</span>
-                <span>${formatCurrency(totalExpenses)}</span>
             </div>
-        </div>
+        ` : ''}
+
+        ${operatingExpenses.length > 0 ? `
+            <div class="statement-section">
+                <div class="statement-category">OPERATING EXPENSES</div>
+                ${operatingExpenses.map(account => `
+                    <div class="statement-item clickable" onclick="showAccountDetail(${account.id}, '${escapeHtml(endDate)}')">
+                        <span>${escapeHtml(account.name)}</span>
+                        <span>${formatCurrency(account.balance)}</span>
+                    </div>
+                `).join('')}
+                <div class="statement-subtotal">
+                    <span>Total Operating Expenses</span>
+                    <span>${formatCurrency(totalOperatingExpenses)}</span>
+                </div>
+                <div class="statement-subsubtotal" style="margin-top: 0.5rem;">
+                    <span>Operating Income</span>
+                    <span>${formatCurrency(operatingIncome)} <span class="percentage-column">(${operatingMargin.toFixed(1)}%)</span></span>
+                </div>
+            </div>
+        ` : ''}
+
+        ${nonOperatingExpenses.length > 0 && totalNonOperatingExpenses > 0 ? `
+            <div class="statement-section">
+                <div class="statement-category">OTHER EXPENSES</div>
+                ${nonOperatingExpenses.map(account => `
+                    <div class="statement-item clickable" onclick="showAccountDetail(${account.id}, '${escapeHtml(endDate)}')">
+                        <span>${escapeHtml(account.name)}</span>
+                        <span>${formatCurrency(account.balance)}</span>
+                    </div>
+                `).join('')}
+                <div class="statement-subtotal">
+                    <span>Total Other Expenses</span>
+                    <span>${formatCurrency(totalNonOperatingExpenses)}</span>
+                </div>
+            </div>
+        ` : ''}
 
         <div class="statement-total">
             <span>Net Income</span>
-            <span>${formatCurrency(netIncome)}</span>
+            <span>${formatCurrency(netIncome)} <span class="percentage-column">(${netMargin.toFixed(1)}%)</span></span>
         </div>
     `;
 }
@@ -5009,16 +6912,45 @@ function renderCashFlowStatement() {
     );
     const netIncome = totalRevenue - totalExpenses;
 
-    // Calculate changes in working capital (simplified)
-    const arAccounts = appState.accounts.filter(a =>
-        a.name.toLowerCase().includes('receivable')
-    );
-    const apAccounts = appState.accounts.filter(a =>
-        a.name.toLowerCase().includes('payable')
-    );
-    const inventoryAccounts = appState.accounts.filter(a =>
-        a.name.toLowerCase().includes('inventory')
-    );
+    // Get period transactions (excluding voided)
+    const periodTransactions = appState.transactions.filter(t => {
+        if (t.status === 'void') return false;
+        const txDate = t.simDate || t.date;
+        return compareDates(txDate, startDate) >= 0 && compareDates(txDate, endDate) <= 0;
+    });
+
+    // Categorize transactions by metadata type
+    const operating = [];
+    const investing = [];
+    const financing = [];
+
+    periodTransactions.forEach(t => {
+        const metaType = t.metadata?.type || '';
+
+        // Operating Activities
+        if (['commodity_purchase', 'commodity_sale', 'wage_payment', 'interest_accrual'].includes(metaType) ||
+            t.description?.includes('Wage payment') ||
+            t.description?.includes('Interest accrued')) {
+            operating.push(t);
+        }
+        // Investing Activities
+        else if (['property_purchase', 'building_construction'].includes(metaType) ||
+                 t.description?.includes('Purchase property') ||
+                 t.description?.includes('Started construction')) {
+            investing.push(t);
+        }
+        // Financing Activities
+        else if (['loan_disbursement', 'loan_payment_principal', 'loan_payment_interest', 'equity_issuance'].includes(metaType) ||
+                 t.description?.includes('Bank loan received') ||
+                 t.description?.includes('Issued') && t.description?.includes('shares')) {
+            financing.push(t);
+        }
+    });
+
+    // Calculate changes in working capital accounts
+    const arAccounts = appState.accounts.filter(a => a.name.toLowerCase().includes('receivable'));
+    const apAccounts = appState.accounts.filter(a => a.name.toLowerCase().includes('payable') && !a.name.includes('Loans'));
+    const inventoryAccounts = appState.accounts.filter(a => a.name.toLowerCase().includes('inventory'));
 
     const arChange = arAccounts.reduce((sum, a) =>
         sum + ((endBalances[a.id] || 0) - (startBalances[a.id] || 0)), 0
@@ -5030,116 +6962,56 @@ function renderCashFlowStatement() {
         sum + ((endBalances[a.id] || 0) - (startBalances[a.id] || 0)), 0
     );
 
-    const operatingCash = netIncome - arChange + apChange - inventoryChange;
+    // Calculate cash from operating activities (indirect method)
+    let operatingCashFromIncome = netIncome;
 
-    // Get financing activities from transactions in the period
-    const periodTransactions = appState.transactions.filter(t => {
-        return isDateInRange(t.date, startDate, endDate);
+    // Adjustments to reconcile net income to cash from operations
+    let workingCapitalAdjustments = 0;
+    workingCapitalAdjustments -= arChange; // Increase in AR uses cash
+    workingCapitalAdjustments += apChange; // Increase in AP provides cash
+    workingCapitalAdjustments -= inventoryChange; // Increase in inventory uses cash
+
+    const netOperatingCash = operatingCashFromIncome + workingCapitalAdjustments;
+
+    // Calculate investing cash flows
+    let investingCashFlows = {};
+    investing.forEach(t => {
+        const type = t.metadata?.type || 'other';
+        if (!investingCashFlows[type]) investingCashFlows[type] = [];
+        investingCashFlows[type].push(t);
     });
 
-    // Categorize financing activities
-    const loanProceeds = periodTransactions.filter(t =>
-        t.description.includes('Bank loan received')
-    );
-    const loanPrincipalPayments = periodTransactions.filter(t =>
-        t.description.includes('payment - Principal reduction')
-    );
-    const loanInterestPayments = periodTransactions.filter(t =>
-        t.description.includes('payment - Interest paid')
-    );
-    const stockIssuances = periodTransactions.filter(t =>
-        t.description.includes('Issued') && t.description.includes('shares')
-    );
+    const propertyPurchases = investingCashFlows.property_purchase || [];
+    const buildingConstruction = investingCashFlows.building_construction || [];
 
-    const totalLoanProceeds = loanProceeds.reduce((sum, t) => sum + t.amount, 0);
-    const totalLoanPrincipalPayments = loanPrincipalPayments.reduce((sum, t) => sum + t.amount, 0);
-    const totalLoanInterestPayments = loanInterestPayments.reduce((sum, t) => sum + t.amount, 0);
-    const totalStockIssuances = stockIssuances.reduce((sum, t) => sum + t.amount, 0);
+    const totalPropertyPurchases = propertyPurchases.reduce((sum, t) => {
+        return sum + (getTransactionCashImpact(t, cashAccounts));
+    }, 0);
+    const totalBuildingConstruction = buildingConstruction.reduce((sum, t) => {
+        return sum + (getTransactionCashImpact(t, cashAccounts));
+    }, 0);
 
-    const netFinancingCash = totalLoanProceeds + totalStockIssuances - totalLoanPrincipalPayments - totalLoanInterestPayments;
+    const netInvestingCash = totalPropertyPurchases + totalBuildingConstruction;
 
-    // Categorize investing activities
-    const propertyPurchases = periodTransactions.filter(t =>
-        t.description.includes('Purchase property at')
-    );
-    const buildingDemolitions = periodTransactions.filter(t =>
-        t.description.includes('Demolished') && t.description.includes('Materials recovered')
-    );
+    // Calculate financing cash flows
+    let financingCashFlows = {};
+    financing.forEach(t => {
+        const type = t.metadata?.type || 'other';
+        if (!financingCashFlows[type]) financingCashFlows[type] = [];
+        financingCashFlows[type].push(t);
+    });
 
-    const totalPropertyPurchases = propertyPurchases.reduce((sum, t) => sum + t.amount, 0);
-    const totalBuildingDemolitions = buildingDemolitions.reduce((sum, t) => sum + t.amount, 0);
+    const loanDisbursements = financingCashFlows.loan_disbursement || [];
+    const loanPrincipalPayments = financingCashFlows.loan_payment_principal || [];
+    const loanInterestPayments = financingCashFlows.loan_payment_interest || [];
+    const equityIssuances = financingCashFlows.equity_issuance || [];
 
-    const netInvestingCash = -totalPropertyPurchases + totalBuildingDemolitions;
+    const totalLoanProceeds = loanDisbursements.reduce((sum, t) => sum + getTransactionCashImpact(t, cashAccounts), 0);
+    const totalPrincipalPayments = loanPrincipalPayments.reduce((sum, t) => sum + getTransactionCashImpact(t, cashAccounts), 0);
+    const totalInterestPayments = loanInterestPayments.reduce((sum, t) => sum + getTransactionCashImpact(t, cashAccounts), 0);
+    const totalEquityProceeds = equityIssuances.reduce((sum, t) => sum + getTransactionCashImpact(t, cashAccounts), 0);
 
-    // Build investing activities HTML
-    let investingActivitiesHtml = '';
-
-    if (propertyPurchases.length > 0) {
-        investingActivitiesHtml += `
-            <div class="statement-item">
-                <span>Property Purchases</span>
-                <span>(${formatCurrency(totalPropertyPurchases)})</span>
-            </div>`;
-    }
-
-    if (buildingDemolitions.length > 0) {
-        investingActivitiesHtml += `
-            <div class="statement-item">
-                <span>Building Demolitions (Materials Recovered)</span>
-                <span>${formatCurrency(totalBuildingDemolitions)}</span>
-            </div>`;
-    }
-
-    if (investingActivitiesHtml === '') {
-        investingActivitiesHtml = `
-            <div class="statement-item">
-                <span>No investing activities recorded</span>
-                <span>${formatCurrency(0)}</span>
-            </div>`;
-    }
-
-    // Build financing activities HTML
-    let financingActivitiesHtml = '';
-
-    if (loanProceeds.length > 0) {
-        financingActivitiesHtml += `
-            <div class="statement-item">
-                <span>Loan Proceeds</span>
-                <span>${formatCurrency(totalLoanProceeds)}</span>
-            </div>`;
-    }
-
-    if (stockIssuances.length > 0) {
-        financingActivitiesHtml += `
-            <div class="statement-item">
-                <span>Stock Issuances</span>
-                <span>${formatCurrency(totalStockIssuances)}</span>
-            </div>`;
-    }
-
-    if (loanPrincipalPayments.length > 0) {
-        financingActivitiesHtml += `
-            <div class="statement-item">
-                <span>Loan Principal Payments</span>
-                <span>(${formatCurrency(totalLoanPrincipalPayments)})</span>
-            </div>`;
-    }
-
-    if (loanInterestPayments.length > 0) {
-        financingActivitiesHtml += `
-            <div class="statement-item">
-                <span>Loan Interest Payments</span>
-                <span>(${formatCurrency(totalLoanInterestPayments)})</span>
-            </div>`;
-    }
-
-    if (financingActivitiesHtml === '') {
-        financingActivitiesHtml = `
-            <div class="statement-item">
-                <span>No financing activities recorded</span>
-                <span>${formatCurrency(0)}</span>
-            </div>`;
-    }
+    const netFinancingCash = totalLoanProceeds + totalEquityProceeds + totalPrincipalPayments + totalInterestPayments;
 
     const content = document.getElementById('cashFlowContent');
     content.innerHTML = `
@@ -5149,32 +7021,57 @@ function renderCashFlowStatement() {
         </div>
 
         <div class="statement-section">
-            <div class="statement-category">OPERATING ACTIVITIES</div>
+            <div class="statement-category">CASH FLOWS FROM OPERATING ACTIVITIES</div>
+            <div class="statement-subcategory">Indirect Method</div>
             <div class="statement-item">
                 <span>Net Income</span>
                 <span>${formatCurrency(netIncome)}</span>
             </div>
-            <div class="statement-item">
-                <span>Changes in Accounts Receivable</span>
-                <span>${formatCurrency(-arChange)}</span>
-            </div>
-            <div class="statement-item">
-                <span>Changes in Inventory</span>
-                <span>${formatCurrency(-inventoryChange)}</span>
-            </div>
-            <div class="statement-item">
-                <span>Changes in Accounts Payable</span>
-                <span>${formatCurrency(apChange)}</span>
-            </div>
+            <div class="statement-subcategory" style="margin-top: 0.75rem;">Adjustments to reconcile net income to cash:</div>
+            ${arChange !== 0 ? `
+                <div class="statement-item">
+                    <span>Change in Accounts Receivable</span>
+                    <span>${formatCurrency(-arChange)}</span>
+                </div>
+            ` : ''}
+            ${inventoryChange !== 0 ? `
+                <div class="statement-item">
+                    <span>Change in Inventory</span>
+                    <span>${formatCurrency(-inventoryChange)}</span>
+                </div>
+            ` : ''}
+            ${apChange !== 0 ? `
+                <div class="statement-item">
+                    <span>Change in Accounts Payable</span>
+                    <span>${formatCurrency(apChange)}</span>
+                </div>
+            ` : ''}
             <div class="statement-subtotal">
                 <span>Net Cash from Operating Activities</span>
-                <span>${formatCurrency(operatingCash)}</span>
+                <span>${formatCurrency(netOperatingCash)}</span>
             </div>
         </div>
 
         <div class="statement-section">
-            <div class="statement-category">INVESTING ACTIVITIES</div>
-            ${investingActivitiesHtml}
+            <div class="statement-category">CASH FLOWS FROM INVESTING ACTIVITIES</div>
+            ${propertyPurchases.length > 0 ? `
+                <div class="statement-item">
+                    <span>Purchase of Real Estate (${propertyPurchases.length} transactions)</span>
+                    <span>${formatCurrency(totalPropertyPurchases)}</span>
+                </div>
+            ` : ''}
+            ${buildingConstruction.length > 0 ? `
+                <div class="statement-item">
+                    <span>Building Construction (${buildingConstruction.length} projects)</span>
+                    <span>${formatCurrency(totalBuildingConstruction)}</span>
+                </div>
+            ` : ''}
+            ${propertyPurchases.length === 0 && buildingConstruction.length === 0 ? `
+                <div class="statement-item">
+                    <span style="font-style: italic; color: #6b7280;">No investing activities</span>
+                    <span>$0.00</span>
+                </div>
+            ` : ''}
             <div class="statement-subtotal">
                 <span>Net Cash from Investing Activities</span>
                 <span>${formatCurrency(netInvestingCash)}</span>
@@ -5182,30 +7079,1779 @@ function renderCashFlowStatement() {
         </div>
 
         <div class="statement-section">
-            <div class="statement-category">FINANCING ACTIVITIES</div>
-            ${financingActivitiesHtml}
+            <div class="statement-category">CASH FLOWS FROM FINANCING ACTIVITIES</div>
+            ${loanDisbursements.length > 0 ? `
+                <div class="statement-item">
+                    <span>Proceeds from Loans (${loanDisbursements.length} loans)</span>
+                    <span>${formatCurrency(totalLoanProceeds)}</span>
+                </div>
+            ` : ''}
+            ${equityIssuances.length > 0 ? `
+                <div class="statement-item">
+                    <span>Proceeds from Stock Issuance (${equityIssuances.length} issuances)</span>
+                    <span>${formatCurrency(totalEquityProceeds)}</span>
+                </div>
+            ` : ''}
+            ${loanPrincipalPayments.length > 0 ? `
+                <div class="statement-item">
+                    <span>Principal Payments on Loans (${loanPrincipalPayments.length} payments)</span>
+                    <span>${formatCurrency(totalPrincipalPayments)}</span>
+                </div>
+            ` : ''}
+            ${loanInterestPayments.length > 0 ? `
+                <div class="statement-item">
+                    <span>Interest Payments (${loanInterestPayments.length} payments)</span>
+                    <span>${formatCurrency(totalInterestPayments)}</span>
+                </div>
+            ` : ''}
+            ${loanDisbursements.length === 0 && equityIssuances.length === 0 && loanPrincipalPayments.length === 0 && loanInterestPayments.length === 0 ? `
+                <div class="statement-item">
+                    <span style="font-style: italic; color: #6b7280;">No financing activities</span>
+                    <span>$0.00</span>
+                </div>
+            ` : ''}
             <div class="statement-subtotal">
                 <span>Net Cash from Financing Activities</span>
                 <span>${formatCurrency(netFinancingCash)}</span>
             </div>
         </div>
 
-        <div class="statement-total">
-            <span>Net Change in Cash</span>
-            <span>${formatCurrency(netCashChange)}</span>
-        </div>
-
-        <div class="statement-section" style="margin-top: 1rem;">
-            <div class="statement-item">
+        <div class="statement-section">
+            <div class="statement-total">
+                <span>Net Change in Cash</span>
+                <span>${formatCurrency(netCashChange)}</span>
+            </div>
+            <div class="statement-subsubtotal" style="margin-top: 0.5rem;">
                 <span>Cash at Beginning of Period</span>
                 <span>${formatCurrency(cashStart)}</span>
             </div>
-            <div class="statement-item">
+            <div class="statement-total">
                 <span>Cash at End of Period</span>
                 <span>${formatCurrency(cashEnd)}</span>
             </div>
         </div>
     `;
+}
+
+// Helper function to get cash impact of a transaction
+function getTransactionCashImpact(transaction, cashAccounts) {
+    let impact = 0;
+    const cashAccountIds = cashAccounts.map(a => a.id);
+
+    if (transaction.entries) {
+        transaction.entries.forEach(entry => {
+            const accountId = entry.accountId || entry.account;
+            if (cashAccountIds.includes(accountId)) {
+                if (entry.type === 'debit') {
+                    impact += entry.amount;
+                } else {
+                    impact -= entry.amount;
+                }
+            }
+        });
+    } else if (transaction.debitAccount || transaction.creditAccount) {
+        if (cashAccountIds.includes(transaction.debitAccount)) {
+            impact += transaction.amount;
+        }
+        if (cashAccountIds.includes(transaction.creditAccount)) {
+            impact -= transaction.amount;
+        }
+    }
+
+    return impact;
+}
+
+// ====================================
+// TRIAL BALANCE REPORT
+// ====================================
+
+function renderTrialBalance() {
+    const asOfDate = document.getElementById('trialBalanceDate').value || getTodayDate();
+    const balances = window.generalLedger ? window.generalLedger.getBalances(asOfDate) : {};
+
+    // Get all accounts with balances
+    const accountsWithBalances = appState.accounts
+        .map(account => ({
+            ...account,
+            balance: balances[account.id] || 0
+        }))
+        .filter(account => Math.abs(account.balance) >= 0.01) // Only show accounts with non-zero balances
+        .sort((a, b) => {
+            // Sort by type, then by name
+            if (a.type !== b.type) {
+                const typeOrder = { 'Asset': 1, 'Liability': 2, 'Equity': 3, 'Revenue': 4, 'Expense': 5 };
+                return typeOrder[a.type] - typeOrder[b.type];
+            }
+            return a.name.localeCompare(b.name);
+        });
+
+    let totalDebits = 0;
+    let totalCredits = 0;
+
+    // Prepare rows
+    const rows = accountsWithBalances.map(account => {
+        let debitAmount = 0;
+        let creditAmount = 0;
+
+        // Determine which column the balance goes in based on normal balance
+        if (account.type === 'Asset' || account.type === 'Expense') {
+            // Normal debit balance
+            if (account.balance > 0) {
+                debitAmount = account.balance;
+                totalDebits += debitAmount;
+            } else {
+                creditAmount = -account.balance;
+                totalCredits += creditAmount;
+            }
+        } else {
+            // Liability, Equity, Revenue - normal credit balance
+            if (account.balance > 0) {
+                creditAmount = account.balance;
+                totalCredits += creditAmount;
+            } else {
+                debitAmount = -account.balance;
+                totalDebits += debitAmount;
+            }
+        }
+
+        return `
+            <tr>
+                <td>${escapeHtml(account.name)}</td>
+                <td style="text-align: right;">${debitAmount > 0 ? formatCurrency(debitAmount) : ''}</td>
+                <td style="text-align: right;">${creditAmount > 0 ? formatCurrency(creditAmount) : ''}</td>
+            </tr>`;
+    }).join('');
+
+    const balanced = Math.abs(totalDebits - totalCredits) < 0.01;
+    const difference = totalDebits - totalCredits;
+
+    const content = document.getElementById('trialBalanceContent');
+    content.innerHTML = `
+        <div class="statement-section">
+            <div class="statement-title">TRIAL BALANCE</div>
+            <div>As of ${formatDate(asOfDate)}</div>
+            ${balanced ?
+                '<div style="color: #10b981; font-weight: bold; margin-top: 0.5rem;">✓ In Balance</div>' :
+                `<div style="color: #ef4444; font-weight: bold; margin-top: 0.5rem;">⚠ Out of Balance by ${formatCurrency(Math.abs(difference))}</div>`
+            }
+        </div>
+
+        <table style="width: 100%; margin-top: 1rem; border-collapse: collapse;">
+            <thead>
+                <tr style="border-bottom: 2px solid #333;">
+                    <th style="text-align: left; padding: 0.5rem;">Account</th>
+                    <th style="text-align: right; padding: 0.5rem;">Debit</th>
+                    <th style="text-align: right; padding: 0.5rem;">Credit</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${rows}
+            </tbody>
+            <tfoot>
+                <tr style="border-top: 2px solid #333; font-weight: bold;">
+                    <td style="padding: 0.5rem;">TOTAL</td>
+                    <td style="text-align: right; padding: 0.5rem;">${formatCurrency(totalDebits)}</td>
+                    <td style="text-align: right; padding: 0.5rem;">${formatCurrency(totalCredits)}</td>
+                </tr>
+            </tfoot>
+        </table>
+
+        <div style="margin-top: 1.5rem; padding: 1rem; background: #f3f4f6; border-radius: 4px;">
+            <div style="font-weight: bold; margin-bottom: 0.5rem;">About Trial Balance</div>
+            <p style="font-size: 0.9rem; color: #4b5563;">
+                The Trial Balance lists all accounts with their debit and credit balances.
+                In a properly maintained accounting system, total debits must equal total credits.
+                This report helps verify the mathematical accuracy of the general ledger.
+            </p>
+        </div>
+    `;
+}
+
+// ====================================
+// GENERAL LEDGER REPORT
+// ====================================
+
+function renderGeneralLedger() {
+    const startDate = document.getElementById('generalLedgerStartDate').value || getFirstDayOfMonth();
+    const endDate = document.getElementById('generalLedgerEndDate').value || getTodayDate();
+
+    // Get all accounts sorted by type and name
+    const accounts = [...appState.accounts].sort((a, b) => {
+        if (a.type !== b.type) {
+            const typeOrder = { 'Asset': 1, 'Liability': 2, 'Equity': 3, 'Revenue': 4, 'Expense': 5 };
+            return typeOrder[a.type] - typeOrder[b.type];
+        }
+        return a.name.localeCompare(b.name);
+    });
+
+    // Build HTML for each account
+    const accountSections = accounts.map(account => {
+        // Get all transactions affecting this account
+        const accountTransactions = appState.transactions.filter(t => {
+            const tDate = t.simDate || t.date;
+            if (tDate < startDate || tDate > endDate) return false;
+
+            if (t.entries) {
+                return t.entries.some(e => e.accountId === account.id);
+            } else {
+                // Legacy format
+                return t.debitAccount === account.id || t.creditAccount === account.id;
+            }
+        }).sort((a, b) => {
+            const aDate = a.simDate || a.date;
+            const bDate = b.simDate || b.date;
+            return aDate.localeCompare(bDate);
+        });
+
+        if (accountTransactions.length === 0) return '';
+
+        // Calculate running balance
+        let runningBalance = 0;
+        const rows = accountTransactions.map(t => {
+            let debitAmount = 0;
+            let creditAmount = 0;
+
+            if (t.entries) {
+                t.entries.forEach(entry => {
+                    if (entry.accountId === account.id) {
+                        if (entry.type === 'debit') {
+                            debitAmount += entry.amount;
+                        } else {
+                            creditAmount += entry.amount;
+                        }
+                    }
+                });
+            } else {
+                // Legacy format
+                if (t.debitAccount === account.id) {
+                    debitAmount = t.amount;
+                }
+                if (t.creditAccount === account.id) {
+                    creditAmount = t.amount;
+                }
+            }
+
+            // Update running balance based on normal balance
+            if (account.type === 'Asset' || account.type === 'Expense') {
+                runningBalance += debitAmount - creditAmount;
+            } else {
+                runningBalance += creditAmount - debitAmount;
+            }
+
+            const tDate = t.simDate || t.date;
+            const tTime = t.simTime || '';
+
+            return `
+                <tr>
+                    <td style="padding: 0.25rem 0.5rem;">${formatDate(tDate)} ${tTime}</td>
+                    <td style="padding: 0.25rem 0.5rem;">${escapeHtml(t.description)}</td>
+                    <td style="padding: 0.25rem 0.5rem; text-align: right;">${debitAmount > 0 ? formatCurrency(debitAmount) : ''}</td>
+                    <td style="padding: 0.25rem 0.5rem; text-align: right;">${creditAmount > 0 ? formatCurrency(creditAmount) : ''}</td>
+                    <td style="padding: 0.25rem 0.5rem; text-align: right; font-weight: 500;">${formatCurrency(Math.abs(runningBalance))}</td>
+                </tr>`;
+        }).join('');
+
+        return `
+            <div class="statement-section" style="margin-bottom: 2rem;">
+                <div style="font-weight: bold; font-size: 1.1rem; margin-bottom: 0.5rem;">
+                    ${escapeHtml(account.name)} (${account.type})
+                </div>
+                <table style="width: 100%; border-collapse: collapse; font-size: 0.9rem;">
+                    <thead>
+                        <tr style="border-bottom: 1px solid #333; background: #f3f4f6;">
+                            <th style="text-align: left; padding: 0.5rem;">Date</th>
+                            <th style="text-align: left; padding: 0.5rem;">Description</th>
+                            <th style="text-align: right; padding: 0.5rem;">Debit</th>
+                            <th style="text-align: right; padding: 0.5rem;">Credit</th>
+                            <th style="text-align: right; padding: 0.5rem;">Balance</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rows}
+                    </tbody>
+                    <tfoot>
+                        <tr style="border-top: 2px solid #333; font-weight: bold;">
+                            <td colspan="4" style="padding: 0.5rem;">Ending Balance</td>
+                            <td style="text-align: right; padding: 0.5rem;">${formatCurrency(Math.abs(runningBalance))}</td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>`;
+    }).filter(html => html !== '').join('');
+
+    const content = document.getElementById('generalLedgerContent');
+    content.innerHTML = `
+        <div class="statement-section">
+            <div class="statement-title">GENERAL LEDGER</div>
+            <div>For the period ${formatDate(startDate)} to ${formatDate(endDate)}</div>
+        </div>
+
+        ${accountSections || '<div style="margin-top: 1rem; color: #6b7280;">No transactions recorded for this period.</div>'}
+
+        <div style="margin-top: 1.5rem; padding: 1rem; background: #f3f4f6; border-radius: 4px;">
+            <div style="font-weight: bold; margin-bottom: 0.5rem;">About General Ledger</div>
+            <p style="font-size: 0.9rem; color: #4b5563;">
+                The General Ledger shows detailed transaction history for each account with running balances.
+                This is the complete record of all financial transactions organized by account.
+            </p>
+        </div>
+    `;
+}
+
+// ====================================
+// TRANSACTION JOURNAL REPORT
+// ====================================
+
+function renderTransactionJournal() {
+    const startDate = document.getElementById('transactionJournalStartDate').value || getFirstDayOfMonth();
+    const endDate = document.getElementById('transactionJournalEndDate').value || getTodayDate();
+
+    // Get all transactions in the period
+    const periodTransactions = appState.transactions.filter(t => {
+        const tDate = t.simDate || t.date;
+        return tDate >= startDate && tDate <= endDate;
+    }).sort((a, b) => {
+        const aDate = a.simDate || a.date;
+        const bDate = b.simDate || b.date;
+        if (aDate !== bDate) return aDate.localeCompare(bDate);
+        return (a.id || 0) - (b.id || 0);
+    });
+
+    const journalEntries = periodTransactions.map(t => {
+        const tDate = t.simDate || t.date;
+        const tTime = t.simTime || '';
+        const timestamp = t.timestamp ? new Date(t.timestamp).toLocaleString() : '';
+
+        let entriesHtml = '';
+        let totalDebit = 0;
+        let totalCredit = 0;
+
+        if (t.entries) {
+            // New format with multiple entries
+            const debitEntries = t.entries.filter(e => e.type === 'debit');
+            const creditEntries = t.entries.filter(e => e.type === 'credit');
+
+            debitEntries.forEach(entry => {
+                const account = appState.accounts.find(a => a.id === entry.accountId);
+                totalDebit += entry.amount;
+                entriesHtml += `
+                    <tr>
+                        <td style="padding: 0.25rem 0.5rem; padding-left: 2rem;">
+                            DR: ${escapeHtml(account ? account.name : 'Unknown Account')}
+                        </td>
+                        <td style="padding: 0.25rem 0.5rem; text-align: right;">${formatCurrency(entry.amount)}</td>
+                        <td style="padding: 0.25rem 0.5rem;"></td>
+                    </tr>`;
+            });
+
+            creditEntries.forEach(entry => {
+                const account = appState.accounts.find(a => a.id === entry.accountId);
+                totalCredit += entry.amount;
+                entriesHtml += `
+                    <tr>
+                        <td style="padding: 0.25rem 0.5rem; padding-left: 3rem;">
+                            CR: ${escapeHtml(account ? account.name : 'Unknown Account')}
+                        </td>
+                        <td style="padding: 0.25rem 0.5rem;"></td>
+                        <td style="padding: 0.25rem 0.5rem; text-align: right;">${formatCurrency(entry.amount)}</td>
+                    </tr>`;
+            });
+        } else {
+            // Legacy format
+            const debitAccount = appState.accounts.find(a => a.id === t.debitAccount);
+            const creditAccount = appState.accounts.find(a => a.id === t.creditAccount);
+            totalDebit = t.amount;
+            totalCredit = t.amount;
+
+            entriesHtml = `
+                <tr>
+                    <td style="padding: 0.25rem 0.5rem; padding-left: 2rem;">
+                        DR: ${escapeHtml(debitAccount ? debitAccount.name : 'Unknown Account')}
+                    </td>
+                    <td style="padding: 0.25rem 0.5rem; text-align: right;">${formatCurrency(t.amount)}</td>
+                    <td style="padding: 0.25rem 0.5rem;"></td>
+                </tr>
+                <tr>
+                    <td style="padding: 0.25rem 0.5rem; padding-left: 3rem;">
+                        CR: ${escapeHtml(creditAccount ? creditAccount.name : 'Unknown Account')}
+                    </td>
+                    <td style="padding: 0.25rem 0.5rem;"></td>
+                    <td style="padding: 0.25rem 0.5rem; text-align: right;">${formatCurrency(t.amount)}</td>
+                </tr>`;
+        }
+
+        const balanced = Math.abs(totalDebit - totalCredit) < 0.01;
+        const balanceIndicator = balanced ? '' : ' <span style="color: #ef4444;">⚠ UNBALANCED</span>';
+
+        // Metadata display
+        let metadataHtml = '';
+        if (t.metadata && Object.keys(t.metadata).length > 0) {
+            const metaItems = Object.entries(t.metadata)
+                .filter(([key, value]) => value !== null && value !== undefined && value !== '')
+                .map(([key, value]) => `${key}: ${JSON.stringify(value)}`)
+                .join(', ');
+            if (metaItems) {
+                metadataHtml = `
+                    <tr>
+                        <td colspan="3" style="padding: 0.25rem 0.5rem; padding-left: 2rem; color: #6b7280; font-size: 0.85rem;">
+                            ${escapeHtml(metaItems)}
+                        </td>
+                    </tr>`;
+            }
+        }
+
+        return `
+            <div class="statement-section" style="margin-bottom: 1.5rem; border: 1px solid #e5e7eb; padding: 1rem; border-radius: 4px;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 0.9rem;">
+                    <thead>
+                        <tr style="background: #f9fafb;">
+                            <th colspan="3" style="text-align: left; padding: 0.5rem; border-bottom: 1px solid #d1d5db;">
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <div>
+                                        <strong>Journal Entry #${t.id || 'N/A'}</strong>
+                                        ${balanceIndicator}
+                                    </div>
+                                    <div style="font-weight: normal; color: #6b7280;">
+                                        ${formatDate(tDate)} ${tTime}
+                                        ${timestamp ? `<br/><span style="font-size: 0.8rem;">${timestamp}</span>` : ''}
+                                    </div>
+                                </div>
+                            </th>
+                        </tr>
+                        <tr style="background: #f9fafb;">
+                            <th colspan="3" style="text-align: left; padding: 0.5rem; font-weight: normal; border-bottom: 1px solid #e5e7eb;">
+                                ${escapeHtml(t.description)}
+                            </th>
+                        </tr>
+                        <tr style="background: #f3f4f6; font-size: 0.85rem;">
+                            <th style="text-align: left; padding: 0.25rem 0.5rem;">Account</th>
+                            <th style="text-align: right; padding: 0.25rem 0.5rem;">Debit</th>
+                            <th style="text-align: right; padding: 0.25rem 0.5rem;">Credit</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${entriesHtml}
+                        ${metadataHtml}
+                    </tbody>
+                    <tfoot>
+                        <tr style="border-top: 1px solid #333; font-weight: bold;">
+                            <td style="padding: 0.5rem;">TOTAL</td>
+                            <td style="text-align: right; padding: 0.5rem;">${formatCurrency(totalDebit)}</td>
+                            <td style="text-align: right; padding: 0.5rem;">${formatCurrency(totalCredit)}</td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>`;
+    }).join('');
+
+    const content = document.getElementById('transactionJournalContent');
+    content.innerHTML = `
+        <div class="statement-section">
+            <div class="statement-title">TRANSACTION JOURNAL</div>
+            <div>For the period ${formatDate(startDate)} to ${formatDate(endDate)}</div>
+            <div style="margin-top: 0.5rem; color: #6b7280;">
+                Total Entries: ${periodTransactions.length}
+            </div>
+        </div>
+
+        ${journalEntries || '<div style="margin-top: 1rem; color: #6b7280;">No transactions recorded for this period.</div>'}
+
+        <div style="margin-top: 1.5rem; padding: 1rem; background: #f3f4f6; border-radius: 4px;">
+            <div style="font-weight: bold; margin-bottom: 0.5rem;">About Transaction Journal</div>
+            <p style="font-size: 0.9rem; color: #4b5563;">
+                The Transaction Journal (also called General Journal) is the chronological record of all transactions
+                in double-entry format. Each entry shows the debits (DR) and credits (CR) with full metadata.
+                This is the original book of entry where all transactions are first recorded.
+            </p>
+        </div>
+    `;
+}
+
+// ====================================
+// FINANCIAL DASHBOARD
+// ====================================
+
+function renderDashboard() {
+    const container = document.getElementById('dashboardContent');
+    if (!container) return;
+
+    // Get current balances
+    const balances = window.generalLedger ? window.generalLedger.getBalances() : calculateAccountBalances();
+
+    // Calculate key metrics
+    let cash = 0;
+    let totalAssets = 0;
+    let totalLiabilities = 0;
+    let totalEquity = 0;
+
+    appState.accounts.forEach(account => {
+        const balance = balances[account.id] || 0;
+
+        if (account.type === 'Asset') {
+            totalAssets += balance;
+            if (account.name.toLowerCase().includes('cash')) {
+                cash += balance;
+            }
+        } else if (account.type === 'Liability') {
+            totalLiabilities += balance;
+        } else if (account.type === 'Equity') {
+            totalEquity += balance;
+        }
+    });
+
+    // Calculate net worth
+    const netWorth = totalAssets - totalLiabilities;
+
+    // Calculate current period net income
+    const currentPeriod = window.periodManager ? window.periodManager.getCurrentPeriod() : null;
+    let netIncome = 0;
+    let revenueTotal = 0;
+    let expenseTotal = 0;
+
+    appState.accounts.forEach(account => {
+        const balance = balances[account.id] || 0;
+        if (account.type === 'Revenue') {
+            revenueTotal += balance;
+        } else if (account.type === 'Expense') {
+            expenseTotal += balance;
+        }
+    });
+
+    netIncome = revenueTotal - expenseTotal;
+
+    // Calculate profit margin
+    const profitMargin = revenueTotal > 0 ? (netIncome / revenueTotal) * 100 : 0;
+
+    // Check balance sheet health
+    const balanceCheck = window.generalLedger ? window.generalLedger.validateBalanceSheet() : { balanced: true, difference: 0 };
+    const isBalanced = balanceCheck.balanced;
+    const imbalance = balanceCheck.difference || 0;
+
+    // Determine trend indicators (simplified - would need historical data for real trends)
+    const cashTrend = cash > 0 ? '↑' : cash < 0 ? '↓' : '→';
+    const netWorthTrend = netWorth > 0 ? '↑' : netWorth < 0 ? '↓' : '→';
+    const incomeTrend = netIncome > 0 ? '↑' : netIncome < 0 ? '↓' : '→';
+
+    container.innerHTML = `
+        <div class="dashboard-grid">
+            <!-- Cash Card -->
+            <div class="dashboard-card">
+                <div class="card-header">
+                    <span class="card-title">Cash</span>
+                    <span class="card-trend ${cash >= 0 ? 'trend-up' : 'trend-down'}">${cashTrend}</span>
+                </div>
+                <div class="card-value">${formatCurrency(cash)}</div>
+                <div class="card-footer">Available funds</div>
+            </div>
+
+            <!-- Total Assets Card -->
+            <div class="dashboard-card">
+                <div class="card-header">
+                    <span class="card-title">Total Assets</span>
+                    <span class="card-trend ${totalAssets >= 0 ? 'trend-up' : 'trend-down'}">↑</span>
+                </div>
+                <div class="card-value">${formatCurrency(totalAssets)}</div>
+                <div class="card-footer">All assets owned</div>
+            </div>
+
+            <!-- Total Liabilities Card -->
+            <div class="dashboard-card">
+                <div class="card-header">
+                    <span class="card-title">Total Liabilities</span>
+                    <span class="card-trend ${totalLiabilities > 0 ? 'trend-down' : 'trend-neutral'}">↓</span>
+                </div>
+                <div class="card-value">${formatCurrency(totalLiabilities)}</div>
+                <div class="card-footer">All debts owed</div>
+            </div>
+
+            <!-- Net Worth Card -->
+            <div class="dashboard-card card-highlight">
+                <div class="card-header">
+                    <span class="card-title">Net Worth</span>
+                    <span class="card-trend ${netWorth >= 0 ? 'trend-up' : 'trend-down'}">${netWorthTrend}</span>
+                </div>
+                <div class="card-value">${formatCurrency(netWorth)}</div>
+                <div class="card-footer">Assets - Liabilities</div>
+            </div>
+
+            <!-- Revenue Card -->
+            <div class="dashboard-card">
+                <div class="card-header">
+                    <span class="card-title">Total Revenue</span>
+                    <span class="card-trend ${revenueTotal > 0 ? 'trend-up' : 'trend-neutral'}">↑</span>
+                </div>
+                <div class="card-value">${formatCurrency(revenueTotal)}</div>
+                <div class="card-footer">${currentPeriod ? `Period: ${currentPeriod.year}-${currentPeriod.month}` : 'Current period'}</div>
+            </div>
+
+            <!-- Expenses Card -->
+            <div class="dashboard-card">
+                <div class="card-header">
+                    <span class="card-title">Total Expenses</span>
+                    <span class="card-trend ${expenseTotal > 0 ? 'trend-down' : 'trend-neutral'}">↓</span>
+                </div>
+                <div class="card-value">${formatCurrency(expenseTotal)}</div>
+                <div class="card-footer">${currentPeriod ? `Period: ${currentPeriod.year}-${currentPeriod.month}` : 'Current period'}</div>
+            </div>
+
+            <!-- Net Income Card -->
+            <div class="dashboard-card ${netIncome >= 0 ? 'card-success' : 'card-warning'}">
+                <div class="card-header">
+                    <span class="card-title">Net Income</span>
+                    <span class="card-trend ${netIncome >= 0 ? 'trend-up' : 'trend-down'}">${incomeTrend}</span>
+                </div>
+                <div class="card-value">${formatCurrency(netIncome)}</div>
+                <div class="card-footer">Revenue - Expenses</div>
+            </div>
+
+            <!-- Profit Margin Card -->
+            <div class="dashboard-card">
+                <div class="card-header">
+                    <span class="card-title">Profit Margin</span>
+                    <span class="card-trend ${profitMargin >= 0 ? 'trend-up' : 'trend-down'}">${profitMargin >= 0 ? '↑' : '↓'}</span>
+                </div>
+                <div class="card-value">${profitMargin.toFixed(1)}%</div>
+                <div class="card-footer">Net Income / Revenue</div>
+            </div>
+
+            <!-- Balance Sheet Health Card -->
+            <div class="dashboard-card ${isBalanced ? 'card-success' : 'card-error'}">
+                <div class="card-header">
+                    <span class="card-title">Balance Sheet</span>
+                    <span class="card-trend">${isBalanced ? '✓' : '⚠'}</span>
+                </div>
+                <div class="card-value" style="font-size: 1.5rem;">${isBalanced ? 'Balanced' : 'Out of Balance'}</div>
+                <div class="card-footer">${isBalanced ? 'All accounts balanced' : `Difference: ${formatCurrency(imbalance)}`}</div>
+            </div>
+
+            <!-- Fiscal Period Card -->
+            <div class="dashboard-card">
+                <div class="card-header">
+                    <span class="card-title">Fiscal Period</span>
+                    <span class="card-trend">${currentPeriod && currentPeriod.status === 'open' ? '✓' : '🔒'}</span>
+                </div>
+                <div class="card-value" style="font-size: 1.2rem;">${currentPeriod ? `Year ${currentPeriod.year}, Month ${currentPeriod.month}` : 'Not set'}</div>
+                <div class="card-footer">${currentPeriod ? `Status: ${currentPeriod.status}` : 'Initialize in Admin'}</div>
+            </div>
+        </div>
+
+        <div style="margin-top: 2rem; padding: 1.5rem; background: #f9fafb; border-radius: 8px; border-left: 4px solid #3b82f6;">
+            <h3 style="margin: 0 0 1rem 0; color: #1f2937;">Quick Links</h3>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+                <button class="btn" onclick="switchTab('balance-sheet')">View Balance Sheet</button>
+                <button class="btn" onclick="switchTab('income-statement')">View Income Statement</button>
+                <button class="btn" onclick="switchTab('cash-flow')">View Cash Flow</button>
+                <button class="btn" onclick="switchTab('transactions')">Browse Transactions</button>
+                ${!isBalanced ? '<button class="btn btn-danger" onclick="switchTab(\'admin\')">Fix Balance Sheet</button>' : ''}
+            </div>
+        </div>
+    `;
+}
+
+function switchTab(tabName) {
+    const button = document.querySelector(`[data-tab="${tabName}"]`);
+    if (button) {
+        button.click();
+    }
+}
+
+// ====================================
+// PERIOD MANAGEMENT UI
+// ====================================
+
+function renderPeriodStatus() {
+    const container = document.getElementById('periodStatus');
+    if (!container) return;
+
+    if (!window.periodManager) {
+        container.innerHTML = '<div style="color: #ef4444;">Period Manager not initialized</div>';
+        return;
+    }
+
+    const summary = window.periodManager.getPeriodSummary();
+    const current = summary.currentPeriod;
+
+    if (!current) {
+        container.innerHTML = '<div style="color: #ef4444;">No fiscal periods found</div>';
+        return;
+    }
+
+    const netIncome = current.netIncome !== null ? formatCurrency(current.netIncome) : 'Not yet calculated';
+    const statusColor = current.status === 'open' ? '#10b981' : current.status === 'closed' ? '#6b7280' : '#f59e0b';
+    const statusIcon = current.status === 'open' ? '✓' : current.status === 'closed' ? '🔒' : '⏳';
+
+    container.innerHTML = `
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+            <div>
+                <div style="font-weight: bold; color: #4b5563; margin-bottom: 0.25rem;">Current Period</div>
+                <div style="font-size: 1.1rem;">${current.startDate} to ${current.endDate}</div>
+                <div style="color: #6b7280; font-size: 0.9rem;">Year ${current.year}, Month ${current.month}</div>
+            </div>
+            <div>
+                <div style="font-weight: bold; color: #4b5563; margin-bottom: 0.25rem;">Status</div>
+                <div style="font-size: 1.1rem; color: ${statusColor};">${statusIcon} ${current.status.toUpperCase()}</div>
+            </div>
+            <div>
+                <div style="font-weight: bold; color: #4b5563; margin-bottom: 0.25rem;">Period Statistics</div>
+                <div style="font-size: 0.9rem;">Total Periods: ${summary.totalPeriods}</div>
+                <div style="font-size: 0.9rem;">Closed: ${summary.closedPeriods} | Open: ${summary.openPeriods}</div>
+            </div>
+            <div>
+                <div style="font-weight: bold; color: #4b5563; margin-bottom: 0.25rem;">Current Period Net Income</div>
+                <div style="font-size: 1.1rem;">${netIncome}</div>
+            </div>
+        </div>
+    `;
+
+    // Enable/disable close button based on status
+    const closeBtn = document.getElementById('closePeriodBtn');
+    if (closeBtn) {
+        closeBtn.disabled = current.status !== 'open';
+        if (current.status !== 'open') {
+            closeBtn.title = 'Period is already closed or in closing state';
+        }
+    }
+}
+
+function closeCurrentPeriod() {
+    if (!window.periodManager) {
+        alert('Period Manager not initialized');
+        return;
+    }
+
+    const current = window.periodManager.getCurrentPeriod();
+    if (!current) {
+        alert('No current period found');
+        return;
+    }
+
+    if (current.status !== 'open') {
+        alert('Current period is not open');
+        return;
+    }
+
+    const confirmation = confirm(
+        `Are you sure you want to close the fiscal period ${current.startDate} to ${current.endDate}?\n\n` +
+        `This will:\n` +
+        `1. Close all revenue accounts to Income Summary\n` +
+        `2. Close all expense accounts to Income Summary\n` +
+        `3. Transfer net income to Retained Earnings\n` +
+        `4. Lock the period (no more transactions can be posted)\n` +
+        `5. Create the next fiscal period\n\n` +
+        `This action cannot be undone.`
+    );
+
+    if (!confirmation) {
+        return;
+    }
+
+    const result = window.periodManager.closePeriod(current.id);
+
+    if (result.success) {
+        alert(
+            `Period closed successfully!\n\n` +
+            `Closed Period: ${result.period.startDate} to ${result.period.endDate}\n` +
+            `Net Income: ${formatCurrency(result.netIncome)}\n\n` +
+            `New Current Period: ${result.nextPeriod.startDate} to ${result.nextPeriod.endDate}`
+        );
+
+        // Refresh displays
+        renderPeriodStatus();
+        renderAccounts();
+        renderTransactions();
+
+        // Refresh financial statements if they're active
+        const activeTab = document.querySelector('.tab-btn.active')?.dataset.tab;
+        if (activeTab === 'balance-sheet') {
+            renderBalanceSheet();
+        } else if (activeTab === 'income-statement') {
+            renderIncomeStatement();
+        } else if (activeTab === 'trial-balance') {
+            renderTrialBalance();
+        } else if (activeTab === 'general-ledger') {
+            renderGeneralLedger();
+        } else if (activeTab === 'transaction-journal') {
+            renderTransactionJournal();
+        }
+    } else {
+        alert(`Failed to close period: ${result.error}`);
+    }
+}
+
+function renderPeriodHistory() {
+    const container = document.getElementById('periodHistory');
+    if (!container) return;
+
+    if (!window.periodManager) {
+        container.innerHTML = '<div style="color: #ef4444;">Period Manager not initialized</div>';
+        container.style.display = 'block';
+        return;
+    }
+
+    const periods = appState.fiscalPeriods.slice().reverse(); // Most recent first
+
+    if (periods.length === 0) {
+        container.innerHTML = '<div style="color: #6b7280;">No periods found</div>';
+        container.style.display = 'block';
+        return;
+    }
+
+    const rows = periods.map(period => {
+        const statusColor = period.status === 'open' ? '#10b981' : period.status === 'closed' ? '#6b7280' : '#f59e0b';
+        const isCurrent = period.id === appState.currentFiscalPeriod;
+        const netIncome = period.netIncome !== null ? formatCurrency(period.netIncome) : '-';
+        const closedDate = period.closedAt ? new Date(period.closedAt).toLocaleString() : '-';
+
+        return `
+            <tr ${isCurrent ? 'style="background: #f0f9ff; font-weight: 500;"' : ''}>
+                <td style="padding: 0.5rem;">Year ${period.year}, Month ${period.month}</td>
+                <td style="padding: 0.5rem;">${period.startDate}</td>
+                <td style="padding: 0.5rem;">${period.endDate}</td>
+                <td style="padding: 0.5rem; color: ${statusColor};">${period.status}</td>
+                <td style="padding: 0.5rem; text-align: right;">${netIncome}</td>
+                <td style="padding: 0.5rem; font-size: 0.85rem;">${closedDate}</td>
+            </tr>
+        `;
+    }).join('');
+
+    container.innerHTML = `
+        <h4>Period History</h4>
+        <table style="width: 100%; border-collapse: collapse; margin-top: 0.5rem;">
+            <thead>
+                <tr style="background: #f3f4f6; border-bottom: 2px solid #d1d5db;">
+                    <th style="padding: 0.5rem; text-align: left;">Period</th>
+                    <th style="padding: 0.5rem; text-align: left;">Start Date</th>
+                    <th style="padding: 0.5rem; text-align: left;">End Date</th>
+                    <th style="padding: 0.5rem; text-align: left;">Status</th>
+                    <th style="padding: 0.5rem; text-align: right;">Net Income</th>
+                    <th style="padding: 0.5rem; text-align: left;">Closed At</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${rows}
+            </tbody>
+        </table>
+    `;
+
+    container.style.display = 'block';
+}
+
+// ====================================
+// DATA VALIDATION & AUDIT LOG (Phase 7)
+// ====================================
+
+function runDataValidation() {
+    const resultsContainer = document.getElementById('validationResults');
+    if (!resultsContainer) return;
+
+    const errors = [];
+    const warnings = [];
+    const checks = [];
+
+    // Check 1: Balance Sheet Validation
+    checks.push('Balance Sheet Integrity');
+    const balances = calculateAccountBalances();
+    const assets = getAccountsByType('Asset', balances);
+    const liabilities = getAccountsByType('Liability', balances);
+    const equity = getAccountsByType('Equity', balances);
+
+    const totalAssets = assets.reduce((sum, a) => sum + a.balance, 0);
+    const totalLiabilities = liabilities.reduce((sum, a) => sum + a.balance, 0);
+    const totalEquity = equity.reduce((sum, a) => sum + a.balance, 0);
+
+    const difference = Math.abs(totalAssets - (totalLiabilities + totalEquity));
+    if (difference >= 0.01) {
+        errors.push(`Balance Sheet is out of balance by ${formatCurrency(difference)}`);
+    }
+
+    // Check 2: Negative Cash Balance
+    checks.push('Cash Balance Check');
+    const cashAccounts = appState.accounts.filter(a => a.name.toLowerCase().includes('cash'));
+    cashAccounts.forEach(account => {
+        const balance = balances[account.id] || 0;
+        if (balance < 0) {
+            errors.push(`${account.name} has negative balance: ${formatCurrency(balance)}`);
+        }
+    });
+
+    // Check 3: Transaction Integrity
+    checks.push('Transaction Integrity');
+    const activeTransactions = appState.transactions.filter(t => t.status !== 'void');
+    activeTransactions.forEach(tx => {
+        // Check if transaction has required fields
+        if (!tx.description) {
+            errors.push(`Transaction ${tx.id} is missing description`);
+        }
+
+        if (tx.entries) {
+            // Multi-entry transaction validation
+            const debits = tx.entries.filter(e => e.type === 'debit').reduce((sum, e) => sum + e.amount, 0);
+            const credits = tx.entries.filter(e => e.type === 'credit').reduce((sum, e) => sum + e.amount, 0);
+
+            if (Math.abs(debits - credits) > 0.01) {
+                errors.push(`Transaction ${tx.id}: Debits (${formatCurrency(debits)}) ≠ Credits (${formatCurrency(credits)})`);
+            }
+
+            // Check all accounts exist
+            tx.entries.forEach(entry => {
+                const accountExists = appState.accounts.some(a => a.id === (entry.accountId || entry.account));
+                if (!accountExists) {
+                    errors.push(`Transaction ${tx.id} references non-existent account ID: ${entry.accountId || entry.account}`);
+                }
+            });
+        } else {
+            // Simple transaction validation
+            if (!tx.amount || tx.amount <= 0) {
+                errors.push(`Transaction ${tx.id} has invalid amount: ${tx.amount}`);
+            }
+
+            const debitExists = appState.accounts.some(a => a.id === tx.debitAccount);
+            const creditExists = appState.accounts.some(a => a.id === tx.creditAccount);
+
+            if (!debitExists) {
+                errors.push(`Transaction ${tx.id} references non-existent debit account: ${tx.debitAccount}`);
+            }
+            if (!creditExists) {
+                errors.push(`Transaction ${tx.id} references non-existent credit account: ${tx.creditAccount}`);
+            }
+        }
+    });
+
+    // Check 4: Audit Trail Completeness
+    checks.push('Audit Trail Completeness');
+    activeTransactions.forEach(tx => {
+        if (!tx.audit) {
+            warnings.push(`Transaction ${tx.id} is missing audit trail information`);
+        } else {
+            if (!tx.audit.createdBy) {
+                warnings.push(`Transaction ${tx.id} audit trail missing createdBy`);
+            }
+            if (!tx.audit.createdAt) {
+                warnings.push(`Transaction ${tx.id} audit trail missing createdAt`);
+            }
+        }
+    });
+
+    // Check 5: Timestamp Validation
+    checks.push('Timestamp Validation');
+    activeTransactions.forEach(tx => {
+        if (!tx.timestamp && !tx.date) {
+            warnings.push(`Transaction ${tx.id} is missing timestamp/date information`);
+        }
+    });
+
+    // Check 6: Fiscal Period Validation
+    checks.push('Fiscal Period Validation');
+    if (window.periodManager && appState.fiscalPeriods && appState.fiscalPeriods.length > 0) {
+        const closedPeriods = appState.fiscalPeriods.filter(p => p.status === 'closed');
+        closedPeriods.forEach(period => {
+            const periodStart = period.startDate;
+            const periodEnd = period.endDate;
+
+            const transactionsInClosedPeriod = activeTransactions.filter(tx => {
+                const txDate = tx.simDate || tx.date;
+                return compareDates(txDate, periodStart) >= 0 && compareDates(txDate, periodEnd) <= 0;
+            });
+
+            // Exclude closing entries
+            const nonClosingTxs = transactionsInClosedPeriod.filter(tx =>
+                tx.metadata?.type !== 'closing_entry'
+            );
+
+            if (nonClosingTxs.length > 0) {
+                warnings.push(`Found ${nonClosingTxs.length} non-closing transactions in closed period: Year ${period.year}, Month ${period.month}`);
+            }
+        });
+    }
+
+    // Generate Report
+    const errorCount = errors.length;
+    const warningCount = warnings.length;
+    const checksRun = checks.length;
+
+    let resultHTML = `
+        <div style="background: white; padding: 1.5rem; border-radius: 8px; border: 1px solid #e5e7eb;">
+            <h4 style="margin-bottom: 1rem;">Validation Report</h4>
+            <div style="display: flex; gap: 1rem; margin-bottom: 1rem;">
+                <div style="padding: 0.5rem 1rem; background: #f3f4f6; border-radius: 4px;">
+                    <strong>Checks Run:</strong> ${checksRun}
+                </div>
+                <div style="padding: 0.5rem 1rem; background: ${errorCount > 0 ? '#fef2f2' : '#f0fdf4'}; border-radius: 4px; color: ${errorCount > 0 ? '#dc2626' : '#16a34a'};">
+                    <strong>Errors:</strong> ${errorCount}
+                </div>
+                <div style="padding: 0.5rem 1rem; background: ${warningCount > 0 ? '#fef9c3' : '#f3f4f6'}; border-radius: 4px; color: ${warningCount > 0 ? '#ca8a04' : '#6b7280'};">
+                    <strong>Warnings:</strong> ${warningCount}
+                </div>
+            </div>`;
+
+    if (errorCount === 0 && warningCount === 0) {
+        resultHTML += `
+            <div style="padding: 1rem; background: #f0fdf4; border-radius: 4px; border-left: 4px solid #16a34a; color: #15803d;">
+                ✓ All validation checks passed! Your financial data is consistent and accurate.
+            </div>`;
+    }
+
+    if (errors.length > 0) {
+        resultHTML += `
+            <div style="margin-top: 1rem;">
+                <h5 style="color: #dc2626;">Errors (${errors.length})</h5>
+                <ul style="margin: 0.5rem 0; padding-left: 1.5rem; color: #991b1b;">
+                    ${errors.map(err => `<li>${escapeHtml(err)}</li>`).join('')}
+                </ul>
+            </div>`;
+    }
+
+    if (warnings.length > 0) {
+        resultHTML += `
+            <div style="margin-top: 1rem;">
+                <h5 style="color: #ca8a04;">Warnings (${warnings.length})</h5>
+                <ul style="margin: 0.5rem 0; padding-left: 1.5rem; color: #92400e;">
+                    ${warnings.map(warn => `<li>${escapeHtml(warn)}</li>`).join('')}
+                </ul>
+            </div>`;
+    }
+
+    resultHTML += `</div>`;
+
+    resultsContainer.innerHTML = resultHTML;
+    resultsContainer.style.display = 'block';
+}
+
+function renderAuditLog() {
+    const container = document.getElementById('auditLogContent');
+    const filterSelect = document.getElementById('auditLogFilter');
+
+    if (!container || !filterSelect) return;
+
+    const filterValue = filterSelect.value;
+
+    // Get transactions based on filter
+    let transactions = appState.transactions;
+
+    if (filterValue === 'voided') {
+        transactions = transactions.filter(t => t.status === 'void');
+    } else if (filterValue === 'active') {
+        transactions = transactions.filter(t => t.status !== 'void');
+    }
+
+    // Sort by creation date (newest first)
+    const sortedTransactions = [...transactions].sort((a, b) => {
+        const aTime = a.audit?.createdAt || a.timestamp || '';
+        const bTime = b.audit?.createdAt || b.timestamp || '';
+        return bTime.localeCompare(aTime);
+    });
+
+    if (sortedTransactions.length === 0) {
+        container.innerHTML = '<div style="padding: 1rem; color: #6b7280;">No transactions found with current filter.</div>';
+        container.style.display = 'block';
+        return;
+    }
+
+    const rows = sortedTransactions.map(tx => {
+        const audit = tx.audit || {};
+        const createdBy = audit.createdBy || 'unknown';
+        const createdAt = audit.createdAt ? new Date(audit.createdAt).toLocaleString() : 'N/A';
+        const status = tx.status || 'posted';
+        const statusColor = status === 'void' ? '#ef4444' : '#10b981';
+
+        let voidInfo = '';
+        if (status === 'void') {
+            const voidedBy = audit.voidedBy || 'unknown';
+            const voidedAt = audit.voidedAt ? new Date(audit.voidedAt).toLocaleString() : 'N/A';
+            const voidReason = audit.voidReason || 'No reason provided';
+            voidInfo = `
+                <div style="margin-top: 0.5rem; padding: 0.5rem; background: #fef2f2; border-left: 3px solid #ef4444; font-size: 0.85rem;">
+                    <strong>Voided by:</strong> ${escapeHtml(voidedBy)}<br>
+                    <strong>Voided at:</strong> ${voidedAt}<br>
+                    <strong>Reason:</strong> ${escapeHtml(voidReason)}
+                </div>`;
+        }
+
+        return `
+            <div style="padding: 1rem; margin-bottom: 0.5rem; background: white; border: 1px solid #e5e7eb; border-radius: 4px;">
+                <div style="display: flex; justify-content: space-between; align-items: start;">
+                    <div style="flex: 1;">
+                        <div style="font-weight: 600; color: #1f2937;">
+                            ${escapeHtml(tx.description || 'No description')}
+                        </div>
+                        <div style="font-size: 0.85rem; color: #6b7280; margin-top: 0.25rem;">
+                            ID: ${tx.id} | Date: ${tx.simDate || tx.date || 'N/A'}
+                        </div>
+                    </div>
+                    <div style="padding: 0.25rem 0.75rem; background: ${statusColor}20; color: ${statusColor}; border-radius: 4px; font-size: 0.85rem; font-weight: 600;">
+                        ${status.toUpperCase()}
+                    </div>
+                </div>
+                <div style="margin-top: 0.5rem; font-size: 0.85rem; color: #6b7280;">
+                    <strong>Created by:</strong> ${escapeHtml(createdBy)} on ${createdAt}
+                </div>
+                ${voidInfo}
+            </div>
+        `;
+    }).join('');
+
+    container.innerHTML = `
+        <div style="margin-bottom: 1rem; padding: 0.75rem; background: #f3f4f6; border-radius: 4px;">
+            <strong>Total Transactions:</strong> ${sortedTransactions.length}
+        </div>
+        ${rows}
+    `;
+
+    container.style.display = 'block';
+}
+
+// ====================================
+// RECONCILIATION TOOLS (Phase 7.3)
+// ====================================
+
+function showAccountReconciliation() {
+    const container = document.getElementById('reconciliationContent');
+    if (!container) return;
+
+    // Get all asset and liability accounts (typically reconciled)
+    const reconcilableAccounts = appState.accounts.filter(a =>
+        ['Asset', 'Liability'].includes(a.type)
+    );
+
+    container.innerHTML = `
+        <div style="background: white; padding: 1.5rem; border-radius: 8px; border: 1px solid #e5e7eb;">
+            <h4>Account Reconciliation</h4>
+            <p class="help-text">Select an account to reconcile transactions against bank/external statements.</p>
+
+            <div class="form-row">
+                <div class="form-group" style="flex: 2;">
+                    <label for="reconcileAccount">Select Account:</label>
+                    <select id="reconcileAccount" onchange="loadReconciliationData()">
+                        <option value="">-- Select Account --</option>
+                        ${reconcilableAccounts.map(acc =>
+                            `<option value="${acc.id}">${acc.name} (${acc.number})</option>`
+                        ).join('')}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="reconcileEndDate">Statement End Date:</label>
+                    <input type="text" id="reconcileEndDate" placeholder="Y1-M1-D28" value="${getTodayDate()}">
+                </div>
+                <div class="form-group">
+                    <label for="reconcileStatementBalance">Statement Balance:</label>
+                    <input type="number" id="reconcileStatementBalance" step="0.01" placeholder="0.00">
+                </div>
+            </div>
+
+            <div id="reconciliationData" style="margin-top: 1rem;">
+                <!-- Reconciliation data will appear here -->
+            </div>
+        </div>
+    `;
+
+    container.style.display = 'block';
+}
+
+function loadReconciliationData() {
+    const accountId = parseInt(document.getElementById('reconcileAccount').value);
+    const endDate = document.getElementById('reconcileEndDate').value;
+    const dataContainer = document.getElementById('reconciliationData');
+
+    if (!accountId || !dataContainer) return;
+
+    const account = appState.accounts.find(a => a.id === accountId);
+    if (!account) return;
+
+    // Get all transactions for this account up to end date
+    const accountTransactions = appState.transactions.filter(t => {
+        if (t.status === 'void') return false;
+
+        const txDate = t.simDate || t.date;
+        if (endDate && compareDates(txDate, endDate) > 0) return false;
+
+        if (t.entries) {
+            return t.entries.some(e => (e.accountId || e.account) === accountId);
+        }
+        return t.debitAccount === accountId || t.creditAccount === accountId;
+    }).sort((a, b) => {
+        const aDate = a.simDate || a.date;
+        const bDate = b.simDate || b.date;
+        return aDate.localeCompare(bDate);
+    });
+
+    // Calculate balances
+    const balances = calculateAccountBalances(endDate);
+    const bookBalance = balances[accountId] || 0;
+
+    // Separate reconciled and unreconciled
+    const reconciled = accountTransactions.filter(t => t.reconciled);
+    const unreconciled = accountTransactions.filter(t => !t.reconciled);
+
+    const reconciledBalance = reconciled.reduce((sum, t) => {
+        let amount = 0;
+        if (t.entries) {
+            t.entries.forEach(e => {
+                if ((e.accountId || e.account) === accountId) {
+                    amount += e.type === 'debit' ? e.amount : -e.amount;
+                }
+            });
+        } else {
+            if (t.debitAccount === accountId) amount += t.amount;
+            if (t.creditAccount === accountId) amount -= t.amount;
+        }
+        return sum + amount;
+    }, 0);
+
+    const unreconciledBalance = bookBalance - reconciledBalance;
+
+    dataContainer.innerHTML = `
+        <div style="background: #f9fafb; padding: 1rem; border-radius: 4px; margin-bottom: 1rem;">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+                <div>
+                    <strong>Book Balance:</strong>
+                    <div style="font-size: 1.25rem; color: #1f2937;">${formatCurrency(bookBalance)}</div>
+                </div>
+                <div>
+                    <strong>Reconciled Balance:</strong>
+                    <div style="font-size: 1.25rem; color: #059669;">${formatCurrency(reconciledBalance)}</div>
+                </div>
+                <div>
+                    <strong>Unreconciled:</strong>
+                    <div style="font-size: 1.25rem; color: #dc2626;">${formatCurrency(unreconciledBalance)}</div>
+                </div>
+                <div>
+                    <strong>Total Transactions:</strong>
+                    <div style="font-size: 1.25rem; color: #6b7280;">${accountTransactions.length}</div>
+                </div>
+            </div>
+        </div>
+
+        <div style="margin-bottom: 1rem;">
+            <button class="btn" onclick="markAllAsReconciled(${accountId}, '${endDate}')">Mark All as Reconciled</button>
+            <button class="btn" onclick="clearAllReconciled(${accountId})">Clear All Reconciliation Marks</button>
+        </div>
+
+        <h5 style="margin-bottom: 0.5rem;">Unreconciled Transactions (${unreconciled.length})</h5>
+        <div style="max-height: 400px; overflow-y: auto; margin-bottom: 1rem;">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Description</th>
+                        <th>Debit</th>
+                        <th>Credit</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${unreconciled.length === 0 ? '<tr><td colspan="5" style="text-align: center;">All transactions reconciled</td></tr>' :
+                        unreconciled.map(t => {
+                            let debit = '', credit = '';
+                            if (t.entries) {
+                                const entry = t.entries.find(e => (e.accountId || e.account) === accountId);
+                                if (entry) {
+                                    if (entry.type === 'debit') debit = formatCurrency(entry.amount);
+                                    else credit = formatCurrency(entry.amount);
+                                }
+                            } else {
+                                if (t.debitAccount === accountId) debit = formatCurrency(t.amount);
+                                if (t.creditAccount === accountId) credit = formatCurrency(t.amount);
+                            }
+                            return `
+                                <tr>
+                                    <td>${t.simDate || t.date}</td>
+                                    <td>${escapeHtml(t.description)}</td>
+                                    <td>${debit}</td>
+                                    <td>${credit}</td>
+                                    <td>
+                                        <button class="btn btn-sm" onclick="markTransactionReconciled(${t.id}, true)">✓ Reconcile</button>
+                                    </td>
+                                </tr>
+                            `;
+                        }).join('')
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        ${reconciled.length > 0 ? `
+            <h5 style="margin-bottom: 0.5rem;">Reconciled Transactions (${reconciled.length})</h5>
+            <div style="max-height: 300px; overflow-y: auto;">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Description</th>
+                            <th>Debit</th>
+                            <th>Credit</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${reconciled.map(t => {
+                            let debit = '', credit = '';
+                            if (t.entries) {
+                                const entry = t.entries.find(e => (e.accountId || e.account) === accountId);
+                                if (entry) {
+                                    if (entry.type === 'debit') debit = formatCurrency(entry.amount);
+                                    else credit = formatCurrency(entry.amount);
+                                }
+                            } else {
+                                if (t.debitAccount === accountId) debit = formatCurrency(t.amount);
+                                if (t.creditAccount === accountId) credit = formatCurrency(t.amount);
+                            }
+                            return `
+                                <tr style="background: #f0fdf4;">
+                                    <td>${t.simDate || t.date}</td>
+                                    <td>${escapeHtml(t.description)}</td>
+                                    <td>${debit}</td>
+                                    <td>${credit}</td>
+                                    <td>
+                                        <button class="btn btn-sm" onclick="markTransactionReconciled(${t.id}, false)">✗ Unreconcile</button>
+                                    </td>
+                                </tr>
+                            `;
+                        }).join('')}
+                    </tbody>
+                </table>
+            </div>
+        ` : ''}
+    `;
+}
+
+function markTransactionReconciled(transactionId, reconciled) {
+    const transaction = appState.transactions.find(t => t.id === transactionId);
+    if (!transaction) return;
+
+    transaction.reconciled = reconciled;
+    if (reconciled) {
+        transaction.reconciledAt = new Date().toISOString();
+        transaction.reconciledBy = 'user';
+    }
+
+    hasUnsavedChanges = true;
+    loadReconciliationData(); // Reload to update display
+}
+
+function markAllAsReconciled(accountId, endDate) {
+    if (!confirm('Mark all unreconciled transactions for this account as reconciled?')) {
+        return;
+    }
+
+    appState.transactions.forEach(t => {
+        if (t.status === 'void' || t.reconciled) return;
+
+        const txDate = t.simDate || t.date;
+        if (endDate && compareDates(txDate, endDate) > 0) return;
+
+        let affectsAccount = false;
+        if (t.entries) {
+            affectsAccount = t.entries.some(e => (e.accountId || e.account) === accountId);
+        } else {
+            affectsAccount = t.debitAccount === accountId || t.creditAccount === accountId;
+        }
+
+        if (affectsAccount) {
+            t.reconciled = true;
+            t.reconciledAt = new Date().toISOString();
+            t.reconciledBy = 'user';
+        }
+    });
+
+    hasUnsavedChanges = true;
+    loadReconciliationData();
+}
+
+function clearAllReconciled(accountId) {
+    if (!confirm('Clear all reconciliation marks for this account?')) {
+        return;
+    }
+
+    appState.transactions.forEach(t => {
+        let affectsAccount = false;
+        if (t.entries) {
+            affectsAccount = t.entries.some(e => (e.accountId || e.account) === accountId);
+        } else {
+            affectsAccount = t.debitAccount === accountId || t.creditAccount === accountId;
+        }
+
+        if (affectsAccount) {
+            t.reconciled = false;
+            delete t.reconciledAt;
+            delete t.reconciledBy;
+        }
+    });
+
+    hasUnsavedChanges = true;
+    loadReconciliationData();
+}
+
+function showInventoryReconciliation() {
+    const container = document.getElementById('reconciliationContent');
+    if (!container) return;
+
+    // Get inventory account
+    const inventoryAccount = appState.accounts.find(a => a.name.toLowerCase().includes('inventory'));
+    if (!inventoryAccount) {
+        container.innerHTML = `
+            <div style="background: white; padding: 1.5rem; border-radius: 8px; border: 1px solid #e5e7eb;">
+                <h4>Inventory Reconciliation</h4>
+                <p style="color: #dc2626;">No inventory account found. Please create an inventory account first.</p>
+            </div>
+        `;
+        container.style.display = 'block';
+        return;
+    }
+
+    // Calculate current book value
+    const balances = calculateAccountBalances();
+    const bookValue = balances[inventoryAccount.id] || 0;
+
+    // Get commodities portfolio for physical count reference
+    const commoditiesInPortfolio = appState.commodityPortfolio || [];
+    const totalPhysicalValue = commoditiesInPortfolio.reduce((sum, item) =>
+        sum + (item.quantity * item.avgCost), 0
+    );
+
+    container.innerHTML = `
+        <div style="background: white; padding: 1.5rem; border-radius: 8px; border: 1px solid #e5e7eb;">
+            <h4>Inventory Reconciliation</h4>
+            <p class="help-text">Compare physical inventory count to book value and generate adjustment entries.</p>
+
+            <div style="background: #f9fafb; padding: 1rem; border-radius: 4px; margin-bottom: 1rem;">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+                    <div>
+                        <strong>Book Value:</strong>
+                        <div style="font-size: 1.25rem; color: #1f2937;">${formatCurrency(bookValue)}</div>
+                    </div>
+                    <div>
+                        <strong>Portfolio Value:</strong>
+                        <div style="font-size: 1.25rem; color: #6b7280;">${formatCurrency(totalPhysicalValue)}</div>
+                    </div>
+                    <div>
+                        <strong>Difference:</strong>
+                        <div style="font-size: 1.25rem; color: ${Math.abs(bookValue - totalPhysicalValue) < 0.01 ? '#059669' : '#dc2626'};">
+                            ${formatCurrency(bookValue - totalPhysicalValue)}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            ${Math.abs(bookValue - totalPhysicalValue) >= 0.01 ? `
+                <div style="background: #fef9c3; border-left: 4px solid #f59e0b; padding: 1rem; margin-bottom: 1rem;">
+                    <strong>⚠ Discrepancy Detected</strong>
+                    <p style="margin: 0.5rem 0 0 0;">
+                        There is a ${formatCurrency(Math.abs(bookValue - totalPhysicalValue))} difference between
+                        book value and portfolio value. This may indicate:
+                    </p>
+                    <ul style="margin: 0.5rem 0 0 1.5rem;">
+                        <li>Inventory shrinkage or loss</li>
+                        <li>Unrecorded transactions</li>
+                        <li>Data entry errors</li>
+                    </ul>
+                </div>
+            ` : `
+                <div style="background: #f0fdf4; border-left: 4px solid #10b981; padding: 1rem; margin-bottom: 1rem;">
+                    ✓ Inventory is reconciled. Book value matches portfolio value.
+                </div>
+            `}
+
+            <h5>Commodity Portfolio Details</h5>
+            <div style="max-height: 300px; overflow-y: auto; margin-bottom: 1rem;">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Commodity</th>
+                            <th>Quantity</th>
+                            <th>Avg Cost</th>
+                            <th>Total Value</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${commoditiesInPortfolio.length === 0 ?
+                            '<tr><td colspan="4" style="text-align: center;">No commodities in portfolio</td></tr>' :
+                            commoditiesInPortfolio.map(item => {
+                                const commodity = appState.commodities.find(c => c.id === item.commodityId);
+                                return `
+                                    <tr>
+                                        <td>${commodity ? escapeHtml(commodity.name) : 'Unknown'}</td>
+                                        <td>${item.quantity}</td>
+                                        <td>${formatCurrency(item.avgCost)}</td>
+                                        <td>${formatCurrency(item.quantity * item.avgCost)}</td>
+                                    </tr>
+                                `;
+                            }).join('')
+                        }
+                    </tbody>
+                    <tfoot>
+                        <tr style="font-weight: bold; background: #f3f4f6;">
+                            <td colspan="3">Total Portfolio Value</td>
+                            <td>${formatCurrency(totalPhysicalValue)}</td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+
+            ${Math.abs(bookValue - totalPhysicalValue) >= 0.01 ? `
+                <div class="form-row">
+                    <div class="form-group" style="flex: 2;">
+                        <label for="adjustmentReason">Adjustment Reason:</label>
+                        <input type="text" id="adjustmentReason" placeholder="e.g., Shrinkage, spoilage, damaged goods">
+                    </div>
+                    <div class="form-group">
+                        <button class="btn btn-primary" onclick="generateInventoryAdjustment(${inventoryAccount.id}, ${bookValue}, ${totalPhysicalValue})">
+                            Generate Adjustment Entry
+                        </button>
+                    </div>
+                </div>
+            ` : ''}
+        </div>
+    `;
+
+    container.style.display = 'block';
+}
+
+function generateInventoryAdjustment(inventoryAccountId, bookValue, physicalValue) {
+    const reason = document.getElementById('adjustmentReason')?.value;
+
+    if (!reason || reason.trim() === '') {
+        alert('Please enter a reason for the adjustment.');
+        return;
+    }
+
+    const difference = bookValue - physicalValue;
+
+    if (Math.abs(difference) < 0.01) {
+        alert('No adjustment needed - values are already reconciled.');
+        return;
+    }
+
+    // Find COGS or expense account for adjustment
+    const cogsAccount = appState.accounts.find(a => a.name.includes('Cost of Goods Sold'));
+    const expenseAccount = appState.accounts.find(a => a.name.includes('Operating Expenses'));
+    const adjustmentAccount = cogsAccount || expenseAccount;
+
+    if (!adjustmentAccount) {
+        alert('No COGS or expense account found to post adjustment. Please create one first.');
+        return;
+    }
+
+    if (!confirm(`Generate adjustment entry of ${formatCurrency(Math.abs(difference))} to reconcile inventory?\n\nThis will ${difference > 0 ? 'decrease' : 'increase'} inventory and ${difference > 0 ? 'increase' : 'decrease'} ${adjustmentAccount.name}.`)) {
+        return;
+    }
+
+    // Create adjustment transaction
+    if (window.transactionManager) {
+        try {
+            let entries;
+            if (difference > 0) {
+                // Book value > Physical value = inventory decreased
+                entries = [
+                    { accountId: adjustmentAccount.id, type: 'debit', amount: difference },
+                    { accountId: inventoryAccountId, type: 'credit', amount: difference }
+                ];
+            } else {
+                // Physical value > Book value = inventory increased (unusual, but possible)
+                entries = [
+                    { accountId: inventoryAccountId, type: 'debit', amount: Math.abs(difference) },
+                    { accountId: adjustmentAccount.id, type: 'credit', amount: Math.abs(difference) }
+                ];
+            }
+
+            window.transactionManager.createTransaction({
+                description: `Inventory adjustment - ${reason.trim()}`,
+                entries: entries,
+                metadata: {
+                    type: 'inventory_adjustment',
+                    createdBy: 'user',
+                    reason: reason.trim(),
+                    bookValue: bookValue,
+                    physicalValue: physicalValue
+                }
+            });
+
+            alert('Inventory adjustment entry created successfully!');
+            hasUnsavedChanges = true;
+            render();
+            showInventoryReconciliation(); // Reload to show updated values
+        } catch (error) {
+            alert(`Error creating adjustment: ${error.message}`);
+        }
+    } else {
+        alert('Transaction manager not available.');
+    }
+}
+
+function showLoanReconciliation() {
+    const container = document.getElementById('reconciliationContent');
+    if (!container) return;
+
+    // Get all loan-related accounts
+    const loanPrincipalAccounts = appState.accounts.filter(a =>
+        a.name.toLowerCase().includes('loan') && a.name.toLowerCase().includes('principal')
+    );
+    const loanInterestAccounts = appState.accounts.filter(a =>
+        a.name.toLowerCase().includes('loan') && a.name.toLowerCase().includes('interest')
+    );
+
+    if (loanPrincipalAccounts.length === 0) {
+        container.innerHTML = `
+            <div style="background: white; padding: 1.5rem; border-radius: 8px; border: 1px solid #e5e7eb;">
+                <h4>Loan Reconciliation</h4>
+                <p style="color: #dc2626;">No loan accounts found. Loan accounts will appear here once you take out loans.</p>
+            </div>
+        `;
+        container.style.display = 'block';
+        return;
+    }
+
+    const balances = calculateAccountBalances();
+
+    // Calculate total loan balances
+    const totalPrincipal = loanPrincipalAccounts.reduce((sum, acc) =>
+        sum + (balances[acc.id] || 0), 0
+    );
+    const totalInterestPayable = loanInterestAccounts.reduce((sum, acc) =>
+        sum + (balances[acc.id] || 0), 0
+    );
+
+    // Get loan data from appState if available
+    const loans = appState.loans || [];
+    const expectedPrincipal = loans.reduce((sum, loan) => sum + loan.remainingPrincipal, 0);
+    const expectedInterest = loans.reduce((sum, loan) => sum + (loan.accruedInterest || 0), 0);
+
+    const principalDiff = Math.abs(totalPrincipal - expectedPrincipal);
+    const interestDiff = Math.abs(totalInterestPayable - expectedInterest);
+    const isReconciled = principalDiff < 0.01 && interestDiff < 0.01;
+
+    container.innerHTML = `
+        <div style="background: white; padding: 1.5rem; border-radius: 8px; border: 1px solid #e5e7eb;">
+            <h4>Loan Reconciliation</h4>
+            <p class="help-text">Verify loan balances match expected amortization schedule.</p>
+
+            <div style="background: #f9fafb; padding: 1rem; border-radius: 4px; margin-bottom: 1rem;">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+                    <div>
+                        <strong>Account Principal:</strong>
+                        <div style="font-size: 1.25rem; color: #1f2937;">${formatCurrency(totalPrincipal)}</div>
+                    </div>
+                    <div>
+                        <strong>Expected Principal:</strong>
+                        <div style="font-size: 1.25rem; color: #6b7280;">${formatCurrency(expectedPrincipal)}</div>
+                    </div>
+                    <div>
+                        <strong>Principal Difference:</strong>
+                        <div style="font-size: 1.25rem; color: ${principalDiff < 0.01 ? '#059669' : '#dc2626'};">
+                            ${formatCurrency(principalDiff)}
+                        </div>
+                    </div>
+                </div>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-top: 1rem;">
+                    <div>
+                        <strong>Account Interest:</strong>
+                        <div style="font-size: 1.25rem; color: #1f2937;">${formatCurrency(totalInterestPayable)}</div>
+                    </div>
+                    <div>
+                        <strong>Expected Interest:</strong>
+                        <div style="font-size: 1.25rem; color: #6b7280;">${formatCurrency(expectedInterest)}</div>
+                    </div>
+                    <div>
+                        <strong>Interest Difference:</strong>
+                        <div style="font-size: 1.25rem; color: ${interestDiff < 0.01 ? '#059669' : '#dc2626'};">
+                            ${formatCurrency(interestDiff)}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            ${isReconciled ? `
+                <div style="background: #f0fdf4; border-left: 4px solid #10b981; padding: 1rem; margin-bottom: 1rem;">
+                    ✓ Loan balances are reconciled. Accounting records match expected amortization.
+                </div>
+            ` : `
+                <div style="background: #fef2f2; border-left: 4px solid #dc2626; padding: 1rem; margin-bottom: 1rem;">
+                    <strong>⚠ Discrepancy Detected</strong>
+                    <p style="margin: 0.5rem 0 0 0;">
+                        Loan balances do not match expected values. This may indicate:
+                    </p>
+                    <ul style="margin: 0.5rem 0 0 1.5rem;">
+                        <li>Missing payment transactions</li>
+                        <li>Interest accrual errors</li>
+                        <li>Manual entry mistakes</li>
+                    </ul>
+                </div>
+            `}
+
+            <h5>Individual Loan Details</h5>
+            <div style="max-height: 400px; overflow-y: auto;">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Loan ID</th>
+                            <th>Amount</th>
+                            <th>Interest Rate</th>
+                            <th>Remaining Principal</th>
+                            <th>Accrued Interest</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${loans.length === 0 ?
+                            '<tr><td colspan="6" style="text-align: center;">No active loans</td></tr>' :
+                            loans.map(loan => {
+                                const status = loan.remainingPrincipal <= 0 ? 'Paid Off' : 'Active';
+                                const statusColor = status === 'Paid Off' ? '#059669' : '#3b82f6';
+                                return `
+                                    <tr>
+                                        <td>${loan.id}</td>
+                                        <td>${formatCurrency(loan.amount)}</td>
+                                        <td>${(loan.interestRate * 100).toFixed(2)}%</td>
+                                        <td>${formatCurrency(loan.remainingPrincipal)}</td>
+                                        <td>${formatCurrency(loan.accruedInterest || 0)}</td>
+                                        <td style="color: ${statusColor}; font-weight: 600;">${status}</td>
+                                    </tr>
+                                `;
+                            }).join('')
+                        }
+                    </tbody>
+                    <tfoot>
+                        <tr style="font-weight: bold; background: #f3f4f6;">
+                            <td colspan="3">Totals</td>
+                            <td>${formatCurrency(expectedPrincipal)}</td>
+                            <td>${formatCurrency(expectedInterest)}</td>
+                            <td></td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+
+            <h5 style="margin-top: 1.5rem;">Loan Account Balances</h5>
+            <div style="max-height: 300px; overflow-y: auto;">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Account</th>
+                            <th>Type</th>
+                            <th>Balance</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${loanPrincipalAccounts.map(acc => `
+                            <tr>
+                                <td>${escapeHtml(acc.name)}</td>
+                                <td>Principal</td>
+                                <td>${formatCurrency(balances[acc.id] || 0)}</td>
+                            </tr>
+                        `).join('')}
+                        ${loanInterestAccounts.map(acc => `
+                            <tr>
+                                <td>${escapeHtml(acc.name)}</td>
+                                <td>Interest Payable</td>
+                                <td>${formatCurrency(balances[acc.id] || 0)}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    `;
+
+    container.style.display = 'block';
 }
 
 // ====================================
@@ -5660,6 +9306,11 @@ function setDefaultStatementDates() {
     document.getElementById('incomeEndDate').value = getTodayDate();
     document.getElementById('cashFlowStartDate').value = getFirstDayOfMonth();
     document.getElementById('cashFlowEndDate').value = getTodayDate();
+    document.getElementById('trialBalanceDate').value = getTodayDate();
+    document.getElementById('generalLedgerStartDate').value = getFirstDayOfMonth();
+    document.getElementById('generalLedgerEndDate').value = getTodayDate();
+    document.getElementById('transactionJournalStartDate').value = getFirstDayOfMonth();
+    document.getElementById('transactionJournalEndDate').value = getTodayDate();
 }
 
 // Update end dates for financial statements to current date (preserves user's start dates)
@@ -5673,12 +9324,25 @@ function updateStatementEndDates() {
     document.getElementById('incomeEndDate').value = currentDate;
     document.getElementById('cashFlowEndDate').value = currentDate;
 
+    // Update trial balance date
+    document.getElementById('trialBalanceDate').value = currentDate;
+
+    // Update general ledger and transaction journal end dates
+    document.getElementById('generalLedgerEndDate').value = currentDate;
+    document.getElementById('transactionJournalEndDate').value = currentDate;
+
     // If start dates are empty, set them to first day of current month
     if (!document.getElementById('incomeStartDate').value) {
         document.getElementById('incomeStartDate').value = getFirstDayOfMonth();
     }
     if (!document.getElementById('cashFlowStartDate').value) {
         document.getElementById('cashFlowStartDate').value = getFirstDayOfMonth();
+    }
+    if (!document.getElementById('generalLedgerStartDate').value) {
+        document.getElementById('generalLedgerStartDate').value = getFirstDayOfMonth();
+    }
+    if (!document.getElementById('transactionJournalStartDate').value) {
+        document.getElementById('transactionJournalStartDate').value = getFirstDayOfMonth();
     }
 }
 
@@ -5705,6 +9369,12 @@ function render() {
         renderIncomeStatement();
     } else if (activeTab === 'cash-flow') {
         renderCashFlowStatement();
+    } else if (activeTab === 'trial-balance') {
+        renderTrialBalance();
+    } else if (activeTab === 'general-ledger') {
+        renderGeneralLedger();
+    } else if (activeTab === 'transaction-journal') {
+        renderTransactionJournal();
     } else if (activeTab === 'commodities') {
         renderCommoditiesMarket();
     } else if (activeTab === 'map') {
@@ -5743,10 +9413,15 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('transactionType').addEventListener('change', onTransactionTypeChange);
 
     // Transaction filters
+    document.getElementById('filterSearch').addEventListener('input', renderTransactions);
     document.getElementById('filterStartDate').addEventListener('change', renderTransactions);
     document.getElementById('filterEndDate').addEventListener('change', renderTransactions);
     document.getElementById('filterAccount').addEventListener('change', renderTransactions);
+    document.getElementById('filterMinAmount').addEventListener('input', renderTransactions);
+    document.getElementById('filterMaxAmount').addEventListener('input', renderTransactions);
     document.getElementById('clearFiltersBtn').addEventListener('click', clearFilters);
+    document.getElementById('exportCsvBtn').addEventListener('click', exportTransactionsCSV);
+    document.getElementById('exportJsonBtn').addEventListener('click', exportTransactionsJSON);
 
     // Financial statement date controls
     document.getElementById('balanceSheetDate').addEventListener('change', renderBalanceSheet);
@@ -5754,6 +9429,11 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('incomeEndDate').addEventListener('change', renderIncomeStatement);
     document.getElementById('cashFlowStartDate').addEventListener('change', renderCashFlowStatement);
     document.getElementById('cashFlowEndDate').addEventListener('change', renderCashFlowStatement);
+    document.getElementById('trialBalanceDate').addEventListener('change', renderTrialBalance);
+    document.getElementById('generalLedgerStartDate').addEventListener('change', renderGeneralLedger);
+    document.getElementById('generalLedgerEndDate').addEventListener('change', renderGeneralLedger);
+    document.getElementById('transactionJournalStartDate').addEventListener('change', renderTransactionJournal);
+    document.getElementById('transactionJournalEndDate').addEventListener('change', renderTransactionJournal);
 
     // Set default dates
     setDefaultTransactionDate();
@@ -5766,6 +9446,9 @@ document.addEventListener('DOMContentLoaded', () => {
             e.returnValue = '';
         }
     });
+
+    // Initialize financial system (TransactionManager and GeneralLedger)
+    initializeFinancialSystem();
 
     // Initial render
     render();
