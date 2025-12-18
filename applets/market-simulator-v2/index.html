@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Market Economy Simulator V2 - Business simulation with production chains, real estate, and GAAP-compliant accounting">
+    <title>Market Economy Simulator V2 | nhoffie.github.io</title>
+    <style>
+        :root {
+            --primary-color: #2563eb;
+            --secondary-color: #10b981;
+            --background-color: #ffffff;
+            --text-color: #1f2937;
+            --border-color: #d1d5db;
+            --card-bg: #f9fafb;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            color: var(--text-color);
+            background: var(--background-color);
+            padding: 2rem;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 3rem;
+            padding-bottom: 2rem;
+            border-bottom: 2px solid var(--border-color);
+        }
+
+        nav {
+            margin-bottom: 1.5rem;
+        }
+
+        nav a {
+            color: var(--primary-color);
+            text-decoration: none;
+            font-size: 0.95rem;
+        }
+
+        nav a:hover {
+            text-decoration: underline;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+            color: var(--primary-color);
+        }
+
+        .subtitle {
+            font-size: 1.1rem;
+            color: #6b7280;
+        }
+
+        .status-banner {
+            background: #fef3c7;
+            border: 2px solid #f59e0b;
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+            text-align: center;
+        }
+
+        .status-banner h2 {
+            color: #d97706;
+            font-size: 1.3rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .status-banner p {
+            color: #92400e;
+        }
+
+        .content {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+        }
+
+        .content h2 {
+            color: var(--text-color);
+            margin-bottom: 1rem;
+            font-size: 1.5rem;
+        }
+
+        .content h3 {
+            color: var(--text-color);
+            margin-top: 1.5rem;
+            margin-bottom: 0.75rem;
+            font-size: 1.2rem;
+        }
+
+        .content p {
+            margin-bottom: 1rem;
+            color: #4b5563;
+        }
+
+        .content ul {
+            margin-left: 2rem;
+            margin-bottom: 1rem;
+            color: #4b5563;
+        }
+
+        .content li {
+            margin-bottom: 0.5rem;
+        }
+
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+            margin: 2rem 0;
+        }
+
+        .feature-box {
+            background: white;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 1.5rem;
+        }
+
+        .feature-box h4 {
+            color: var(--primary-color);
+            margin-bottom: 0.5rem;
+            font-size: 1.1rem;
+        }
+
+        .feature-box p {
+            font-size: 0.95rem;
+            margin: 0;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+            justify-content: center;
+            margin-top: 2rem;
+        }
+
+        .button {
+            display: inline-block;
+            padding: 0.75rem 1.5rem;
+            border-radius: 6px;
+            text-decoration: none;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+
+        .button-primary {
+            background: var(--primary-color);
+            color: white;
+        }
+
+        .button-primary:hover {
+            background: #1d4ed8;
+        }
+
+        .button-secondary {
+            background: var(--secondary-color);
+            color: white;
+        }
+
+        .button-secondary:hover {
+            background: #059669;
+        }
+
+        .roadmap {
+            background: white;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 1.5rem;
+            margin-top: 1.5rem;
+        }
+
+        .roadmap h3 {
+            margin-top: 0;
+        }
+
+        .phase {
+            display: flex;
+            align-items: start;
+            margin-bottom: 1rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .phase:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+            padding-bottom: 0;
+        }
+
+        .phase-status {
+            font-size: 1.5rem;
+            margin-right: 1rem;
+            flex-shrink: 0;
+        }
+
+        .phase-content h4 {
+            margin: 0 0 0.25rem 0;
+            color: var(--text-color);
+        }
+
+        .phase-content p {
+            margin: 0;
+            font-size: 0.9rem;
+            color: #6b7280;
+        }
+
+        footer {
+            text-align: center;
+            margin-top: 3rem;
+            padding-top: 2rem;
+            border-top: 1px solid var(--border-color);
+            color: #6b7280;
+            font-size: 0.875rem;
+        }
+
+        footer a {
+            color: var(--primary-color);
+            text-decoration: none;
+        }
+
+        footer a:hover {
+            text-decoration: underline;
+        }
+
+        @media (max-width: 768px) {
+            body {
+                padding: 1rem;
+            }
+
+            h1 {
+                font-size: 2rem;
+            }
+
+            .feature-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .button-group {
+                flex-direction: column;
+            }
+
+            .button {
+                width: 100%;
+                text-align: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <nav>
+                <a href="../../index.html">← Back to Home</a>
+            </nav>
+            <h1>Market Economy Simulator V2</h1>
+            <p class="subtitle">Comprehensive business simulation with production chains, real estate, and GAAP-compliant accounting</p>
+        </header>
+
+        <main>
+            <div class="status-banner">
+                <h2>🚧 In Development</h2>
+                <p>This applet is currently in the planning and architecture phase. Implementation is in progress.</p>
+            </div>
+
+            <div class="content">
+                <h2>About This Simulator</h2>
+                <p>
+                    Market Economy Simulator V2 is an ambitious business simulation game where you operate a new firm
+                    in an established market economy. Compete with AI-controlled firms, manage complex production chains,
+                    buy and sell real estate, and maintain GAAP-compliant financial records.
+                </p>
+
+                <h3>Key Features</h3>
+                <div class="feature-grid">
+                    <div class="feature-box">
+                        <h4>📊 Advanced Accounting</h4>
+                        <p>Full double-entry bookkeeping with Balance Sheet, Income Statement, and Cash Flow Statement</p>
+                    </div>
+                    <div class="feature-box">
+                        <h4>🏭 Production Chains</h4>
+                        <p>Manufacture products using raw materials and intermediate goods in complex supply chains</p>
+                    </div>
+                    <div class="feature-box">
+                        <h4>📈 Dynamic Markets</h4>
+                        <p>Supply and demand-driven pricing with AI competitors operating alongside you</p>
+                    </div>
+                    <div class="feature-box">
+                        <h4>🏢 Real Estate</h4>
+                        <p>Buy properties to expand production capacity, retail presence, and storage capabilities</p>
+                    </div>
+                    <div class="feature-box">
+                        <h4>⏰ Time System</h4>
+                        <p>Simulated calendar with accelerated time and automatic advancement on load</p>
+                    </div>
+                    <div class="feature-box">
+                        <h4>💾 Session Save/Load</h4>
+                        <p>Save your complete game state and restore it later with time-based fast-forwarding</p>
+                    </div>
+                </div>
+
+                <h3>Gameplay Overview</h3>
+                <p>
+                    You start as a new firm with limited capital in a functioning market economy. Existing AI firms
+                    are already operating at break-even, setting market prices through their trading activity.
+                </p>
+                <p>
+                    Your challenge is to build a profitable business by:
+                </p>
+                <ul>
+                    <li>Analyzing market conditions and identifying opportunities</li>
+                    <li>Purchasing raw materials and intermediate goods</li>
+                    <li>Manufacturing products in your production facilities</li>
+                    <li>Selling finished goods on the open market</li>
+                    <li>Managing cash flow and maintaining financial health</li>
+                    <li>Expanding through strategic real estate investments</li>
+                    <li>Competing with AI firms for market share</li>
+                </ul>
+
+                <h3>Technical Design</h3>
+                <p>
+                    Built with pure vanilla JavaScript, HTML, and CSS with no external dependencies. The architecture
+                    features 28+ modular files organized by domain (accounting, economy, entities, real estate, UI),
+                    totaling an estimated 3,000-5,000 lines of code.
+                </p>
+            </div>
+
+            <div class="roadmap">
+                <h3>Development Roadmap</h3>
+
+                <div class="phase">
+                    <div class="phase-status">✅</div>
+                    <div class="phase-content">
+                        <h4>Phase 1: Architecture & Planning</h4>
+                        <p>Complete technical architecture designed with module structure, data models, and implementation plan</p>
+                    </div>
+                </div>
+
+                <div class="phase">
+                    <div class="phase-status">⏳</div>
+                    <div class="phase-content">
+                        <h4>Phase 2: Foundation</h4>
+                        <p>Core infrastructure - event system, state management, utilities</p>
+                    </div>
+                </div>
+
+                <div class="phase">
+                    <div class="phase-status">⏳</div>
+                    <div class="phase-content">
+                        <h4>Phase 3: Accounting System</h4>
+                        <p>Double-entry bookkeeping, ledgers, journals, and financial statements</p>
+                    </div>
+                </div>
+
+                <div class="phase">
+                    <div class="phase-status">⏳</div>
+                    <div class="phase-content">
+                        <h4>Phase 4: Economy & Market</h4>
+                        <p>Products, inventory, market system, and price discovery</p>
+                    </div>
+                </div>
+
+                <div class="phase">
+                    <div class="phase-status">⏳</div>
+                    <div class="phase-content">
+                        <h4>Phase 5: Firms & Production</h4>
+                        <p>Firm entities, production chains, and AI decision-making</p>
+                    </div>
+                </div>
+
+                <div class="phase">
+                    <div class="phase-status">⏳</div>
+                    <div class="phase-content">
+                        <h4>Phase 6: Real Estate</h4>
+                        <p>Property types, ownership, transactions, and facility capabilities</p>
+                    </div>
+                </div>
+
+                <div class="phase">
+                    <div class="phase-status">⏳</div>
+                    <div class="phase-content">
+                        <h4>Phase 7: Simulation Engine</h4>
+                        <p>Time system, main game loop, and event coordination</p>
+                    </div>
+                </div>
+
+                <div class="phase">
+                    <div class="phase-status">⏳</div>
+                    <div class="phase-content">
+                        <h4>Phase 8-9: User Interface</h4>
+                        <p>Dashboard, financial views, market interface, production management, and property management</p>
+                    </div>
+                </div>
+
+                <div class="phase">
+                    <div class="phase-status">⏳</div>
+                    <div class="phase-content">
+                        <h4>Phase 10: Session Management</h4>
+                        <p>Save/load functionality with time reconciliation and fast-forwarding</p>
+                    </div>
+                </div>
+
+                <div class="phase">
+                    <div class="phase-status">⏳</div>
+                    <div class="phase-content">
+                        <h4>Phase 11: Polish & Testing</h4>
+                        <p>Balance tuning, bug fixes, optimization, and comprehensive testing</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="button-group">
+                <a href="README.md" class="button button-primary">View README</a>
+                <a href="ARCHITECTURE.md" class="button button-secondary">View Architecture Documentation</a>
+            </div>
+        </main>
+
+        <footer>
+            <p>Part of <a href="../../index.html">nhoffie.github.io</a></p>
+            <p>Built with vanilla HTML, CSS, and JavaScript</p>
+        </footer>
+    </div>
+</body>
+</html>
