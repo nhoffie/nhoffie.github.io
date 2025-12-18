@@ -88,26 +88,36 @@
 
                     <div class="card">
                         <div class="card-header">
-                            <h3 class="card-title">Phase 1: Foundation Complete ✅</h3>
+                            <h3 class="card-title">Phase 2: Accounting System Complete ✅</h3>
                         </div>
                         <div class="card-body">
-                            <p><strong>Implemented:</strong></p>
+                            <p><strong>Phase 1 (Complete):</strong></p>
                             <ul>
                                 <li>✅ Core infrastructure (Event Bus, State Manager, Simulation Engine)</li>
                                 <li>✅ Utility modules (Date, Math, Validation)</li>
                                 <li>✅ Complete UI styling</li>
                                 <li>✅ Initial user firm in state</li>
                                 <li>✅ Debug mode enabled</li>
-                                <li>✅ All 28 module files created</li>
+                            </ul>
+                            <p class="mt-md"><strong>Phase 2 (Complete):</strong></p>
+                            <ul>
+                                <li>✅ Chart of Accounts (35+ accounts)</li>
+                                <li>✅ Double-entry bookkeeping system</li>
+                                <li>✅ Journal (transaction audit trail)</li>
+                                <li>✅ Ledger (account balances)</li>
+                                <li>✅ Transaction Manager (validation & recording)</li>
+                                <li>✅ Financial Statements (Balance Sheet, Income Statement, Cash Flow)</li>
+                                <li>✅ Trial Balance reports</li>
+                                <li>✅ Sample transactions in console</li>
                             </ul>
                             <p class="mt-md"><strong>Next Steps:</strong></p>
                             <ul>
-                                <li>Phase 2: Accounting System (double-entry bookkeeping)</li>
-                                <li>Phase 3: Economy & Market</li>
-                                <li>Phase 4: Firms & Production</li>
+                                <li>Phase 3: Economy & Market (pricing, supply/demand)</li>
+                                <li>Phase 4: Firms & Production (manufacturing chains)</li>
+                                <li>Phase 5: Real Estate System</li>
                             </ul>
                             <p class="mt-md text-muted">
-                                Open browser console (F12) to test utilities via <code>window.DEBUG</code>
+                                Open browser console (F12) to see accounting system demo and access <code>window.DEBUG</code>
                             </p>
                         </div>
                     </div>
@@ -117,15 +127,51 @@
                 <div id="accounting-view" class="view">
                     <h1>Financial Statements</h1>
                     <div class="card">
-                        <p>Accounting system will be implemented in Phase 2.</p>
-                        <p>Features:</p>
-                        <ul>
-                            <li>Double-entry bookkeeping</li>
-                            <li>Balance Sheet</li>
-                            <li>Income Statement</li>
-                            <li>Cash Flow Statement</li>
-                            <li>Transaction journal</li>
-                        </ul>
+                        <div class="card-header">
+                            <h3 class="card-title">Accounting System Implemented ✅</h3>
+                        </div>
+                        <div class="card-body">
+                            <p><strong>Phase 2 Complete:</strong></p>
+                            <ul>
+                                <li>✅ Double-entry bookkeeping with validation</li>
+                                <li>✅ Chart of Accounts (35+ accounts)</li>
+                                <li>✅ General Journal (chronological audit trail)</li>
+                                <li>✅ General Ledger (account balances)</li>
+                                <li>✅ Balance Sheet (financial position)</li>
+                                <li>✅ Income Statement (profitability)</li>
+                                <li>✅ Cash Flow Statement (cash flows)</li>
+                                <li>✅ Trial Balance (verification)</li>
+                            </ul>
+                            <p class="mt-md"><strong>How to Test:</strong></p>
+                            <ol>
+                                <li>Open browser console (F12)</li>
+                                <li>View sample transactions and financial statements</li>
+                                <li>Access accounting system via <code>window.DEBUG</code>:</li>
+                            </ol>
+                            <pre class="mt-sm" style="background: #f5f5f5; padding: 1rem; border-radius: 4px; overflow-x: auto;">
+// Get transaction manager
+const tx = window.DEBUG.txManager;
+
+// Create a transaction
+tx.recordOwnerInvestment(1000, 'Test investment',
+    window.DEBUG.stateManager.getCurrentDate());
+
+// View balance sheet
+const bs = window.DEBUG.statements.generateBalanceSheet();
+console.log(window.DEBUG.statements.formatBalanceSheet(bs));
+
+// View income statement
+const is = window.DEBUG.statements.generateIncomeStatement(
+    {year: 1, month: 1, day: 1},
+    {year: 1, month: 1, day: 28}
+);
+console.log(window.DEBUG.statements.formatIncomeStatement(is));
+</pre>
+                            <p class="mt-md text-muted">
+                                <strong>Note:</strong> UI for viewing financial statements will be added in Phase 8 (UI Integration).
+                                For now, all accounting functionality is accessible via the browser console.
+                            </p>
+                        </div>
                     </div>
                 </div>
 
@@ -204,8 +250,15 @@
         import * as mathUtils from './utils/math-utils.js';
         import * as validation from './utils/validation.js';
 
-        // ===== Phase 1 Initialization =====
-        console.log('🚀 Market Economy Simulator V2 - Phase 1 Foundation');
+        // Import accounting modules (Phase 2)
+        import * as chartOfAccounts from './accounting/chart-of-accounts.js';
+        import { Journal } from './accounting/journal.js';
+        import { Ledger } from './accounting/ledger.js';
+        import { TransactionManager } from './accounting/transaction-manager.js';
+        import { FinancialStatements } from './accounting/financial-statements.js';
+
+        // ===== Phase 1 & 2 Initialization =====
+        console.log('🚀 Market Economy Simulator V2 - Phases 1 & 2');
         console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
         // Enable debug mode
@@ -219,6 +272,7 @@
         console.log('✅ State Manager initialized');
         console.log('✅ Simulation Engine initialized (stub)');
         console.log('✅ Utility modules loaded');
+        console.log('✅ Accounting system initialized (Phase 2)');
 
         // Display initial state
         const state = stateManager.getState();
@@ -252,6 +306,102 @@
         // Initialize simulation engine
         simulationEngine.init();
 
+        // ===== Phase 2: Accounting System Demo =====
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        console.log('💰 Phase 2: Accounting System Demonstration');
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+        // Get accounting objects for user firm
+        const txManager = stateManager.getFirmTransactionManager('firm_user');
+        const ledger = stateManager.getFirmLedger('firm_user');
+        const journal = stateManager.getFirmJournal('firm_user');
+        const statements = stateManager.getFirmFinancialStatements('firm_user');
+
+        console.log('📋 Chart of Accounts:');
+        console.log(`   Assets: ${chartOfAccounts.CHART_OF_ACCOUNTS.assets.length} accounts`);
+        console.log(`   Liabilities: ${chartOfAccounts.CHART_OF_ACCOUNTS.liabilities.length} accounts`);
+        console.log(`   Equity: ${chartOfAccounts.CHART_OF_ACCOUNTS.equity.length} accounts`);
+        console.log(`   Revenue: ${chartOfAccounts.CHART_OF_ACCOUNTS.revenue.length} accounts`);
+        console.log(`   Expenses: ${chartOfAccounts.CHART_OF_ACCOUNTS.expenses.length} accounts`);
+
+        // Create sample transactions to demonstrate the system
+        const currentDate = stateManager.getCurrentDate();
+
+        console.log('\\n📝 Creating sample transactions...');
+
+        // Transaction 1: Owner investment (initial capital)
+        const tx1 = txManager.recordOwnerInvestment(
+            100000,
+            'Initial capital investment',
+            currentDate
+        );
+        console.log('✅ Transaction 1: Owner invests $100,000 in cash');
+
+        // Transaction 2: Purchase inventory (cash)
+        const tx2 = txManager.recordCashPurchase(
+            30000,
+            'Inventory - Raw Materials',
+            'Purchase raw materials for production',
+            currentDate
+        );
+        console.log('✅ Transaction 2: Purchase $30,000 of raw materials (cash)');
+
+        // Transaction 3: Purchase equipment (cash)
+        const tx3 = txManager.createSimpleTransaction(
+            'Equipment',
+            'Cash',
+            20000,
+            'Purchase manufacturing equipment',
+            currentDate
+        );
+        console.log('✅ Transaction 3: Purchase $20,000 of equipment (cash)');
+
+        // Transaction 4: Cash sale
+        const tx4 = txManager.recordCashSale(
+            15000,
+            5000,
+            'Sale of finished goods',
+            dateUtils.addDays(currentDate, 1)
+        );
+        console.log('✅ Transaction 4: Cash sale $15,000 (COGS: $5,000)');
+
+        // Transaction 5: Purchase on credit
+        const tx5 = txManager.recordPurchase(
+            10000,
+            'Inventory - Raw Materials',
+            'Purchase materials on credit',
+            dateUtils.addDays(currentDate, 2)
+        );
+        console.log('✅ Transaction 5: Purchase $10,000 materials on credit');
+
+        // Display accounting reports
+        console.log('\\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        console.log('📊 Financial Reports');
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+        // Trial Balance
+        const trialBalance = ledger.generateTrialBalance();
+        console.log('\\n📋 TRIAL BALANCE');
+        console.log(ledger.formatTrialBalance(trialBalance));
+
+        // Balance Sheet
+        const balanceSheet = statements.generateBalanceSheet();
+        console.log('\\n📊 BALANCE SHEET');
+        console.log(statements.formatBalanceSheet(balanceSheet));
+
+        // Income Statement
+        const incomeStatement = statements.generateIncomeStatement(
+            currentDate,
+            dateUtils.addDays(currentDate, 2)
+        );
+        console.log('\\n💵 INCOME STATEMENT');
+        console.log(statements.formatIncomeStatement(incomeStatement));
+
+        console.log('\\n✅ Accounting system fully functional!');
+        console.log(`   Journal entries: ${journal.getEntryCount()}`);
+        console.log(`   Trial balance: ${trialBalance.balanced ? '✓ BALANCED' : '✗ OUT OF BALANCE'}`);
+        console.log(`   Balance sheet: ${balanceSheet.balanced ? '✓ BALANCED' : '✗ OUT OF BALANCE'}`);
+
         console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         console.log('💡 Access debug tools via window.DEBUG');
         console.log('   Examples:');
@@ -267,7 +417,18 @@
             simulationEngine,
             dateUtils,
             mathUtils,
-            validation
+            validation,
+            // Phase 2: Accounting
+            chartOfAccounts,
+            Journal,
+            Ledger,
+            TransactionManager,
+            FinancialStatements,
+            // User firm accounting shortcuts
+            txManager,
+            ledger,
+            journal,
+            statements
         };
 
         // ===== UI Event Handlers =====
@@ -366,7 +527,9 @@
         updateUI();
 
         console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        console.log('✅ Phase 1 Complete - Application Ready!');
+        console.log('✅ Phases 1 & 2 Complete - Application Ready!');
+        console.log('✅ Phase 1: Foundation - Core systems operational');
+        console.log('✅ Phase 2: Accounting - Double-entry bookkeeping functional');
         console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     </script>
 </body>

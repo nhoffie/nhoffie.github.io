@@ -5,6 +5,10 @@
  */
 
 import { createDate } from '../utils/date-utils.js';
+import { createJournal } from '../accounting/journal.js';
+import { createLedger } from '../accounting/ledger.js';
+import { createTransactionManager } from '../accounting/transaction-manager.js';
+import { createFinancialStatements } from '../accounting/financial-statements.js';
 
 class StateManager {
   constructor() {
@@ -38,6 +42,17 @@ class StateManager {
       activeProduction: [] // No active production at start
     };
 
+    // Initialize accounting system for user firm
+    const userAccounting = {
+      journal: createJournal('firm_user'),
+      ledger: createLedger('firm_user'),
+      transactionManager: createTransactionManager('firm_user'),
+      financialStatements: null
+    };
+
+    // Create financial statements with ledger reference
+    userAccounting.financialStatements = createFinancialStatements(userAccounting.ledger);
+
     return {
       meta: {
         version: '1.0.0',
@@ -57,10 +72,7 @@ class StateManager {
         forSale: []
       },
       accounting: {
-        'firm_user': {
-          ledger: {}, // Will be initialized in Phase 2
-          journal: []
-        }
+        'firm_user': userAccounting
       }
     };
   }
@@ -291,10 +303,18 @@ class StateManager {
    */
   initializeFirmAccounting(firmId) {
     if (!this.state.accounting[firmId]) {
-      this.state.accounting[firmId] = {
-        ledger: {},
-        journal: []
+      const accounting = {
+        journal: createJournal(firmId),
+        ledger: createLedger(firmId),
+        transactionManager: createTransactionManager(firmId),
+        financialStatements: null
       };
+
+      // Create financial statements with ledger reference
+      accounting.financialStatements = createFinancialStatements(accounting.ledger);
+
+      this.state.accounting[firmId] = accounting;
+
       if (this.debugMode) {
         console.log(`StateManager: Accounting initialized for firm: ${firmId}`);
       }
@@ -314,11 +334,31 @@ class StateManager {
   /**
    * Get firm's journal
    * @param {string} firmId - Firm ID
-   * @returns {Array|undefined} Journal array
+   * @returns {Journal|undefined} Journal instance
    */
   getFirmJournal(firmId) {
     const accounting = this.getFirmAccounting(firmId);
     return accounting ? accounting.journal : undefined;
+  }
+
+  /**
+   * Get firm's transaction manager
+   * @param {string} firmId - Firm ID
+   * @returns {TransactionManager|undefined} Transaction manager instance
+   */
+  getFirmTransactionManager(firmId) {
+    const accounting = this.getFirmAccounting(firmId);
+    return accounting ? accounting.transactionManager : undefined;
+  }
+
+  /**
+   * Get firm's financial statements
+   * @param {string} firmId - Firm ID
+   * @returns {FinancialStatements|undefined} Financial statements instance
+   */
+  getFirmFinancialStatements(firmId) {
+    const accounting = this.getFirmAccounting(firmId);
+    return accounting ? accounting.financialStatements : undefined;
   }
 
   /**
