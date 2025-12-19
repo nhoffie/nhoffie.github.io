@@ -5,6 +5,7 @@
  */
 
 import { getAllAccountNames, getAccountNormalBalance } from './chart-of-accounts.js';
+import { formatCurrency } from '../utils/math-utils.js';
 
 export class Ledger {
   constructor(firmId) {
@@ -343,6 +344,35 @@ export class Ledger {
       totalCredits,
       balanced: Math.abs(totalDebits - totalCredits) < 0.01 // Allow small floating point errors
     };
+  }
+
+  /**
+   * Format trial balance as text report
+   * @param {Object} trialBalance - Trial balance data from generateTrialBalance()
+   * @returns {string} Formatted trial balance report
+   */
+  formatTrialBalance(trialBalance) {
+    let output = '\nTRIAL BALANCE\n';
+    output += '='.repeat(80) + '\n';
+    output += 'Account Name'.padEnd(50) + 'Debit'.padStart(15) + 'Credit'.padStart(15) + '\n';
+    output += '-'.repeat(80) + '\n';
+
+    for (const account of trialBalance.accounts) {
+      output += account.account.padEnd(50);
+      output += (account.debit > 0 ? formatCurrency(account.debit) : '').padStart(15);
+      output += (account.credit > 0 ? formatCurrency(account.credit) : '').padStart(15);
+      output += '\n';
+    }
+
+    output += '-'.repeat(80) + '\n';
+    output += 'TOTALS'.padEnd(50);
+    output += formatCurrency(trialBalance.totalDebits).padStart(15);
+    output += formatCurrency(trialBalance.totalCredits).padStart(15);
+    output += '\n';
+    output += '='.repeat(80) + '\n';
+    output += `Status: ${trialBalance.balanced ? '✓ BALANCED' : '✗ OUT OF BALANCE'}\n`;
+
+    return output;
   }
 }
 
