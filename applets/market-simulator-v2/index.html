@@ -109,7 +109,7 @@
                             </ul>
                             <p class="mt-md"><strong>Phase 3 (Complete):</strong></p>
                             <ul>
-                                <li>✅ Product Registry (9 products: raw, intermediate, finished)</li>
+                                <li>✅ Product Registry (15 realistic products with proper units)</li>
                                 <li>✅ Inventory Management System</li>
                                 <li>✅ Market System (supply/demand/pricing)</li>
                                 <li>✅ Trade Execution</li>
@@ -191,7 +191,7 @@ console.log(window.DEBUG.statements.formatIncomeStatement(is));
                         <div class="card-body">
                             <p><strong>Phase 3 Complete:</strong></p>
                             <ul>
-                                <li>✅ Product Registry with 9 products</li>
+                                <li>✅ Product Registry with 15 realistic products</li>
                                 <li>✅ Dynamic supply/demand pricing</li>
                                 <li>✅ Trade execution system</li>
                                 <li>✅ Price history tracking</li>
@@ -199,9 +199,9 @@ console.log(window.DEBUG.statements.formatIncomeStatement(is));
                             </ul>
                             <p class="mt-md"><strong>Product Categories:</strong></p>
                             <ul>
-                                <li>Raw Materials: Steel, Lumber, Plastic Resin</li>
-                                <li>Intermediate: Components, Metal Parts, Electronic Modules</li>
-                                <li>Finished Goods: Machinery, Consumer Goods, Electronics</li>
+                                <li>Raw Materials: Iron Ore (ton), Timber (board-ft), Crude Oil (barrel), Silicon Wafers (kg), Cotton (bale)</li>
+                                <li>Intermediate: Steel Ingots (ton), Plastic Pellets (kg), Circuit Boards (unit), Fabric (yard), Metal Sheets (sheet)</li>
+                                <li>Finished Goods: Industrial Machinery, Consumer Electronics, Automobiles, Furniture, Appliances (all units)</li>
                             </ul>
                             <p class="mt-md"><strong>How to Test:</strong></p>
                             <ol>
@@ -218,17 +218,17 @@ console.log(market.getMarketSummary());
 
 // Execute a trade
 market.executeTrade({
-    productId: 'steel',
+    productId: 'steel_ingots',
     quantity: 10,
-    price: market.getPrice('steel'),
+    price: market.getPrice('steel_ingots'),
     buyerId: 'firm_user',
     sellerId: 'market',
     date: window.DEBUG.stateManager.getCurrentDate()
 });
 
 // Simulate supply/demand
-market.recordSupply('steel', 100);
-market.recordDemand('steel', 150);
+market.recordSupply('steel_ingots', 100);
+market.recordDemand('steel_ingots', 150);
 market.updateAllPrices();
 </pre>
                             <p class="mt-md text-muted">
@@ -489,9 +489,9 @@ market.updateAllPrices();
         // Test inventory system
         console.log('\\n📦 Inventory System Demo:');
         console.log('   Adding products to inventory...');
-        inventory.add('steel', 100);
-        inventory.add('components', 50);
-        inventory.add('machinery', 10);
+        inventory.add('steel_ingots', 100);
+        inventory.add('circuit_boards', 50);
+        inventory.add('industrial_machinery', 10);
 
         console.log(`\\n   Inventory Summary:`);
         console.log(`   - Total products: ${inventory.getProductCount()}`);
@@ -504,9 +504,9 @@ market.updateAllPrices();
         // Test market trading
         console.log('\\n💱 Market Trading Demo:');
         const trade1 = market.executeTrade({
-            productId: 'steel',
+            productId: 'steel_ingots',
             quantity: 10,
-            price: market.getPrice('steel'),
+            price: market.getPrice('steel_ingots'),
             buyerId: 'firm_user',
             sellerId: 'market',
             date: currentDate,
@@ -514,19 +514,19 @@ market.updateAllPrices();
         });
 
         if (trade1.success) {
-            console.log(`   ✅ Trade executed: Bought 10 tons of Steel for ${mathUtils.formatCurrency(trade1.trade.totalCost)}`);
+            console.log(`   ✅ Trade executed: Bought 10 tons of Steel Ingots for ${mathUtils.formatCurrency(trade1.trade.totalCost)}`);
             // Add to inventory
-            inventory.add('steel', 10);
+            inventory.add('steel_ingots', 10);
         }
 
         // Simulate supply and demand
         console.log('\\n📊 Supply/Demand Dynamics Demo:');
         console.log('   Recording supply and demand...');
-        market.recordSupply('steel', 200);
-        market.recordDemand('steel', 300); // High demand
+        market.recordSupply('steel_ingots', 200);
+        market.recordDemand('steel_ingots', 300); // High demand
 
-        market.recordSupply('machinery', 100);
-        market.recordDemand('machinery', 50); // Low demand
+        market.recordSupply('industrial_machinery', 100);
+        market.recordDemand('industrial_machinery', 50); // Low demand
 
         console.log('   Updating prices based on supply/demand...');
         market.updateAllPrices();
