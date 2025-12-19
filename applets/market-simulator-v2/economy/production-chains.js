@@ -11,104 +11,166 @@ import { productRegistry } from './product-registry.js';
  * Defines inputs and outputs for manufacturing
  */
 export const PRODUCTION_RECIPES = {
-  // Intermediate Goods - made from raw materials
-  components: {
-    id: 'components',
-    name: 'Components',
+  // Raw Materials → Intermediate Goods
+  steel_ingots: {
+    id: 'steel_ingots',
+    name: 'Steel Refining',
     output: {
-      productId: 'components',
-      quantity: 10
+      productId: 'steel_ingots',
+      quantity: 0.8 // tons (20% loss in refining)
     },
     inputs: [
-      { productId: 'steel', quantity: 5 },
-      { productId: 'plastic_resin', quantity: 3 }
+      { productId: 'iron_ore', quantity: 1 } // tons
     ],
-    productionTime: 2, // days
-    laborCost: 500,
-    description: 'Manufacture components from steel and plastic'
+    productionTime: 1, // days
+    laborCost: 180,
+    description: 'Refine iron ore into steel ingots'
   },
 
-  metal_parts: {
-    id: 'metal_parts',
-    name: 'Metal Parts',
+  plastic_pellets: {
+    id: 'plastic_pellets',
+    name: 'Petrochemical Processing',
     output: {
-      productId: 'metal_parts',
-      quantity: 15
+      productId: 'plastic_pellets',
+      quantity: 150 // kg per barrel
     },
     inputs: [
-      { productId: 'steel', quantity: 8 },
-      { productId: 'lumber', quantity: 2 }
+      { productId: 'crude_oil', quantity: 1 } // barrel
+    ],
+    productionTime: 1,
+    laborCost: 250,
+    description: 'Process crude oil into plastic pellets'
+  },
+
+  circuit_boards: {
+    id: 'circuit_boards',
+    name: 'Electronics Manufacturing',
+    output: {
+      productId: 'circuit_boards',
+      quantity: 10 // units
+    },
+    inputs: [
+      { productId: 'silicon', quantity: 2 }, // kg
+      { productId: 'iron_ore', quantity: 0.1 } // tons (for copper/metal traces)
     ],
     productionTime: 2,
-    laborCost: 400,
-    description: 'Fabricate metal parts from steel and lumber'
+    laborCost: 850,
+    description: 'Manufacture circuit boards from silicon wafers'
   },
 
-  electronic_modules: {
-    id: 'electronic_modules',
-    name: 'Electronic Modules',
+  fabric: {
+    id: 'fabric',
+    name: 'Textile Weaving',
     output: {
-      productId: 'electronic_modules',
-      quantity: 5
+      productId: 'fabric',
+      quantity: 500 // yards per bale
     },
     inputs: [
-      { productId: 'components', quantity: 8 },
-      { productId: 'plastic_resin', quantity: 2 }
+      { productId: 'cotton', quantity: 1 } // bale
+    ],
+    productionTime: 2,
+    laborCost: 320,
+    description: 'Weave cotton into fabric'
+  },
+
+  metal_sheets: {
+    id: 'metal_sheets',
+    name: 'Metal Rolling',
+    output: {
+      productId: 'metal_sheets',
+      quantity: 25 // sheets per ton
+    },
+    inputs: [
+      { productId: 'steel_ingots', quantity: 1 } // ton
+    ],
+    productionTime: 1,
+    laborCost: 280,
+    description: 'Roll steel ingots into metal sheets'
+  },
+
+  // Intermediate Goods → Finished Products
+  industrial_machinery: {
+    id: 'industrial_machinery',
+    name: 'Machinery Assembly',
+    output: {
+      productId: 'industrial_machinery',
+      quantity: 1 // unit
+    },
+    inputs: [
+      { productId: 'steel_ingots', quantity: 2 }, // tons
+      { productId: 'circuit_boards', quantity: 15 }, // units
+      { productId: 'metal_sheets', quantity: 40 } // sheets
+    ],
+    productionTime: 7,
+    laborCost: 3500,
+    description: 'Assemble heavy industrial machinery'
+  },
+
+  consumer_electronics: {
+    id: 'consumer_electronics',
+    name: 'Device Assembly',
+    output: {
+      productId: 'consumer_electronics',
+      quantity: 5 // units
+    },
+    inputs: [
+      { productId: 'circuit_boards', quantity: 8 }, // units
+      { productId: 'plastic_pellets', quantity: 15 } // kg
     ],
     productionTime: 3,
-    laborCost: 800,
-    description: 'Assemble electronic modules from components'
+    laborCost: 950,
+    description: 'Assemble consumer electronic devices'
   },
 
-  // Finished Goods - made from intermediate goods
-  machinery: {
-    id: 'machinery',
-    name: 'Machinery',
+  automobiles: {
+    id: 'automobiles',
+    name: 'Vehicle Assembly',
     output: {
-      productId: 'machinery',
-      quantity: 1
+      productId: 'automobiles',
+      quantity: 1 // unit
     },
     inputs: [
-      { productId: 'metal_parts', quantity: 20 },
-      { productId: 'components', quantity: 15 },
-      { productId: 'electronic_modules', quantity: 5 }
+      { productId: 'steel_ingots', quantity: 1.5 }, // tons
+      { productId: 'plastic_pellets', quantity: 80 }, // kg
+      { productId: 'circuit_boards', quantity: 12 }, // units
+      { productId: 'metal_sheets', quantity: 30 } // sheets
     ],
     productionTime: 5,
-    laborCost: 2000,
-    description: 'Build machinery from parts and components'
+    laborCost: 5200,
+    description: 'Assemble automobiles from components'
   },
 
-  consumer_goods: {
-    id: 'consumer_goods',
-    name: 'Consumer Goods',
+  furniture: {
+    id: 'furniture',
+    name: 'Furniture Manufacturing',
     output: {
-      productId: 'consumer_goods',
-      quantity: 20
+      productId: 'furniture',
+      quantity: 3 // units
     },
     inputs: [
-      { productId: 'plastic_resin', quantity: 10 },
-      { productId: 'components', quantity: 5 }
+      { productId: 'timber', quantity: 150 }, // board-ft
+      { productId: 'fabric', quantity: 25 } // yards
     ],
-    productionTime: 2,
-    laborCost: 300,
-    description: 'Manufacture consumer goods from plastic and components'
+    productionTime: 3,
+    laborCost: 680,
+    description: 'Manufacture furniture from timber and fabric'
   },
 
-  electronics: {
-    id: 'electronics',
-    name: 'Electronics',
+  appliances: {
+    id: 'appliances',
+    name: 'Appliance Assembly',
     output: {
-      productId: 'electronics',
-      quantity: 3
+      productId: 'appliances',
+      quantity: 2 // units
     },
     inputs: [
-      { productId: 'electronic_modules', quantity: 8 },
-      { productId: 'components', quantity: 10 },
-      { productId: 'plastic_resin', quantity: 5 }
+      { productId: 'metal_sheets', quantity: 18 }, // sheets
+      { productId: 'circuit_boards', quantity: 6 }, // units
+      { productId: 'plastic_pellets', quantity: 12 } // kg
     ],
     productionTime: 4,
-    laborCost: 1200,
-    description: 'Produce electronics from modules and components'
+    laborCost: 1400,
+    description: 'Assemble household appliances'
   }
 };
 

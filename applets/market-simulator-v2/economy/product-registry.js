@@ -26,80 +26,128 @@ export const PRODUCT_TYPES = {
 export const PRODUCTS = [
   // Raw Materials
   {
-    id: 'steel',
-    name: 'Steel',
+    id: 'iron_ore',
+    name: 'Iron Ore',
     type: PRODUCT_TYPES.RAW_MATERIAL,
-    basePrice: 100,
+    basePrice: 45,
     unit: 'ton',
-    description: 'Raw steel material used in manufacturing'
+    description: 'Unrefined iron ore extracted from mines'
   },
   {
-    id: 'lumber',
-    name: 'Lumber',
+    id: 'timber',
+    name: 'Timber',
     type: PRODUCT_TYPES.RAW_MATERIAL,
-    basePrice: 50,
+    basePrice: 35,
     unit: 'board-ft',
-    description: 'Raw lumber for construction and manufacturing'
+    description: 'Raw timber logs for processing'
   },
   {
-    id: 'plastic_resin',
-    name: 'Plastic Resin',
+    id: 'crude_oil',
+    name: 'Crude Oil',
     type: PRODUCT_TYPES.RAW_MATERIAL,
-    basePrice: 75,
+    basePrice: 65,
+    unit: 'barrel',
+    description: 'Unrefined petroleum for chemical processing'
+  },
+  {
+    id: 'silicon',
+    name: 'Silicon Wafers',
+    type: PRODUCT_TYPES.RAW_MATERIAL,
+    basePrice: 120,
     unit: 'kg',
-    description: 'Plastic resin pellets for molding and manufacturing'
+    description: 'Purified silicon wafers for electronics'
+  },
+  {
+    id: 'cotton',
+    name: 'Cotton',
+    type: PRODUCT_TYPES.RAW_MATERIAL,
+    basePrice: 55,
+    unit: 'bale',
+    description: 'Raw cotton for textile manufacturing'
   },
 
   // Intermediate Goods
   {
-    id: 'components',
-    name: 'Components',
+    id: 'steel_ingots',
+    name: 'Steel Ingots',
     type: PRODUCT_TYPES.INTERMEDIATE,
-    basePrice: 250,
-    unit: 'unit',
-    description: 'Manufactured components used in finished products'
+    basePrice: 180,
+    unit: 'ton',
+    description: 'Refined steel ingots ready for fabrication'
   },
   {
-    id: 'metal_parts',
-    name: 'Metal Parts',
+    id: 'plastic_pellets',
+    name: 'Plastic Pellets',
     type: PRODUCT_TYPES.INTERMEDIATE,
-    basePrice: 200,
-    unit: 'unit',
-    description: 'Fabricated metal parts and assemblies'
+    basePrice: 220,
+    unit: 'kg',
+    description: 'Processed plastic pellets for molding'
   },
   {
-    id: 'electronic_modules',
-    name: 'Electronic Modules',
+    id: 'circuit_boards',
+    name: 'Circuit Boards',
     type: PRODUCT_TYPES.INTERMEDIATE,
-    basePrice: 400,
+    basePrice: 450,
     unit: 'unit',
-    description: 'Electronic circuit boards and modules'
+    description: 'Printed circuit boards for electronics'
+  },
+  {
+    id: 'fabric',
+    name: 'Fabric',
+    type: PRODUCT_TYPES.INTERMEDIATE,
+    basePrice: 25,
+    unit: 'yard',
+    description: 'Woven fabric for furniture and apparel'
+  },
+  {
+    id: 'metal_sheets',
+    name: 'Metal Sheets',
+    type: PRODUCT_TYPES.INTERMEDIATE,
+    basePrice: 95,
+    unit: 'sheet',
+    description: 'Rolled metal sheets for manufacturing'
   },
 
   // Finished Goods
   {
-    id: 'machinery',
-    name: 'Machinery',
+    id: 'industrial_machinery',
+    name: 'Industrial Machinery',
     type: PRODUCT_TYPES.FINISHED_GOODS,
-    basePrice: 5000,
+    basePrice: 8500,
     unit: 'unit',
-    description: 'Industrial machinery and equipment'
+    description: 'Heavy industrial manufacturing equipment'
   },
   {
-    id: 'consumer_goods',
-    name: 'Consumer Goods',
+    id: 'consumer_electronics',
+    name: 'Consumer Electronics',
     type: PRODUCT_TYPES.FINISHED_GOODS,
-    basePrice: 150,
+    basePrice: 650,
     unit: 'unit',
-    description: 'Consumer products and household items'
+    description: 'Phones, tablets, and personal devices'
   },
   {
-    id: 'electronics',
-    name: 'Electronics',
+    id: 'automobiles',
+    name: 'Automobiles',
     type: PRODUCT_TYPES.FINISHED_GOODS,
-    basePrice: 800,
+    basePrice: 22000,
     unit: 'unit',
-    description: 'Consumer and industrial electronic devices'
+    description: 'Passenger vehicles and light trucks'
+  },
+  {
+    id: 'furniture',
+    name: 'Furniture',
+    type: PRODUCT_TYPES.FINISHED_GOODS,
+    basePrice: 850,
+    unit: 'unit',
+    description: 'Home and office furniture'
+  },
+  {
+    id: 'appliances',
+    name: 'Appliances',
+    type: PRODUCT_TYPES.FINISHED_GOODS,
+    basePrice: 1200,
+    unit: 'unit',
+    description: 'Household appliances and white goods'
   }
 ];
 
