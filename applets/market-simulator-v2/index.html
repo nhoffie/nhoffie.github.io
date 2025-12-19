@@ -88,7 +88,7 @@
 
                     <div class="card">
                         <div class="card-header">
-                            <h3 class="card-title">Phase 3: Economy & Market System Complete ✅</h3>
+                            <h3 class="card-title">Phase 4: Firms & Production System Complete ✅</h3>
                         </div>
                         <div class="card-body">
                             <p><strong>Phase 1 (Complete):</strong></p>
@@ -116,11 +116,19 @@
                                 <li>✅ Dynamic price discovery</li>
                                 <li>✅ Price history tracking</li>
                             </ul>
+                            <p class="mt-md"><strong>Phase 4 (Complete):</strong></p>
+                            <ul>
+                                <li>✅ Production Chains (10 realistic recipes)</li>
+                                <li>✅ Firm Operations (production, trading)</li>
+                                <li>✅ AI Decision-Making System</li>
+                                <li>✅ Three AI strategies (aggressive, balanced, conservative)</li>
+                                <li>✅ Autonomous production planning</li>
+                            </ul>
                             <p class="mt-md"><strong>Next Steps:</strong></p>
                             <ul>
-                                <li>Phase 4: Firms & Production (manufacturing chains)</li>
                                 <li>Phase 5: Real Estate System</li>
                                 <li>Phase 6: Simulation Engine (time loop)</li>
+                                <li>Phase 7: AI Firms (spawning and management)</li>
                             </ul>
                             <p class="mt-md text-muted">
                                 Open browser console (F12) to see demos and access <code>window.DEBUG</code>
@@ -243,14 +251,50 @@ market.updateAllPrices();
                 <div id="production-view" class="view">
                     <h1>Production</h1>
                     <div class="card">
-                        <p>Production system will be implemented in Phase 4.</p>
-                        <p>Features:</p>
-                        <ul>
-                            <li>Production chains</li>
-                            <li>Manufacturing interface</li>
-                            <li>Production capacity</li>
-                            <li>Active production runs</li>
-                        </ul>
+                        <div class="card-header">
+                            <h3 class="card-title">Production System Implemented ✅</h3>
+                        </div>
+                        <div class="card-body">
+                            <p><strong>Phase 4 Complete:</strong></p>
+                            <ul>
+                                <li>✅ 10 production recipes (raw → intermediate → finished)</li>
+                                <li>✅ Firm operations (start/complete production)</li>
+                                <li>✅ Production validation and cost calculation</li>
+                                <li>✅ Work-in-progress accounting</li>
+                                <li>✅ AI decision-making for production planning</li>
+                            </ul>
+                            <p class="mt-md"><strong>Production Recipes:</strong></p>
+                            <ul>
+                                <li>Raw → Intermediate: Steel Refining, Petrochemical Processing, Electronics Manufacturing, Textile Weaving, Metal Rolling</li>
+                                <li>Intermediate → Finished: Machinery Assembly, Device Assembly, Vehicle Assembly, Furniture Manufacturing, Appliance Assembly</li>
+                            </ul>
+                            <p class="mt-md"><strong>How to Test:</strong></p>
+                            <ol>
+                                <li>Open browser console (F12)</li>
+                                <li>Access production system via <code>window.DEBUG</code>:</li>
+                            </ol>
+                            <pre class="mt-sm" style="background: #f5f5f5; padding: 1rem; border-radius: 4px; overflow-x: auto;">
+// Get production chains
+const chains = window.DEBUG.productionChains;
+
+// View all recipes
+console.log(chains.getAllRecipeSummaries());
+
+// View specific recipe
+console.log(chains.getRecipeSummary('steel_ingots'));
+
+// Calculate production cost
+const prices = window.DEBUG.market.getAllPrices();
+console.log(chains.calculateProductionCost('steel_ingots', prices, 1));
+
+// Calculate profit margin
+console.log(chains.calculateProfitMargin('consumer_electronics', prices, 1));
+</pre>
+                            <p class="mt-md text-muted">
+                                <strong>Note:</strong> Production UI will be added in Phase 8 (UI Integration).
+                                For now, all production functionality is accessible via the browser console.
+                            </p>
+                        </div>
                     </div>
                 </div>
 
@@ -309,10 +353,15 @@ market.updateAllPrices();
         // Import economy modules (Phase 3)
         import { productRegistry, PRODUCT_TYPES } from './economy/product-registry.js';
         import { marketSystem } from './economy/market-system.js';
+        import { productionChains } from './economy/production-chains.js';
         import { Inventory } from './entities/inventory.js';
 
-        // ===== Phase 1, 2 & 3 Initialization =====
-        console.log('🚀 Market Economy Simulator V2 - Phases 1, 2 & 3');
+        // Import firm modules (Phase 4)
+        import { Firm } from './entities/firm.js';
+        import { FirmAI } from './entities/firm-ai.js';
+
+        // ===== Phase 1, 2, 3 & 4 Initialization =====
+        console.log('🚀 Market Economy Simulator V2 - Phases 1-4');
         console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
         // Enable debug mode
@@ -328,6 +377,7 @@ market.updateAllPrices();
         console.log('✅ Utility modules loaded');
         console.log('✅ Accounting system initialized (Phase 2)');
         console.log('✅ Economy system initialized (Phase 3)');
+        console.log('✅ Production system initialized (Phase 4)');
 
         // Display initial state
         const state = stateManager.getState();
@@ -576,7 +626,11 @@ market.updateAllPrices();
             marketSystem: market,
             market,
             Inventory,
-            inventory
+            inventory,
+            // Phase 4: Production & Firms
+            productionChains,
+            Firm,
+            FirmAI
         };
 
         // ===== UI Event Handlers =====
@@ -675,10 +729,11 @@ market.updateAllPrices();
         updateUI();
 
         console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        console.log('✅ Phases 1, 2 & 3 Complete - Application Ready!');
+        console.log('✅ Phases 1-4 Complete - Application Ready!');
         console.log('✅ Phase 1: Foundation - Core systems operational');
         console.log('✅ Phase 2: Accounting - Double-entry bookkeeping functional');
         console.log('✅ Phase 3: Economy - Products, inventory, and market system operational');
+        console.log('✅ Phase 4: Production - Firms, manufacturing, and AI decision-making operational');
         console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     </script>
 </body>
