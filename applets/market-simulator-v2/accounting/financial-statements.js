@@ -183,12 +183,35 @@ export class FinancialStatements {
     const items = {};
     let total = 0;
 
+    // Add permanent equity accounts
     for (const account of CHART_OF_ACCOUNTS.equity) {
       const balance = this.ledger.getAccountBalance(account.name, date);
       if (balance !== 0) {
         items[account.name] = balance;
         total += balance;
       }
+    }
+
+    // Add net income from revenue and expense accounts
+    // Revenue accounts have credit balances (increase equity)
+    let revenueTotal = 0;
+    for (const account of CHART_OF_ACCOUNTS.revenue) {
+      const balance = this.ledger.getAccountBalance(account.name, date);
+      revenueTotal += balance;
+    }
+
+    // Expense accounts have debit balances (decrease equity)
+    let expenseTotal = 0;
+    for (const account of CHART_OF_ACCOUNTS.expenses) {
+      const balance = this.ledger.getAccountBalance(account.name, date);
+      expenseTotal += balance;
+    }
+
+    // Net income = Revenue - Expenses
+    const netIncome = revenueTotal - expenseTotal;
+    if (netIncome !== 0) {
+      items['Net Income (Current Period)'] = netIncome;
+      total += netIncome;
     }
 
     return { items, total };
