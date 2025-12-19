@@ -88,7 +88,7 @@
 
                     <div class="card">
                         <div class="card-header">
-                            <h3 class="card-title">Phase 2: Accounting System Complete ✅</h3>
+                            <h3 class="card-title">Phase 3: Economy & Market System Complete ✅</h3>
                         </div>
                         <div class="card-body">
                             <p><strong>Phase 1 (Complete):</strong></p>
@@ -103,21 +103,27 @@
                             <ul>
                                 <li>✅ Chart of Accounts (35+ accounts)</li>
                                 <li>✅ Double-entry bookkeeping system</li>
-                                <li>✅ Journal (transaction audit trail)</li>
-                                <li>✅ Ledger (account balances)</li>
-                                <li>✅ Transaction Manager (validation & recording)</li>
-                                <li>✅ Financial Statements (Balance Sheet, Income Statement, Cash Flow)</li>
-                                <li>✅ Trial Balance reports</li>
-                                <li>✅ Sample transactions in console</li>
+                                <li>✅ Journal & Ledger</li>
+                                <li>✅ Transaction Manager</li>
+                                <li>✅ Financial Statements</li>
+                            </ul>
+                            <p class="mt-md"><strong>Phase 3 (Complete):</strong></p>
+                            <ul>
+                                <li>✅ Product Registry (9 products: raw, intermediate, finished)</li>
+                                <li>✅ Inventory Management System</li>
+                                <li>✅ Market System (supply/demand/pricing)</li>
+                                <li>✅ Trade Execution</li>
+                                <li>✅ Dynamic price discovery</li>
+                                <li>✅ Price history tracking</li>
                             </ul>
                             <p class="mt-md"><strong>Next Steps:</strong></p>
                             <ul>
-                                <li>Phase 3: Economy & Market (pricing, supply/demand)</li>
                                 <li>Phase 4: Firms & Production (manufacturing chains)</li>
                                 <li>Phase 5: Real Estate System</li>
+                                <li>Phase 6: Simulation Engine (time loop)</li>
                             </ul>
                             <p class="mt-md text-muted">
-                                Open browser console (F12) to see accounting system demo and access <code>window.DEBUG</code>
+                                Open browser console (F12) to see demos and access <code>window.DEBUG</code>
                             </p>
                         </div>
                     </div>
@@ -179,14 +185,57 @@ console.log(window.DEBUG.statements.formatIncomeStatement(is));
                 <div id="market-view" class="view">
                     <h1>Market</h1>
                     <div class="card">
-                        <p>Market system will be implemented in Phase 3.</p>
-                        <p>Features:</p>
-                        <ul>
-                            <li>Product prices</li>
-                            <li>Supply & demand</li>
-                            <li>Trading interface</li>
-                            <li>Price history</li>
-                        </ul>
+                        <div class="card-header">
+                            <h3 class="card-title">Market System Implemented ✅</h3>
+                        </div>
+                        <div class="card-body">
+                            <p><strong>Phase 3 Complete:</strong></p>
+                            <ul>
+                                <li>✅ Product Registry with 9 products</li>
+                                <li>✅ Dynamic supply/demand pricing</li>
+                                <li>✅ Trade execution system</li>
+                                <li>✅ Price history tracking</li>
+                                <li>✅ Market event system</li>
+                            </ul>
+                            <p class="mt-md"><strong>Product Categories:</strong></p>
+                            <ul>
+                                <li>Raw Materials: Steel, Lumber, Plastic Resin</li>
+                                <li>Intermediate: Components, Metal Parts, Electronic Modules</li>
+                                <li>Finished Goods: Machinery, Consumer Goods, Electronics</li>
+                            </ul>
+                            <p class="mt-md"><strong>How to Test:</strong></p>
+                            <ol>
+                                <li>Open browser console (F12)</li>
+                                <li>View market prices and trading demo</li>
+                                <li>Access market system via <code>window.DEBUG</code>:</li>
+                            </ol>
+                            <pre class="mt-sm" style="background: #f5f5f5; padding: 1rem; border-radius: 4px; overflow-x: auto;">
+// Get market instance
+const market = window.DEBUG.market;
+
+// View all prices
+console.log(market.getMarketSummary());
+
+// Execute a trade
+market.executeTrade({
+    productId: 'steel',
+    quantity: 10,
+    price: market.getPrice('steel'),
+    buyerId: 'firm_user',
+    sellerId: 'market',
+    date: window.DEBUG.stateManager.getCurrentDate()
+});
+
+// Simulate supply/demand
+market.recordSupply('steel', 100);
+market.recordDemand('steel', 150);
+market.updateAllPrices();
+</pre>
+                            <p class="mt-md text-muted">
+                                <strong>Note:</strong> Trading UI will be added in Phase 8 (UI Integration).
+                                For now, all market functionality is accessible via the browser console.
+                            </p>
+                        </div>
                     </div>
                 </div>
 
@@ -257,8 +306,13 @@ console.log(window.DEBUG.statements.formatIncomeStatement(is));
         import { TransactionManager } from './accounting/transaction-manager.js';
         import { FinancialStatements } from './accounting/financial-statements.js';
 
-        // ===== Phase 1 & 2 Initialization =====
-        console.log('🚀 Market Economy Simulator V2 - Phases 1 & 2');
+        // Import economy modules (Phase 3)
+        import { productRegistry, PRODUCT_TYPES } from './economy/product-registry.js';
+        import { marketSystem } from './economy/market-system.js';
+        import { Inventory } from './entities/inventory.js';
+
+        // ===== Phase 1, 2 & 3 Initialization =====
+        console.log('🚀 Market Economy Simulator V2 - Phases 1, 2 & 3');
         console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
         // Enable debug mode
@@ -273,6 +327,7 @@ console.log(window.DEBUG.statements.formatIncomeStatement(is));
         console.log('✅ Simulation Engine initialized (stub)');
         console.log('✅ Utility modules loaded');
         console.log('✅ Accounting system initialized (Phase 2)');
+        console.log('✅ Economy system initialized (Phase 3)');
 
         // Display initial state
         const state = stateManager.getState();
@@ -402,6 +457,92 @@ console.log(window.DEBUG.statements.formatIncomeStatement(is));
         console.log(`   Trial balance: ${trialBalance.balanced ? '✓ BALANCED' : '✗ OUT OF BALANCE'}`);
         console.log(`   Balance sheet: ${balanceSheet.balanced ? '✓ BALANCED' : '✗ OUT OF BALANCE'}`);
 
+        // ===== Phase 3: Economy System Demo =====
+        console.log('\\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        console.log('🏭 Phase 3: Economy & Market System Demonstration');
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+        // Get market and inventory from state
+        const market = stateManager.getMarket();
+        const inventory = stateManager.getFirmInventory('firm_user');
+
+        // Display product registry
+        console.log('\\n📦 Product Registry:');
+        const productCounts = productRegistry.getProductCounts();
+        console.log(`   Total products: ${productCounts.total}`);
+        console.log(`   Raw materials: ${productCounts.rawMaterials}`);
+        console.log(`   Intermediate goods: ${productCounts.intermediateGoods}`);
+        console.log(`   Finished goods: ${productCounts.finishedGoods}`);
+
+        console.log('\\n   Products:');
+        for (const product of productRegistry.getAllProducts()) {
+            console.log(`   - ${product.name} (${product.type}): ${mathUtils.formatCurrency(product.basePrice)}/${product.unit}`);
+        }
+
+        // Display market prices
+        console.log('\\n💹 Market Prices:');
+        const marketSummary = market.getMarketSummary();
+        for (const item of marketSummary) {
+            console.log(`   ${item.productName.padEnd(20)} ${mathUtils.formatCurrency(item.currentPrice).padStart(12)} (${item.priceChange >= 0 ? '+' : ''}${item.priceChange}%)`);
+        }
+
+        // Test inventory system
+        console.log('\\n📦 Inventory System Demo:');
+        console.log('   Adding products to inventory...');
+        inventory.add('steel', 100);
+        inventory.add('components', 50);
+        inventory.add('machinery', 10);
+
+        console.log(`\\n   Inventory Summary:`);
+        console.log(`   - Total products: ${inventory.getProductCount()}`);
+        console.log(`   - Total quantity: ${inventory.getTotalQuantity()}`);
+        console.log('\\n   Items:');
+        for (const item of inventory.getAllItems()) {
+            console.log(`   - ${item.product.name}: ${item.quantity} ${item.product.unit}`);
+        }
+
+        // Test market trading
+        console.log('\\n💱 Market Trading Demo:');
+        const trade1 = market.executeTrade({
+            productId: 'steel',
+            quantity: 10,
+            price: market.getPrice('steel'),
+            buyerId: 'firm_user',
+            sellerId: 'market',
+            date: currentDate,
+            metadata: { type: 'purchase' }
+        });
+
+        if (trade1.success) {
+            console.log(`   ✅ Trade executed: Bought 10 tons of Steel for ${mathUtils.formatCurrency(trade1.trade.totalCost)}`);
+            // Add to inventory
+            inventory.add('steel', 10);
+        }
+
+        // Simulate supply and demand
+        console.log('\\n📊 Supply/Demand Dynamics Demo:');
+        console.log('   Recording supply and demand...');
+        market.recordSupply('steel', 200);
+        market.recordDemand('steel', 300); // High demand
+
+        market.recordSupply('machinery', 100);
+        market.recordDemand('machinery', 50); // Low demand
+
+        console.log('   Updating prices based on supply/demand...');
+        market.updateAllPrices();
+
+        console.log('\\n   Price changes:');
+        const updatedSummary = market.getMarketSummary();
+        for (const item of updatedSummary.slice(0, 3)) {
+            const arrow = item.priceChange > 0 ? '↑' : item.priceChange < 0 ? '↓' : '→';
+            console.log(`   ${item.productName.padEnd(20)} ${mathUtils.formatCurrency(item.currentPrice).padStart(12)} ${arrow} (Supply: ${item.supply}, Demand: ${item.demand})`);
+        }
+
+        console.log('\\n✅ Economy system fully functional!');
+        console.log(`   Products registered: ${productCounts.total}`);
+        console.log(`   Market trades: ${market.getTradeCount()}`);
+        console.log(`   User inventory items: ${inventory.getProductCount()}`);
+
         console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         console.log('💡 Access debug tools via window.DEBUG');
         console.log('   Examples:');
@@ -428,7 +569,14 @@ console.log(window.DEBUG.statements.formatIncomeStatement(is));
             txManager,
             ledger,
             journal,
-            statements
+            statements,
+            // Phase 3: Economy
+            productRegistry,
+            PRODUCT_TYPES,
+            marketSystem: market,
+            market,
+            Inventory,
+            inventory
         };
 
         // ===== UI Event Handlers =====
@@ -527,9 +675,10 @@ console.log(window.DEBUG.statements.formatIncomeStatement(is));
         updateUI();
 
         console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        console.log('✅ Phases 1 & 2 Complete - Application Ready!');
+        console.log('✅ Phases 1, 2 & 3 Complete - Application Ready!');
         console.log('✅ Phase 1: Foundation - Core systems operational');
         console.log('✅ Phase 2: Accounting - Double-entry bookkeeping functional');
+        console.log('✅ Phase 3: Economy - Products, inventory, and market system operational');
         console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     </script>
 </body>

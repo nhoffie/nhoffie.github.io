@@ -9,6 +9,8 @@ import { createJournal } from '../accounting/journal.js';
 import { createLedger } from '../accounting/ledger.js';
 import { createTransactionManager } from '../accounting/transaction-manager.js';
 import { createFinancialStatements } from '../accounting/financial-statements.js';
+import { createMarketSystem } from '../economy/market-system.js';
+import { createInventory } from '../entities/inventory.js';
 
 class StateManager {
   constructor() {
@@ -37,7 +39,6 @@ class StateManager {
       name: 'Your Company',
       type: 'user',
       founded: { ...initialDate },
-      inventory: {}, // Empty inventory at start
       properties: [], // No properties at start
       activeProduction: [] // No active production at start
     };
@@ -53,6 +54,12 @@ class StateManager {
     // Create financial statements with ledger reference
     userAccounting.financialStatements = createFinancialStatements(userAccounting.ledger);
 
+    // Initialize market system (Phase 3)
+    const market = createMarketSystem();
+
+    // Initialize inventory for user firm (Phase 3)
+    const userInventory = createInventory('firm_user');
+
     return {
       meta: {
         version: '1.0.0',
@@ -62,10 +69,7 @@ class StateManager {
         isPaused: true,
         debugMode: false
       },
-      market: {
-        products: {}, // Will be populated in Phase 3
-        tradeHistory: []
-      },
+      market: market, // Market system (Phase 3)
       firms: [userFirm], // Start with user firm
       realEstate: {
         properties: [], // Will be populated in Phase 5
@@ -73,6 +77,9 @@ class StateManager {
       },
       accounting: {
         'firm_user': userAccounting
+      },
+      inventory: {
+        'firm_user': userInventory
       }
     };
   }
@@ -247,20 +254,41 @@ class StateManager {
   }
 
   /**
-   * Get market state
-   * @returns {Object} Market state
+   * Get market system
+   * @returns {MarketSystem} Market system instance
    */
   getMarket() {
     return this.state.market;
   }
 
   /**
-   * Get market data for specific product
-   * @param {string} productId - Product ID
-   * @returns {Object|undefined} Product market data
+   * Get all inventory data
+   * @returns {Object} All inventory instances
    */
-  getProductMarket(productId) {
-    return this.state.market.products[productId];
+  getAllInventory() {
+    return this.state.inventory;
+  }
+
+  /**
+   * Get firm's inventory
+   * @param {string} firmId - Firm ID
+   * @returns {Inventory|undefined} Inventory instance
+   */
+  getFirmInventory(firmId) {
+    return this.state.inventory[firmId];
+  }
+
+  /**
+   * Initialize inventory for firm
+   * @param {string} firmId - Firm ID
+   */
+  initializeFirmInventory(firmId) {
+    if (!this.state.inventory[firmId]) {
+      this.state.inventory[firmId] = createInventory(firmId);
+      if (this.debugMode) {
+        console.log(`StateManager: Inventory initialized for firm: ${firmId}`);
+      }
+    }
   }
 
   /**
@@ -359,16 +387,6 @@ class StateManager {
   getFirmFinancialStatements(firmId) {
     const accounting = this.getFirmAccounting(firmId);
     return accounting ? accounting.financialStatements : undefined;
-  }
-
-  /**
-   * Get firm's inventory
-   * @param {string} firmId - Firm ID
-   * @returns {Object|undefined} Inventory object
-   */
-  getFirmInventory(firmId) {
-    const firm = this.getFirm(firmId);
-    return firm ? firm.inventory : undefined;
   }
 
   /**
