@@ -106,11 +106,26 @@
                     <div class="mining-actions">
                         <button id="start-mining-btn" class="btn btn-success">Start Mining</button>
                         <button id="stop-mining-btn" class="btn btn-danger hidden">Stop Mining</button>
+                    </div>
 
-                        <div class="throttle-control">
-                            <label for="mining-throttle">Mining Speed:</label>
-                            <input type="range" id="mining-throttle" min="0" max="100" value="0">
-                            <span id="throttle-value">100%</span>
+                    <div class="hashrate-control">
+                        <label>Target Hash Rate:</label>
+                        <div class="hashrate-presets">
+                            <button class="btn btn-sm" data-hashrate="1">1 H/s</button>
+                            <button class="btn btn-sm" data-hashrate="10">10 H/s</button>
+                            <button class="btn btn-sm active" data-hashrate="100">100 H/s</button>
+                            <button class="btn btn-sm" data-hashrate="1000">1000 H/s</button>
+                            <button class="btn btn-sm" data-hashrate="0">Max</button>
+                        </div>
+                        <div class="hashrate-custom">
+                            <label>Custom:</label>
+                            <input type="number" id="custom-hashrate" min="1" max="10000" placeholder="100">
+                            <button id="set-custom-hashrate" class="btn btn-sm btn-secondary">Set</button>
+                        </div>
+                        <div class="hashrate-display">
+                            <span>Target: <span id="target-hashrate">100</span> H/s</span>
+                            <span>|</span>
+                            <span>Actual: <span id="actual-hashrate">0</span> H/s</span>
                         </div>
                     </div>
 

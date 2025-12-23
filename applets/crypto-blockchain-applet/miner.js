@@ -1,16 +1,24 @@
 /**
  * Mining controller (main thread)
- * Manages Web Worker for proof-of-work mining
+ * Supports both controlled hash rate and Web Worker mining
  */
+
+import { sha256 } from './crypto-utils.js';
+import { Block } from './blockchain.js';
 
 export class Miner {
   constructor(blockchain) {
     this.blockchain = blockchain;
     this.worker = null;
     this.mining = false;
-    this.throttle = 0; // Mining throttle in ms (0 = no throttle)
+    this.hashRate = 100; // Target hash rate in H/s (0 = unlimited/Web Worker)
     this.currentBlock = null;
     this.miningStartTime = null;
+    this.miningTimeout = null;
+
+    // Statistics
+    this.attempts = 0;
+    this.lastProgressReport = 0;
 
     // Callbacks
     this.onProgress = null;
@@ -19,11 +27,18 @@ export class Miner {
   }
 
   /**
-   * Set mining throttle (delay between hash attempts)
-   * @param {number} ms - Milliseconds to delay (0-100)
+   * Set target hash rate
+   * @param {number} hashesPerSecond - Target H/s (0 = unlimited, uses Web Worker)
    */
-  setThrottle(ms) {
-    this.throttle = Math.max(0, Math.min(100, ms));
+  setHashRate(hashesPerSecond) {
+    this.hashRate = Math.max(0, Math.min(100000, hashesPerSecond));
+  }
+
+  /**
+   * Get target hash rate
+   */
+  getHashRate() {
+    return this.hashRate;
   }
 
   /**
@@ -56,15 +71,17 @@ export class Miner {
     // Prepare block to mine
     this.currentBlock = this.prepareBlock(minerAddress);
     this.miningStartTime = Date.now();
+    this.attempts = 0;
+    this.lastProgressReport = 0;
     this.mining = true;
 
-    // Use Web Worker if available
-    if (this.isWorkerSupported()) {
+    // Choose mining mode based on hash rate setting
+    if (this.hashRate === 0 && this.isWorkerSupported()) {
+      // Unlimited mode - use Web Worker
       await this.mineWithWorker();
     } else {
-      // Fallback to main thread
-      console.warn('Web Workers not supported, mining on main thread');
-      this.mineOnMainThread();
+      // Controlled hash rate - use main thread with timing
+      this.mineWithControlledRate();
     }
   }
 
@@ -106,27 +123,60 @@ export class Miner {
    */
   calculateMerkleRoot(transactions) {
     if (transactions.length === 0) {
-      return this.hash('');
+      return sha256('');
     }
     const txIds = transactions.map(tx => tx.id).join('');
-    return this.hash(txIds);
+    return sha256(txIds);
   }
 
   /**
-   * Hash data (using SHA-256 from crypto-utils)
+   * Mine with controlled hash rate (main thread)
    */
-  hash(data) {
-    // Import needed - will be handled by module system
-    // For now, we'll use a simple hash
-    const message = typeof data === 'string' ? data : JSON.stringify(data);
+  mineWithControlledRate() {
+    // Calculate delay between hash attempts
+    const delayMs = this.hashRate > 0 ? (1000 / this.hashRate) : 0;
 
-    // This should use the SHA-256 from crypto-utils
-    // For worker communication, we send block data as object
-    return message;
+    // Mining step - try one hash
+    const mineStep = () => {
+      if (!this.mining) return;
+
+      // Calculate hash for current nonce
+      const hash = this.calculateBlockHash();
+      this.attempts++;
+
+      // Check if hash meets difficulty
+      if (this.meetsRequired(hash, this.currentBlock.difficulty)) {
+        // Found valid block!
+        this.currentBlock.hash = hash;
+        this.completeBlock();
+        return;
+      }
+
+      // Increment nonce for next attempt
+      this.currentBlock.nonce++;
+
+      // Report progress periodically
+      const now = Date.now();
+      if (now - this.lastProgressReport >= 1000) { // Every second
+        this.reportProgress(hash);
+        this.lastProgressReport = now;
+      }
+
+      // Schedule next hash attempt
+      if (delayMs > 0) {
+        this.miningTimeout = setTimeout(mineStep, delayMs);
+      } else {
+        // No delay - use setImmediate equivalent
+        this.miningTimeout = setTimeout(mineStep, 0);
+      }
+    };
+
+    // Start mining
+    mineStep();
   }
 
   /**
-   * Mine using Web Worker
+   * Mine using Web Worker (unlimited speed)
    */
   async mineWithWorker() {
     return new Promise((resolve, reject) => {
@@ -152,7 +202,7 @@ export class Miner {
             type: 'start',
             blockData,
             difficulty: this.currentBlock.difficulty,
-            throttle: this.throttle
+            throttle: 0
           });
 
         } else if (type === 'progress') {
@@ -173,22 +223,9 @@ export class Miner {
           // Block found!
           this.currentBlock.nonce = nonce;
           this.currentBlock.hash = hash;
+          this.attempts = attempts;
 
-          // Add block to blockchain
-          this.addMinedBlock();
-
-          // Report completion
-          if (this.onComplete) {
-            this.onComplete({
-              block: this.currentBlock,
-              attempts,
-              hashRate,
-              timeMs
-            });
-          }
-
-          // Cleanup
-          this.stopMining();
+          this.completeBlock(hashRate, timeMs);
           resolve();
 
         } else if (type === 'error') {
@@ -215,76 +252,9 @@ export class Miner {
   }
 
   /**
-   * Mine on main thread (fallback)
-   */
-  mineOnMainThread() {
-    // This is a simplified version that runs in chunks
-    // to avoid blocking the UI completely
-    let nonce = 0;
-    let attempts = 0;
-    const chunkSize = 1000; // Hash attempts per chunk
-
-    const mineChunk = () => {
-      if (!this.mining) return;
-
-      const chunkStart = Date.now();
-
-      for (let i = 0; i < chunkSize; i++) {
-        this.currentBlock.nonce = nonce;
-        const hash = this.calculateBlockHash();
-        attempts++;
-
-        if (this.meetsRequired(hash, this.currentBlock.difficulty)) {
-          // Found valid block!
-          this.currentBlock.hash = hash;
-          this.addMinedBlock();
-
-          const totalTime = Date.now() - this.miningStartTime;
-          if (this.onComplete) {
-            this.onComplete({
-              block: this.currentBlock,
-              attempts,
-              hashRate: Math.round(attempts / (totalTime / 1000)),
-              timeMs: totalTime
-            });
-          }
-
-          this.stopMining();
-          return;
-        }
-
-        nonce++;
-      }
-
-      // Report progress
-      const elapsed = Date.now() - this.miningStartTime;
-      const hashRate = Math.round(attempts / (elapsed / 1000));
-
-      if (this.onProgress && attempts % 5000 === 0) {
-        this.onProgress({
-          attempts,
-          hashRate,
-          elapsed,
-          currentHash: this.currentBlock.hash,
-          nonce,
-          blockIndex: this.currentBlock.index,
-          difficulty: this.currentBlock.difficulty
-        });
-      }
-
-      // Schedule next chunk
-      setTimeout(mineChunk, this.throttle);
-    };
-
-    mineChunk();
-  }
-
-  /**
    * Calculate hash of current block
    */
   calculateBlockHash() {
-    // Import SHA-256 from crypto-utils
-    // This will be handled properly with modules
     const blockData = {
       index: this.currentBlock.index,
       timestamp: this.currentBlock.timestamp,
@@ -294,12 +264,11 @@ export class Miner {
       nonce: this.currentBlock.nonce
     };
 
-    // Placeholder - will use imported sha256
-    return JSON.stringify(blockData);
+    return sha256(blockData);
   }
 
   /**
-   * Check if hash meets difficulty
+   * Check if hash meets difficulty requirement
    */
   meetsRequired(hash, difficulty) {
     const prefix = '0'.repeat(difficulty);
@@ -307,13 +276,54 @@ export class Miner {
   }
 
   /**
+   * Report mining progress
+   */
+  reportProgress(currentHash) {
+    if (!this.onProgress) return;
+
+    const elapsed = Date.now() - this.miningStartTime;
+    const actualHashRate = elapsed > 0 ? Math.round(this.attempts / (elapsed / 1000)) : 0;
+
+    this.onProgress({
+      attempts: this.attempts,
+      hashRate: actualHashRate,
+      elapsed,
+      currentHash,
+      nonce: this.currentBlock.nonce,
+      blockIndex: this.currentBlock.index,
+      difficulty: this.currentBlock.difficulty
+    });
+  }
+
+  /**
+   * Complete block mining
+   */
+  completeBlock(hashRate = null, timeMs = null) {
+    // Add block to blockchain
+    this.addMinedBlock();
+
+    // Calculate statistics
+    const totalTime = timeMs || (Date.now() - this.miningStartTime);
+    const finalHashRate = hashRate || Math.round(this.attempts / (totalTime / 1000));
+
+    // Report completion
+    if (this.onComplete) {
+      this.onComplete({
+        block: this.currentBlock,
+        attempts: this.attempts,
+        hashRate: finalHashRate,
+        timeMs: totalTime
+      });
+    }
+
+    // Cleanup
+    this.stopMining();
+  }
+
+  /**
    * Add mined block to blockchain
    */
   addMinedBlock() {
-    // Import Block class
-    // Convert our block data to Block instance
-    const { Block } = require('./blockchain.js'); // Will be handled by module system
-
     const block = new Block(
       this.currentBlock.index,
       this.currentBlock.timestamp,
@@ -342,6 +352,13 @@ export class Miner {
   stopMining() {
     this.mining = false;
 
+    // Clear timeout if exists
+    if (this.miningTimeout) {
+      clearTimeout(this.miningTimeout);
+      this.miningTimeout = null;
+    }
+
+    // Terminate worker if exists
     if (this.worker) {
       this.worker.terminate();
       this.worker = null;
@@ -349,6 +366,7 @@ export class Miner {
 
     this.currentBlock = null;
     this.miningStartTime = null;
+    this.attempts = 0;
   }
 
   /**
@@ -366,12 +384,17 @@ export class Miner {
       return { mining: false };
     }
 
+    const elapsed = Date.now() - this.miningStartTime;
+    const actualHashRate = elapsed > 0 ? Math.round(this.attempts / (elapsed / 1000)) : 0;
+
     return {
       mining: true,
       blockIndex: this.currentBlock.index,
       difficulty: this.currentBlock.difficulty,
-      elapsed: Date.now() - this.miningStartTime,
-      throttle: this.throttle
+      elapsed,
+      attempts: this.attempts,
+      hashRate: actualHashRate,
+      targetHashRate: this.hashRate
     };
   }
 }

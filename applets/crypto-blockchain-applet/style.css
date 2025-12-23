@@ -263,25 +263,69 @@ textarea:focus {
     flex-wrap: wrap;
 }
 
-.throttle-control {
+/* Hash Rate Controls */
+.hashrate-control {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding: var(--spacing-unit);
+    background: var(--background-color);
+    border-radius: var(--border-radius);
+    margin-top: var(--spacing-unit);
+}
+
+.hashrate-control > label {
+    font-weight: 600;
+    margin: 0;
+}
+
+.hashrate-presets {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.btn-sm {
+    padding: 0.5rem 1rem;
+    font-size: 0.9rem;
+}
+
+.btn-sm.active {
+    background: var(--success-color);
+    color: white;
+}
+
+.hashrate-custom {
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    margin-left: auto;
 }
 
-.throttle-control label {
+.hashrate-custom label {
     margin: 0;
     font-weight: normal;
 }
 
-.throttle-control input[type="range"] {
-    width: 150px;
+.hashrate-custom input {
+    width: 120px;
 }
 
-#throttle-value {
-    font-weight: 600;
-    min-width: 50px;
+.hashrate-display {
+    font-size: 0.95rem;
+    color: var(--text-secondary);
+    font-family: 'Courier New', monospace;
+    display: flex;
+    gap: var(--spacing-unit);
+}
+
+.hashrate-display span {
+    display: inline-block;
+}
+
+#target-hashrate,
+#actual-hashrate {
+    font-weight: 700;
+    color: var(--primary-color);
 }
 
 #mining-progress {

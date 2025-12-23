@@ -57,8 +57,22 @@ class App {
       this.stopMining();
     });
 
-    document.getElementById('mining-throttle').addEventListener('input', (e) => {
-      this.updateThrottle(e.target.value);
+    // Hash rate preset buttons
+    document.querySelectorAll('.hashrate-presets .btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        this.setHashRate(parseInt(e.target.dataset.hashrate));
+      });
+    });
+
+    // Custom hash rate
+    document.getElementById('set-custom-hashrate').addEventListener('click', () => {
+      this.setCustomHashRate();
+    });
+
+    document.getElementById('custom-hashrate').addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        this.setCustomHashRate();
+      }
     });
 
     // Wallet controls
@@ -170,6 +184,9 @@ class App {
     this.wallet = new Wallet(this.blockchain);
     this.miner = new Miner(this.blockchain);
 
+    // Set default hash rate (100 H/s)
+    this.miner.setHashRate(100);
+
     // Create first address
     this.wallet.createAddress('Primary Address');
 
@@ -235,6 +252,7 @@ class App {
   onMiningProgress(progress) {
     document.getElementById('mining-block-num').textContent = progress.blockIndex;
     document.getElementById('hash-rate').textContent = `${progress.hashRate.toLocaleString()} H/s`;
+    document.getElementById('actual-hashrate').textContent = progress.hashRate.toLocaleString();
     document.getElementById('mining-attempts').textContent = `${progress.attempts.toLocaleString()} attempts`;
     document.getElementById('mining-time').textContent = `${(progress.elapsed / 1000).toFixed(1)}s`;
   }
@@ -274,19 +292,51 @@ class App {
     document.getElementById('mining-status').textContent = 'Idle';
     document.getElementById('mining-progress').classList.add('hidden');
     document.getElementById('hash-rate').textContent = '0 H/s';
+    document.getElementById('actual-hashrate').textContent = '0';
   }
 
   /**
-   * Update mining throttle
+   * Set hash rate
    */
-  updateThrottle(value) {
-    const throttle = parseInt(value);
-    const speed = 100 - throttle;
-    document.getElementById('throttle-value').textContent = `${speed}%`;
+  setHashRate(hashRate) {
+    if (!this.miner) return;
 
-    if (this.miner) {
-      this.miner.setThrottle(throttle);
+    this.miner.setHashRate(hashRate);
+
+    // Update UI
+    const displayValue = hashRate === 0 ? 'Max' : hashRate;
+    document.getElementById('target-hashrate').textContent = displayValue;
+
+    // Update active button
+    document.querySelectorAll('.hashrate-presets .btn').forEach(btn => {
+      btn.classList.remove('active');
+      if (parseInt(btn.dataset.hashrate) === hashRate) {
+        btn.classList.add('active');
+      }
+    });
+
+    this.showToast(`Hash rate set to ${displayValue} H/s`, 'info');
+  }
+
+  /**
+   * Set custom hash rate
+   */
+  setCustomHashRate() {
+    const input = document.getElementById('custom-hashrate');
+    const value = parseInt(input.value);
+
+    if (!value || value < 1 || value > 10000) {
+      this.showToast('Please enter a value between 1 and 10000', 'error');
+      return;
     }
+
+    this.setHashRate(value);
+    input.value = '';
+
+    // Remove active class from all preset buttons
+    document.querySelectorAll('.hashrate-presets .btn').forEach(btn => {
+      btn.classList.remove('active');
+    });
   }
 
   /**
@@ -404,6 +454,9 @@ class App {
       this.blockchain = Blockchain.fromJSON(data);
       this.wallet = Wallet.fromJSON(data.wallet, this.blockchain);
       this.miner = new Miner(this.blockchain);
+
+      // Set default hash rate
+      this.miner.setHashRate(100);
 
       this.hasGenesis = true;
 
