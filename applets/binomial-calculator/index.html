@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Exact binomial distribution probability calculator supporting very large number of trials (n > 1,000,000)">
+    <title>Binomial Distribution Calculator | nhoffie.github.io</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <h1>Binomial Distribution Calculator</h1>
+        <nav>
+            <a href="../../index.html">← Back to Home</a>
+        </nav>
+    </header>
+
+    <main>
+        <!-- Input Section -->
+        <section id="input-section" class="panel">
+            <h2>Parameters</h2>
+            <p class="help-text">
+                Calculate exact binomial probabilities for any size dataset. This calculator handles
+                very large values of n (up to 10,000,000) using precise logarithmic calculations.
+            </p>
+
+            <form id="calculator-form">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="trials">Number of Trials (n):</label>
+                        <input type="number" id="trials" name="trials" min="1" max="10000000"
+                               value="100" required>
+                        <span class="field-help">Positive integer (1 to 10,000,000)</span>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="successes">Number of Successes (k):</label>
+                        <input type="number" id="successes" name="successes" min="0"
+                               value="50" required>
+                        <span class="field-help">Non-negative integer (0 to n)</span>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="probability">Success Probability (p):</label>
+                        <input type="number" id="probability" name="probability"
+                               min="0" max="1" step="0.000001" value="0.5" required>
+                        <span class="field-help">Decimal between 0 and 1</span>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Calculation Type:</label>
+                    <div class="radio-group">
+                        <label class="radio-label">
+                            <input type="radio" name="calc-type" value="equal" checked>
+                            <span>Exact: P(X = k)</span>
+                        </label>
+                        <label class="radio-label">
+                            <input type="radio" name="calc-type" value="less_equal">
+                            <span>Cumulative: P(X ≤ k)</span>
+                        </label>
+                        <label class="radio-label">
+                            <input type="radio" name="calc-type" value="greater_equal">
+                            <span>Cumulative: P(X ≥ k)</span>
+                        </label>
+                        <label class="radio-label">
+                            <input type="radio" name="calc-type" value="less">
+                            <span>Cumulative: P(X &lt; k)</span>
+                        </label>
+                        <label class="radio-label">
+                            <input type="radio" name="calc-type" value="greater">
+                            <span>Cumulative: P(X &gt; k)</span>
+                        </label>
+                        <label class="radio-label">
+                            <input type="radio" name="calc-type" value="range">
+                            <span>Range: P(k₁ ≤ X ≤ k₂)</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Range inputs (shown only when range is selected) -->
+                <div id="range-inputs" class="form-row hidden">
+                    <div class="form-group">
+                        <label for="range-start">Lower Bound (k₁):</label>
+                        <input type="number" id="range-start" name="range-start" min="0" value="40">
+                    </div>
+                    <div class="form-group">
+                        <label for="range-end">Upper Bound (k₂):</label>
+                        <input type="number" id="range-end" name="range-end" min="0" value="60">
+                    </div>
+                </div>
+
+                <div class="form-actions">
+                    <button type="submit" id="calculate-btn" class="btn btn-primary">
+                        Calculate Probability
+                    </button>
+                    <button type="button" id="cancel-btn" class="btn btn-danger hidden">
+                        Cancel Calculation
+                    </button>
+                </div>
+
+                <div id="error-message" class="error-message hidden"></div>
+            </form>
+        </section>
+
+        <!-- Progress Section (shown during calculation) -->
+        <section id="progress-section" class="panel hidden">
+            <h2>Calculating...</h2>
+            <div id="progress-status" class="progress-status"></div>
+            <div class="progress-bar-container">
+                <div id="progress-bar" class="progress-bar"></div>
+            </div>
+            <div id="progress-details" class="progress-details">
+                <span id="progress-percentage">0%</span>
+                <span id="progress-count"></span>
+            </div>
+            <div id="time-estimate" class="time-estimate"></div>
+        </section>
+
+        <!-- Results Section -->
+        <section id="results-section" class="panel hidden">
+            <h2>Results</h2>
+            <div id="results-content">
+                <div class="result-main">
+                    <div class="result-label">Probability:</div>
+                    <div id="probability-result" class="result-value"></div>
+                </div>
+
+                <div class="result-stats">
+                    <h3>Distribution Statistics</h3>
+                    <div class="stats-grid">
+                        <div class="stat-item">
+                            <span class="stat-label">Mean (μ):</span>
+                            <span id="stat-mean" class="stat-value"></span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Variance (σ²):</span>
+                            <span id="stat-variance" class="stat-value"></span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Std Deviation (σ):</span>
+                            <span id="stat-stddev" class="stat-value"></span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Mode:</span>
+                            <span id="stat-mode" class="stat-value"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="result-meta">
+                    <div class="meta-item">
+                        <span class="meta-label">Calculation time:</span>
+                        <span id="calc-time" class="meta-value"></span>
+                    </div>
+                    <div class="meta-item">
+                        <span class="meta-label">Parameters:</span>
+                        <span id="calc-params" class="meta-value"></span>
+                    </div>
+                </div>
+
+                <div class="result-actions">
+                    <button id="export-json" class="btn">Export as JSON</button>
+                    <button id="export-csv" class="btn">Export as CSV</button>
+                    <button id="new-calculation" class="btn btn-primary">New Calculation</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Information Section -->
+        <section id="info-section" class="panel">
+            <h2>About Binomial Distribution</h2>
+            <div class="info-content">
+                <p>
+                    The binomial distribution models the number of successes in a fixed number of
+                    independent trials, each with the same probability of success.
+                </p>
+
+                <h3>Formula</h3>
+                <div class="formula">
+                    P(X = k) = C(n, k) × p<sup>k</sup> × (1-p)<sup>n-k</sup>
+                </div>
+                <p class="formula-explanation">
+                    Where C(n, k) = n! / (k! × (n-k)!) is the binomial coefficient
+                </p>
+
+                <h3>Parameters</h3>
+                <ul>
+                    <li><strong>n</strong> - Number of trials (must be positive integer)</li>
+                    <li><strong>k</strong> - Number of successes (must be 0 ≤ k ≤ n)</li>
+                    <li><strong>p</strong> - Probability of success on each trial (0 ≤ p ≤ 1)</li>
+                </ul>
+
+                <h3>Examples</h3>
+                <div class="examples">
+                    <div class="example">
+                        <strong>Coin Flips:</strong> What's the probability of getting exactly
+                        50 heads in 100 coin flips?<br>
+                        <em>n = 100, k = 50, p = 0.5</em>
+                    </div>
+                    <div class="example">
+                        <strong>Quality Control:</strong> In a batch of 1000 items with 2%
+                        defect rate, what's the probability of finding 30 or fewer defects?<br>
+                        <em>n = 1000, k = 30, p = 0.02, type = P(X ≤ k)</em>
+                    </div>
+                    <div class="example">
+                        <strong>Large Dataset:</strong> With 1,000,000 trials and p = 0.5,
+                        what's the probability of exactly 500,000 successes?<br>
+                        <em>n = 1,000,000, k = 500,000, p = 0.5</em>
+                    </div>
+                </div>
+
+                <h3>Technical Notes</h3>
+                <ul>
+                    <li>This calculator uses exact calculations with logarithmic arithmetic</li>
+                    <li>No approximations (like normal approximation) are used</li>
+                    <li>Handles very large n (up to 10,000,000) without overflow</li>
+                    <li>Progress monitoring for calculations that take more than a few seconds</li>
+                    <li>Uses Stirling's approximation for log factorials when n is large</li>
+                </ul>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <p>Part of <a href="../../index.html">nhoffie.github.io</a></p>
+    </footer>
+
+    <script src="calculator.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
