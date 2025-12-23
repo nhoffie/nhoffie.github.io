@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Educational cryptocurrency blockchain simulator with proof-of-work mining, running entirely in your browser">
+    <title>Crypto/Blockchain Educational Applet | nhoffie.github.io</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <h1>🪙 Educational Cryptocurrency Simulator</h1>
+        <nav>
+            <a href="../../index.html">← Back to Home</a>
+        </nav>
+    </header>
+
+    <main>
+        <!-- Configuration Panel (shown before genesis) -->
+        <section id="config-panel" class="panel">
+            <h2>Configure Your Cryptocurrency</h2>
+            <p class="help-text">
+                Set the parameters for your blockchain before creating the genesis block.
+                You can use a preset or customize all parameters.
+            </p>
+
+            <div class="preset-buttons">
+                <button type="button" class="btn btn-secondary" data-preset="bitcoin">Bitcoin-like</button>
+                <button type="button" class="btn btn-secondary" data-preset="fast">Fast Learning</button>
+                <button type="button" class="btn btn-secondary" data-preset="inflationary">Inflationary</button>
+            </div>
+
+            <form id="config-form">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="block-time-target">Block Time Target (seconds):</label>
+                        <input type="number" id="block-time-target" min="1" max="600" value="10" required>
+                        <span class="field-help">Target time between blocks</span>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="initial-difficulty">Initial Difficulty (leading zeros):</label>
+                        <input type="number" id="initial-difficulty" min="1" max="8" value="4" required>
+                        <span class="field-help">Number of leading zeros required in hash</span>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="block-reward">Block Reward (coins):</label>
+                        <input type="number" id="block-reward" min="0.1" step="0.1" value="50" required>
+                        <span class="field-help">Coins awarded for mining a block</span>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="max-supply">Max Supply (0 = unlimited):</label>
+                        <input type="number" id="max-supply" min="0" step="1000" value="21000000" required>
+                        <span class="field-help">Maximum total coins that can exist</span>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="halving-interval">Reward Halving Interval (0 = none):</label>
+                        <input type="number" id="halving-interval" min="0" step="10" value="210000" required>
+                        <span class="field-help">Blocks between reward halvings</span>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="difficulty-interval">Difficulty Adjustment Interval:</label>
+                        <input type="number" id="difficulty-interval" min="2" max="1000" value="10" required>
+                        <span class="field-help">Adjust difficulty every N blocks</span>
+                    </div>
+
+                    <div class="form-group full-width">
+                        <label for="genesis-message">Genesis Block Message:</label>
+                        <input type="text" id="genesis-message" value="Educational Blockchain - Learning Crypto Mechanics" maxlength="100">
+                        <span class="field-help">Custom message in the genesis block</span>
+                    </div>
+                </div>
+
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary btn-large">Create Genesis Block</button>
+                </div>
+            </form>
+        </section>
+
+        <!-- Main Interface (shown after genesis) -->
+        <div id="main-interface" class="hidden">
+            <!-- Control Panel -->
+            <section id="control-panel" class="panel">
+                <h2>Mining Control</h2>
+
+                <div class="mining-controls">
+                    <div class="mining-status">
+                        <div class="status-item">
+                            <span class="label">Status:</span>
+                            <span id="mining-status" class="value">Idle</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="label">Difficulty:</span>
+                            <span id="current-difficulty" class="value">4</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="label">Hash Rate:</span>
+                            <span id="hash-rate" class="value">0 H/s</span>
+                        </div>
+                    </div>
+
+                    <div class="mining-actions">
+                        <button id="start-mining-btn" class="btn btn-success">Start Mining</button>
+                        <button id="stop-mining-btn" class="btn btn-danger hidden">Stop Mining</button>
+
+                        <div class="throttle-control">
+                            <label for="mining-throttle">Mining Speed:</label>
+                            <input type="range" id="mining-throttle" min="0" max="100" value="0">
+                            <span id="throttle-value">100%</span>
+                        </div>
+                    </div>
+
+                    <div id="mining-progress" class="hidden">
+                        <div class="progress-info">
+                            <span>Mining Block #<span id="mining-block-num">0</span></span>
+                            <span id="mining-attempts">0 attempts</span>
+                            <span id="mining-time">0s</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Wallet Panel -->
+            <section id="wallet-panel" class="panel">
+                <h2>Wallet</h2>
+
+                <div class="wallet-summary">
+                    <div class="balance-display">
+                        <span class="label">Total Balance:</span>
+                        <span id="total-balance" class="value large">0.00000000</span>
+                        <span class="unit">coins</span>
+                    </div>
+                </div>
+
+                <div class="wallet-addresses">
+                    <h3>Your Addresses</h3>
+                    <button id="new-address-btn" class="btn btn-secondary">+ New Address</button>
+                    <div id="address-list" class="address-list">
+                        <!-- Addresses will be populated here -->
+                    </div>
+                </div>
+
+                <div class="send-transaction">
+                    <h3>Send Transaction</h3>
+                    <form id="send-form">
+                        <div class="form-group">
+                            <label for="send-from">From Address:</label>
+                            <select id="send-from" required>
+                                <option value="">Select address...</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="send-to">To Address:</label>
+                            <input type="text" id="send-to" placeholder="1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa" required>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="send-amount">Amount:</label>
+                            <input type="number" id="send-amount" min="0.00000001" step="0.00000001" placeholder="0.00000000" required>
+                            <span class="field-help">Available: <span id="available-balance">0.00000000</span></span>
+                        </div>
+
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-primary">Send Transaction</button>
+                        </div>
+                    </form>
+                </div>
+            </section>
+
+            <!-- Blockchain Explorer -->
+            <section id="explorer-panel" class="panel">
+                <h2>Blockchain Explorer</h2>
+
+                <div class="chain-stats">
+                    <div class="stat-box">
+                        <div class="stat-label">Total Blocks</div>
+                        <div id="total-blocks" class="stat-value">0</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-label">Total Supply</div>
+                        <div id="total-supply" class="stat-value">0</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-label">Avg Block Time</div>
+                        <div id="avg-block-time" class="stat-value">0s</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-label">Chain Valid</div>
+                        <div id="chain-validity" class="stat-value">✓</div>
+                    </div>
+                </div>
+
+                <div class="mempool-section">
+                    <h3>Mempool (Pending Transactions)</h3>
+                    <div id="mempool-list" class="transaction-list">
+                        <p class="empty-state">No pending transactions</p>
+                    </div>
+                </div>
+
+                <div class="blockchain-list">
+                    <h3>Blocks</h3>
+                    <div id="block-list">
+                        <!-- Blocks will be populated here -->
+                    </div>
+                </div>
+            </section>
+
+            <!-- Statistics & Visualizations -->
+            <section id="stats-panel" class="panel">
+                <h2>Statistics & Visualizations</h2>
+
+                <div class="chart-container">
+                    <h3>Difficulty Over Time</h3>
+                    <canvas id="difficulty-chart" width="800" height="300"></canvas>
+                </div>
+
+                <div class="chart-container">
+                    <h3>Block Time Distribution</h3>
+                    <canvas id="blocktime-chart" width="800" height="300"></canvas>
+                </div>
+
+                <div class="chart-container">
+                    <h3>Total Supply Growth</h3>
+                    <canvas id="supply-chart" width="800" height="300"></canvas>
+                </div>
+            </section>
+
+            <!-- Export/Import Panel -->
+            <section id="export-panel" class="panel">
+                <h2>Export / Import Blockchain</h2>
+
+                <div class="export-section">
+                    <h3>Export</h3>
+                    <p>Save your blockchain to continue later or share with others.</p>
+                    <div class="export-actions">
+                        <button id="export-json-btn" class="btn btn-primary">Download as JSON</button>
+                        <button id="copy-json-btn" class="btn btn-secondary">Copy to Clipboard</button>
+                    </div>
+                    <div class="export-stats">
+                        <span>Current blockchain: <strong id="export-size">0</strong> blocks</span>
+                    </div>
+                </div>
+
+                <div class="import-section">
+                    <h3>Import</h3>
+                    <p>Load a previously exported blockchain. This will replace your current blockchain.</p>
+                    <div class="import-actions">
+                        <input type="file" id="import-file" accept=".json" class="file-input">
+                        <button id="import-btn" class="btn btn-primary">Choose File</button>
+                    </div>
+                    <div id="import-status" class="import-status hidden"></div>
+                </div>
+
+                <div class="reset-section">
+                    <h3>Reset</h3>
+                    <p class="warning-text">Start over with a new blockchain configuration.</p>
+                    <button id="reset-btn" class="btn btn-danger">Reset Blockchain</button>
+                </div>
+            </section>
+
+            <!-- Educational Info -->
+            <section id="info-panel" class="panel">
+                <h2>Learn About Cryptocurrency</h2>
+
+                <div class="info-content">
+                    <div class="info-section">
+                        <h3>What is Proof-of-Work?</h3>
+                        <p>
+                            Proof-of-work is a consensus mechanism where miners compete to find a nonce value that,
+                            when combined with the block data and hashed, produces a hash with a specific number of
+                            leading zeros. This requires significant computational effort, making it expensive to
+                            attack the network while easy to verify the result.
+                        </p>
+                    </div>
+
+                    <div class="info-section">
+                        <h3>How Does Mining Work?</h3>
+                        <p>
+                            Mining involves repeatedly hashing block data with different nonce values until finding
+                            a hash that meets the difficulty requirement. The difficulty adjusts automatically based
+                            on how quickly blocks are being found, targeting the configured block time.
+                        </p>
+                    </div>
+
+                    <div class="info-section">
+                        <h3>What is UTXO?</h3>
+                        <p>
+                            Unspent Transaction Outputs (UTXO) are the fundamental way Bitcoin tracks balances.
+                            Instead of accounts with balances, each transaction creates outputs that can be spent
+                            as inputs in future transactions. Your balance is the sum of all UTXOs you control.
+                        </p>
+                    </div>
+
+                    <div class="info-section">
+                        <h3>Why Do Transaction Fees Matter?</h3>
+                        <p>
+                            Transaction fees compensate miners for including your transaction in a block. Fees are
+                            calculated as the difference between input amounts and output amounts. Higher fees can
+                            incentivize miners to prioritize your transaction.
+                        </p>
+                    </div>
+
+                    <div class="info-section">
+                        <h3>How Does Difficulty Adjustment Work?</h3>
+                        <p>
+                            The network periodically checks if blocks are being mined faster or slower than the
+                            target block time. If too fast, difficulty increases (more leading zeros required).
+                            If too slow, difficulty decreases. This maintains a predictable block production rate.
+                        </p>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <footer>
+        <p>Part of <a href="../../index.html">nhoffie.github.io</a></p>
+        <p class="disclaimer">Educational tool only - no real value, runs entirely in your browser</p>
+    </footer>
+
+    <!-- Toast notifications -->
+    <div id="toast-container"></div>
+
+    <script type="module" src="script.js"></script>
+</body>
+</html>
